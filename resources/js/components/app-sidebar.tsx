@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, Boxes, ClipboardCheck, ClipboardList, FolderGit2, LayoutGrid, ShoppingCart, Truck } from 'lucide-react';
+import { BookOpen, Boxes, ClipboardCheck, ClipboardList, FolderGit2, History, LayoutGrid, ShoppingCart, Truck } from 'lucide-react';
+import SaleController from '@/actions/App/Http/Controllers/SaleController';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -26,6 +27,11 @@ const mainNavItems: NavItem[] = [
         title: 'Kasir',
         href: kasir(),
         icon: ShoppingCart,
+    },
+    {
+        title: 'Riwayat Transaksi',
+        href: SaleController.history(),
+        icon: History,
     },
     {
         title: 'Supplier',
