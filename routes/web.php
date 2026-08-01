@@ -26,8 +26,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('supplier', [SupplierController::class, 'store'])->name('supplier.store');
     Route::put('supplier/{supplier}', [SupplierController::class, 'update'])->name('supplier.update');
     Route::delete('supplier/{supplier}', [SupplierController::class, 'destroy'])->name('supplier.destroy');
-    Route::get('supplier/opname/search', [StockAdjustmentController::class, 'search'])->name('supplier.opname.search');
-    Route::post('supplier/opname/{product}', [StockAdjustmentController::class, 'store'])->name('supplier.opname.store');
+
+    Route::get('stock-opname', [StockAdjustmentController::class, 'index'])->name('stock-opname');
+    Route::get('stock-opname/search', [StockAdjustmentController::class, 'search'])->name('stock-opname.search');
+    Route::post('stock-opname/{product}', [StockAdjustmentController::class, 'store'])->name('stock-opname.store');
 
     Route::get('rekap', RekapController::class)->name('rekap');
 
