@@ -1,0 +1,52 @@
+- generic [ref=f23e2]:
+  - generic [ref=f23e3]:
+    - generic [ref=f23e7]:
+      - list [ref=f23e9]:
+        - listitem [ref=f23e10]:
+          - link "Laravel" [ref=f23e11] [cursor=pointer]:
+            - /url: /dashboard
+      - generic [ref=f23e18]:
+        - generic [ref=f23e19]: Platform
+        - list [ref=f23e20]:
+          - listitem [ref=f23e21]:
+            - link "Dashboard" [ref=f23e22] [cursor=pointer]:
+              - /url: /dashboard
+          - listitem [ref=f23e29]:
+            - link "Kasir" [ref=f23e30] [cursor=pointer]:
+              - /url: /kasir
+          - listitem [ref=f23e36]:
+            - link "Supplier" [ref=f23e37] [cursor=pointer]:
+              - /url: /supplier
+          - listitem [ref=f23e44]:
+            - link "Rekap" [ref=f23e45] [cursor=pointer]:
+              - /url: /rekap
+          - listitem [ref=f23e50]:
+            - link "Inventory" [ref=f23e51] [cursor=pointer]:
+              - /url: /inventory
+          - listitem [ref=f23e63]:
+            - link "Stock Opname" [ref=f23e64] [cursor=pointer]:
+              - /url: /stock-opname
+      - generic [ref=f23e70]:
+        - list [ref=f23e73]:
+          - listitem [ref=f23e74]:
+            - link "Repository" [ref=f23e75] [cursor=pointer]:
+              - /url: https://github.com/laravel/react-starter-kit
+          - listitem [ref=f23e82]:
+            - link "Documentation" [ref=f23e83] [cursor=pointer]:
+              - /url: https://laravel.com/docs/starter-kits#react
+        - list [ref=f23e87]:
+          - listitem [ref=f23e88]:
+            - button "CD Claude Dev" [ref=f23e89]:
+              - generic [ref=f23e90]: CD
+              - generic [ref=f23e92]: Claude Dev
+    - main [ref=f23e97]:
+      - generic [ref=f23e99]:
+        - button "Toggle sidebar" [ref=f23e100]
+        - navigation "breadcrumb" [ref=f23e102]:
+          - list [ref=f23e103]:
+            - listitem [ref=f23e104]:
+              - link "Stock Opname" [disabled] [ref=f23e105]
+      - generic [ref=f23e106]:
+        - heading "Stock Opname" [level=1] [ref=f23e107]
+        - textbox "Cari kode / nama / kategori / barcode..." [active] [ref=f23e110]
+  - region "Notifications alt+T"

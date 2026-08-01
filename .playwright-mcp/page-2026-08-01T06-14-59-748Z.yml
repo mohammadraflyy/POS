@@ -1,0 +1,34 @@
+- generic [ref=f27e2]:
+  - generic [ref=f27e5]:
+    - generic [ref=f27e6]:
+      - link "Create an account" [ref=f27e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f27e12]:
+        - heading "Create an account" [level=1] [ref=f27e13]
+        - paragraph [ref=f27e14]: Enter your details below to create your account
+    - generic [ref=f27e15]:
+      - generic [ref=f27e16]:
+        - generic [ref=f27e17]:
+          - generic [ref=f27e18]: Name
+          - textbox "Name" [active] [ref=f27e19]:
+            - /placeholder: Full name
+        - generic [ref=f27e20]:
+          - generic [ref=f27e21]: Email address
+          - textbox "Email address" [ref=f27e22]:
+            - /placeholder: email@example.com
+        - generic [ref=f27e23]:
+          - generic [ref=f27e24]: Password
+          - generic [ref=f27e25]:
+            - textbox "Password" [ref=f27e26]
+            - button "Show password" [ref=f27e27]
+        - generic [ref=f27e31]:
+          - generic [ref=f27e32]: Confirm password
+          - generic [ref=f27e33]:
+            - textbox "Confirm password" [ref=f27e34]
+            - button "Show password" [ref=f27e35]
+        - button "Create account" [ref=f27e39]
+      - generic [ref=f27e40]:
+        - text: Already have an account?
+        - link "Log in" [ref=f27e41] [cursor=pointer]:
+          - /url: /login
+  - region "Notifications alt+T"

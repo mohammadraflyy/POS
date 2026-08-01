@@ -1,0 +1,441 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - list:
+                - listitem:
+                  - link:
+                    - /url: /dashboard
+                    - generic: Laravel
+            - generic:
+              - generic:
+                - generic: Platform
+                - list:
+                  - listitem:
+                    - link:
+                      - /url: /dashboard
+                      - generic: Dashboard
+                  - listitem:
+                    - link:
+                      - /url: /kasir
+                      - generic: Kasir
+                  - listitem:
+                    - link:
+                      - /url: /supplier
+                      - generic: Supplier
+                  - listitem:
+                    - link:
+                      - /url: /rekap
+                      - generic: Rekap
+                  - listitem:
+                    - link:
+                      - /url: /inventory
+                      - generic: Inventory
+            - generic:
+              - generic:
+                - generic:
+                  - list:
+                    - listitem:
+                      - link:
+                        - /url: https://github.com/laravel/react-starter-kit
+                        - generic: Repository
+                    - listitem:
+                      - link:
+                        - /url: https://laravel.com/docs/starter-kits#react
+                        - generic: Documentation
+              - list:
+                - listitem:
+                  - button:
+                    - generic: CD
+                    - generic: Claude Dev
+      - main:
+        - generic:
+          - generic:
+            - button:
+              - generic: Toggle sidebar
+            - navigation:
+              - list:
+                - listitem:
+                  - link [disabled]: Inventory
+        - generic:
+          - generic:
+            - generic:
+              - textbox:
+                - /placeholder: Cari kode / nama produk...
+              - button: Cari
+            - generic:
+              - button: Stok Masuk
+              - button [disabled]: Mass Edit (0)
+              - button: Mass Add
+              - button: Tambah Produk
+          - generic:
+            - table:
+              - rowgroup:
+                - row:
+                  - columnheader:
+                    - checkbox
+                  - columnheader: Kode
+                  - columnheader: Barcode
+                  - columnheader: Nama
+                  - columnheader: Kategori
+                  - columnheader: Satuan
+                  - columnheader: Harga Pokok
+                  - columnheader: Harga Jual
+                  - columnheader: Stok
+                  - columnheader: Status
+                  - columnheader: Aksi
+              - rowgroup:
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "013"
+                  - cell: "-"
+                  - cell: ABC KOPI SUSU 30G
+                  - cell: KP
+                  - cell: RNTNG
+                  - cell: Rp 16.450
+                  - cell: Rp 17.000
+                  - cell: "24"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10273"
+                  - cell: "-"
+                  - cell: ABC PLUS GULA
+                  - cell: KP
+                  - cell: RNTNG
+                  - cell: Rp 7.758
+                  - cell: Rp 8.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "027"
+                  - cell: "-"
+                  - cell: ADEM SARI BTL
+                  - cell: MINUMAN
+                  - cell: PCS
+                  - cell: Rp 6.000
+                  - cell: Rp 7.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "1004"
+                  - cell: "-"
+                  - cell: ADEM SARI CINGKU
+                  - cell: MINUMAN
+                  - cell: PCS
+                  - cell: Rp 6.000
+                  - cell: Rp 7.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "545"
+                  - cell: "-"
+                  - cell: ADEM SARI SASHET ISI24
+                  - cell: MINUMAN
+                  - cell: PCS
+                  - cell: Rp 2.125
+                  - cell: Rp 2.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "11125"
+                  - cell: "-"
+                  - cell: AHH COKLAT
+                  - cell: NABATI
+                  - cell: PAK
+                  - cell: Rp 7.933
+                  - cell: Rp 8.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10518"
+                  - cell: "-"
+                  - cell: AHH KEJU
+                  - cell: NABATI
+                  - cell: PAK
+                  - cell: Rp 7.933
+                  - cell: Rp 8.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10429"
+                  - cell: "-"
+                  - cell: AIR A3
+                  - cell: MINUMAN
+                  - cell: DUS
+                  - cell: Rp 14.500
+                  - cell: Rp 14.968
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10468"
+                  - cell: "-"
+                  - cell: AIR A3 MINI
+                  - cell: MINUMAN
+                  - cell: DUS
+                  - cell: Rp 10.000
+                  - cell: Rp 11.000
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "502"
+                  - cell: "-"
+                  - cell: AIR KN
+                  - cell: MINUMAN
+                  - cell: DUS
+                  - cell: Rp 13.750
+                  - cell: Rp 15.000
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "026"
+                  - cell: "-"
+                  - cell: AJINOMOTO
+                  - cell: BUMBU
+                  - cell: PCS
+                  - cell: Rp 9.900
+                  - cell: Rp 10.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "597"
+                  - cell: "-"
+                  - cell: ALAMO 600ml
+                  - cell: MINUMAN
+                  - cell: PCS
+                  - cell: Rp 1.500
+                  - cell: Rp 2.000
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "674"
+                  - cell: "-"
+                  - cell: ALAMO BESAR
+                  - cell: MINUMAN
+                  - cell: PCS
+                  - cell: Rp 2.708
+                  - cell: Rp 4.000
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10545"
+                  - cell: "-"
+                  - cell: ALAMO BESAR DINGIN
+                  - cell: MINUMAN
+                  - cell: PCS
+                  - cell: Rp 2.708
+                  - cell: Rp 4.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10250"
+                  - cell: "-"
+                  - cell: ALAMO KECIL DINGIN
+                  - cell: MINUMAN
+                  - cell: PCS
+                  - cell: Rp 1.500
+                  - cell: Rp 2.500
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "106"
+                  - cell: "-"
+                  - cell: ALE ALE
+                  - cell: MINUMAN
+                  - cell: PCS
+                  - cell: Rp 760
+                  - cell: Rp 1.000
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "11134"
+                  - cell: "-"
+                  - cell: ALPENLIEBE
+                  - cell: PERMEN
+                  - cell: PAK
+                  - cell: Rp 6.500
+                  - cell: Rp 7.000
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10317"
+                  - cell: "-"
+                  - cell: AMPLOP KECIL
+                  - cell: CAMILAN
+                  - cell: PCS
+                  - cell: Rp 75
+                  - cell: Rp 250
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10318"
+                  - cell: "-"
+                  - cell: AMPLOP TANGGUNG
+                  - cell: OBAT
+                  - cell: PCS
+                  - cell: Rp 100
+                  - cell: Rp 300
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+                - row:
+                  - cell:
+                    - checkbox
+                  - cell: "10104"
+                  - cell: "-"
+                  - cell: ANGET SARI SuSU JAHE
+                  - cell: KOPI
+                  - cell: RNTNG
+                  - cell: Rp 10.320
+                  - cell: Rp 11.000
+                  - cell: "0"
+                  - cell: Aktif
+                  - cell:
+                    - button: Edit
+          - generic:
+            - button [disabled]: « Previous
+            - button: "1"
+            - button: "2"
+            - button: "3"
+            - button: "4"
+            - button: "5"
+            - button: "6"
+            - button: "7"
+            - button: "8"
+            - button: "9"
+            - button: "10"
+            - button [disabled]: ...
+            - button: "73"
+            - button: "74"
+            - button: Next »
+    - region "Notifications alt+T"
+  - dialog [ref=f3e420]:
+    - heading "Input Massal Produk" [level=2] [ref=f3e422]
+    - generic [ref=f3e423]:
+      - button "+ Tambah Baris" [ref=f3e425]
+      - grid [ref=f3e426]:
+        - row [ref=f3e427]:
+          - columnheader "Kode Item" [ref=f3e428]
+          - columnheader "Barcode" [ref=f3e429]
+          - columnheader "Nama Item" [ref=f3e430]
+          - columnheader "Kategori" [ref=f3e431]
+          - columnheader "Satuan" [ref=f3e432]
+          - columnheader "Harga Pokok" [ref=f3e433]
+          - columnheader "Harga Jual" [ref=f3e434]
+          - columnheader "Stok" [ref=f3e435]
+          - columnheader "Satuan/Harga Bertingkat" [ref=f3e436]
+          - columnheader [ref=f3e437]
+        - row [ref=f3e438]:
+          - gridcell [active] [selected] [ref=f3e439]
+          - gridcell [ref=f3e440]
+          - gridcell [ref=f3e441]
+          - gridcell [ref=f3e442]
+          - gridcell [ref=f3e443]
+          - gridcell [ref=f3e444]
+          - gridcell [ref=f3e445]
+          - gridcell "0" [ref=f3e446]
+          - gridcell "Simpan baris dulu" [ref=f3e447]
+          - gridcell [ref=f3e448]:
+            - button "Hapus" [ref=f3e449]
+        - row [ref=f3e450]:
+          - gridcell [ref=f3e451]
+          - gridcell [ref=f3e452]
+          - gridcell [ref=f3e453]
+          - gridcell [ref=f3e454]
+          - gridcell [ref=f3e455]
+          - gridcell [ref=f3e456]
+          - gridcell [ref=f3e457]
+          - gridcell "0" [ref=f3e458]
+          - gridcell "Simpan baris dulu" [ref=f3e459]
+          - gridcell [ref=f3e460]:
+            - button "Hapus" [ref=f3e461]
+        - row [ref=f3e462]:
+          - gridcell [ref=f3e463]
+          - gridcell [ref=f3e464]
+          - gridcell [ref=f3e465]
+          - gridcell [ref=f3e466]
+          - gridcell [ref=f3e467]
+          - gridcell [ref=f3e468]
+          - gridcell [ref=f3e469]
+          - gridcell "0" [ref=f3e470]
+          - gridcell "Simpan baris dulu" [ref=f3e471]
+          - gridcell [ref=f3e472]:
+            - button "Hapus" [ref=f3e473]
+      - button "Simpan Semua" [ref=f3e474]
+    - button "Close" [ref=f3e475]
