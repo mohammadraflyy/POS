@@ -1,6 +1,7 @@
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { numberCell, ReportTable } from '@/components/report-table';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -133,189 +134,120 @@ export default function Rekap({
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="space-y-2">
-                        <h2 className="font-semibold">Produk Terlaris</h2>
-                        <div className="overflow-x-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50 text-left">
-                                    <tr>
-                                        <th className="p-3">Produk</th>
-                                        <th className="p-3 text-right">
-                                            Qty Terjual
-                                        </th>
-                                        <th className="p-3 text-right">
-                                            Total Penjualan
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {produkTerlaris.map((row, index) => (
-                                        <tr
-                                            key={index}
-                                            className="border-t border-sidebar-border/70 dark:border-sidebar-border"
-                                        >
-                                            <td className="p-3">
-                                                {row.nama_item}
-                                            </td>
-                                            <td className="p-3 text-right">
-                                                {row.qty_terjual}
-                                            </td>
-                                            <td className="p-3 text-right">
-                                                {formatRupiah(
-                                                    row.total_penjualan,
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {produkTerlaris.length === 0 && (
-                                        <tr>
-                                            <td
-                                                colSpan={3}
-                                                className="p-6 text-center text-muted-foreground"
-                                            >
-                                                Belum ada penjualan.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <ReportTable<ProdukTerlaris>
+                        title="Produk Terlaris"
+                        rows={produkTerlaris}
+                        rowKey={(row) => row.nama_item}
+                        emptyMessage="Belum ada penjualan."
+                        columns={[
+                            { key: 'nama_item', name: 'Produk' },
+                            {
+                                key: 'qty_terjual',
+                                name: 'Qty Terjual',
+                                width: 110,
+                                renderCell: numberCell,
+                            },
+                            {
+                                key: 'total_penjualan',
+                                name: 'Total Penjualan',
+                                width: 150,
+                                renderCell: ({ row }) => (
+                                    <span className="w-full text-right">
+                                        {formatRupiah(row.total_penjualan)}
+                                    </span>
+                                ),
+                            },
+                        ]}
+                    />
 
-                    <div className="space-y-2">
-                        <h2 className="font-semibold">
-                            Pembelian per Supplier
-                        </h2>
-                        <div className="overflow-x-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50 text-left">
-                                    <tr>
-                                        <th className="p-3">Supplier</th>
-                                        <th className="p-3 text-right">
-                                            Total Pembelian
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {pembelianPerSupplier.map((row, index) => (
-                                        <tr
-                                            key={index}
-                                            className="border-t border-sidebar-border/70 dark:border-sidebar-border"
-                                        >
-                                            <td className="p-3">{row.nama}</td>
-                                            <td className="p-3 text-right">
-                                                {formatRupiah(
-                                                    row.total_pembelian,
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {pembelianPerSupplier.length === 0 && (
-                                        <tr>
-                                            <td
-                                                colSpan={2}
-                                                className="p-6 text-center text-muted-foreground"
-                                            >
-                                                Belum ada pembelian.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <ReportTable<PembelianPerSupplier>
+                        title="Pembelian per Supplier"
+                        rows={pembelianPerSupplier}
+                        rowKey={(row) => row.nama}
+                        emptyMessage="Belum ada pembelian."
+                        columns={[
+                            { key: 'nama', name: 'Supplier' },
+                            {
+                                key: 'total_pembelian',
+                                name: 'Total Pembelian',
+                                width: 150,
+                                renderCell: ({ row }) => (
+                                    <span className="w-full text-right">
+                                        {formatRupiah(row.total_pembelian)}
+                                    </span>
+                                ),
+                            },
+                        ]}
+                    />
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="space-y-2">
-                        <h2 className="font-semibold">Laba per Kategori</h2>
-                        <div className="overflow-x-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50 text-left">
-                                    <tr>
-                                        <th className="p-3">Kategori</th>
-                                        <th className="p-3 text-right">
-                                            Omzet
-                                        </th>
-                                        <th className="p-3 text-right">Laba</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {labaPerKategori.map((row, index) => (
-                                        <tr
-                                            key={index}
-                                            className="border-t border-sidebar-border/70 dark:border-sidebar-border"
-                                        >
-                                            <td className="p-3">{row.nama}</td>
-                                            <td className="p-3 text-right">
-                                                {formatRupiah(row.omzet)}
-                                            </td>
-                                            <td className="p-3 text-right">
-                                                {formatRupiah(row.laba)}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {labaPerKategori.length === 0 && (
-                                        <tr>
-                                            <td
-                                                colSpan={3}
-                                                className="p-6 text-center text-muted-foreground"
-                                            >
-                                                Belum ada penjualan.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <ReportTable<LabaPerKategori>
+                        title="Laba per Kategori"
+                        rows={labaPerKategori}
+                        rowKey={(row) => row.nama}
+                        emptyMessage="Belum ada penjualan."
+                        columns={[
+                            { key: 'nama', name: 'Kategori' },
+                            {
+                                key: 'omzet',
+                                name: 'Omzet',
+                                width: 130,
+                                renderCell: ({ row }) => (
+                                    <span className="w-full text-right">
+                                        {formatRupiah(row.omzet)}
+                                    </span>
+                                ),
+                            },
+                            {
+                                key: 'laba',
+                                name: 'Laba',
+                                width: 130,
+                                renderCell: ({ row }) => (
+                                    <span className="w-full text-right">
+                                        {formatRupiah(row.laba)}
+                                    </span>
+                                ),
+                            },
+                        ]}
+                    />
 
-                    <div className="space-y-2">
-                        <h2 className="font-semibold">Laba per Hari</h2>
-                        <div className="overflow-x-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50 text-left">
-                                    <tr>
-                                        <th className="p-3">Tanggal</th>
-                                        <th className="p-3 text-right">
-                                            Omzet
-                                        </th>
-                                        <th className="p-3 text-right">Laba</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {labaPerHari.map((row, index) => (
-                                        <tr
-                                            key={index}
-                                            className="border-t border-sidebar-border/70 dark:border-sidebar-border"
-                                        >
-                                            <td className="p-3">
-                                                {new Date(
-                                                    row.tanggal,
-                                                ).toLocaleDateString('id-ID')}
-                                            </td>
-                                            <td className="p-3 text-right">
-                                                {formatRupiah(row.omzet)}
-                                            </td>
-                                            <td className="p-3 text-right">
-                                                {formatRupiah(row.laba)}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {labaPerHari.length === 0 && (
-                                        <tr>
-                                            <td
-                                                colSpan={3}
-                                                className="p-6 text-center text-muted-foreground"
-                                            >
-                                                Belum ada penjualan.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                    <ReportTable<LabaPerHari>
+                        title="Laba per Hari"
+                        rows={labaPerHari}
+                        rowKey={(row) => row.tanggal}
+                        emptyMessage="Belum ada penjualan."
+                        columns={[
+                            {
+                                key: 'tanggal',
+                                name: 'Tanggal',
+                                renderCell: ({ row }) =>
+                                    new Date(row.tanggal).toLocaleDateString(
+                                        'id-ID',
+                                    ),
+                            },
+                            {
+                                key: 'omzet',
+                                name: 'Omzet',
+                                width: 130,
+                                renderCell: ({ row }) => (
+                                    <span className="w-full text-right">
+                                        {formatRupiah(row.omzet)}
+                                    </span>
+                                ),
+                            },
+                            {
+                                key: 'laba',
+                                name: 'Laba',
+                                width: 130,
+                                renderCell: ({ row }) => (
+                                    <span className="w-full text-right">
+                                        {formatRupiah(row.laba)}
+                                    </span>
+                                ),
+                            },
+                        ]}
+                    />
                 </div>
             </div>
         </>

@@ -25,8 +25,8 @@ class RekapController extends Controller
         $jumlahTransaksi = (clone $selesaiInRange)->count();
         $piutangBeredar = Sale::query()->where('status', 'selesai')->where('metode_pembayaran', 'bon')
             ->whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
-            ->get()
-            ->sum(fn (Sale $sale) => $sale->sisaPiutang());
+            ->selectRaw('SUM(total - dibayar) as piutang')
+            ->value('piutang') ?? 0;
 
         $labaKotor = SaleItem::query()
             ->whereHas('sale', fn ($query) => $query->where('status', 'selesai')
