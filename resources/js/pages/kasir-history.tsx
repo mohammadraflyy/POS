@@ -1,17 +1,12 @@
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { DataGrid } from 'react-data-grid';
+import type { Column } from 'react-data-grid';
+import 'react-data-grid/lib/styles.css';
 import BonPaymentController from '@/actions/App/Http/Controllers/BonPaymentController';
 import SaleController from '@/actions/App/Http/Controllers/SaleController';
-import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -21,6 +16,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useAppearance } from '@/hooks/use-appearance';
+import { useAvailableHeight } from '@/hooks/use-available-height';
+import { useElementWidth } from '@/hooks/use-element-width';
 import { formatRupiah } from '@/lib/utils';
 import { Receipt } from '@/pages/kasir/shared';
 import type { Sale } from '@/pages/kasir/shared';
@@ -35,6 +33,9 @@ type Filters = {
     search?: string;
 };
 
+const OTHER_COLUMNS_WIDTH = 60 + 180 + 120 + 140 + 120 + 220;
+const MIN_ITEM_WIDTH = 200;
+
 export default function KasirHistory({
     sales,
     filters,
@@ -42,6 +43,9 @@ export default function KasirHistory({
     sales: Paginated<Sale>;
     filters: Filters;
 }) {
+    const { resolvedAppearance } = useAppearance();
+    const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>();
+    const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(56);
     const [search, setSearch] = useState(filters.search ?? '');
     const [dari, setDari] = useState(filters.dari ?? '');
     const [sampai, setSampai] = useState(filters.sampai ?? '');
@@ -90,6 +94,132 @@ export default function KasirHistory({
 
         return () => window.removeEventListener('afterprint', clearAfterPrint);
     }, [receiptSale]);
+
+    const itemWidth = Math.max(
+        MIN_ITEM_WIDTH,
+        gridWidth - OTHER_COLUMNS_WIDTH - 2,
+    );
+
+    const columns: Column<Sale>[] = [
+        {
+            key: 'id',
+            name: '#',
+            width: 60,
+            renderCell: ({ row }) => row.id,
+        },
+        {
+            key: 'created_at',
+            name: 'Tanggal',
+            width: 180,
+            renderCell: ({ row }) =>
+                new Date(row.created_at).toLocaleString('id-ID'),
+        },
+        {
+            key: 'items',
+            name: 'Item',
+            width: itemWidth,
+            renderCell: ({ row }) =>
+                row.items
+                    .map((i) => `${i.product.nama_item} x${i.qty}`)
+                    .join(', '),
+        },
+        {
+            key: 'metode_pembayaran',
+            name: 'Metode',
+            width: 120,
+            renderCell: ({ row }) =>
+                row.metode_pembayaran === 'bon'
+                    ? `Bon (${row.nama_pelanggan})`
+                    : 'Tunai',
+        },
+        {
+            key: 'status',
+            name: 'Status',
+            width: 140,
+            renderCell: ({ row }) => {
+                const sisaPiutang = Number(row.total) - Number(row.dibayar);
+
+                if (row.status === 'dibatalkan') {
+                    return (
+                        <span className="text-destructive">Dibatalkan</span>
+                    );
+                }
+
+                if (row.metode_pembayaran === 'bon' && sisaPiutang > 0) {
+                    return (
+                        <span className="text-amber-600 dark:text-amber-400">
+                            Sisa {formatRupiah(sisaPiutang)}
+                        </span>
+                    );
+                }
+
+                return (
+                    <span className="text-green-600 dark:text-green-400">
+                        Lunas
+                    </span>
+                );
+            },
+        },
+        {
+            key: 'total',
+            name: 'Total',
+            width: 120,
+            renderCell: ({ row }) => (
+                <span className="w-full text-right">
+                    {formatRupiah(row.total)}
+                </span>
+            ),
+        },
+        {
+            key: 'aksi',
+            name: '',
+            width: 220,
+            renderCell: ({ row }) => {
+                const sisaPiutang = Number(row.total) - Number(row.dibayar);
+
+                return (
+                    <div className="flex items-center gap-2">
+                        {row.status === 'selesai' && (
+                            <>
+                                {row.metode_pembayaran === 'bon' &&
+                                    sisaPiutang > 0 && (
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            size="sm"
+                                        >
+                                            <Link
+                                                href={BonPaymentController.show(
+                                                    row.id,
+                                                )}
+                                            >
+                                                Bayar Bon
+                                            </Link>
+                                        </Button>
+                                    )}
+                                {Number(row.dibayar) === 0 && (
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={() => cancelSale(row)}
+                                    >
+                                        Batalkan
+                                    </Button>
+                                )}
+                            </>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setReceiptSale(row)}
+                        >
+                            Cetak Struk
+                        </Button>
+                    </div>
+                );
+            },
+        },
+    ];
 
     return (
         <>
@@ -160,125 +290,35 @@ export default function KasirHistory({
                     </Button>
                 </form>
 
-                <div className="overflow-x-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-left">
-                            <tr>
-                                <th className="p-3">#</th>
-                                <th className="p-3">Tanggal</th>
-                                <th className="p-3">Item</th>
-                                <th className="p-3">Metode</th>
-                                <th className="p-3">Status</th>
-                                <th className="p-3 text-right">Total</th>
-                                <th className="p-3">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {sales.data.map((sale) => {
-                                const sisaPiutang =
-                                    Number(sale.total) - Number(sale.dibayar);
-
-                                return (
-                                    <tr
-                                        key={sale.id}
-                                        className="border-t border-sidebar-border/70 dark:border-sidebar-border"
-                                    >
-                                        <td className="p-3">{sale.id}</td>
-                                        <td className="p-3">
-                                            {new Date(
-                                                sale.created_at,
-                                            ).toLocaleString('id-ID')}
-                                        </td>
-                                        <td className="p-3">
-                                            {sale.items
-                                                .map(
-                                                    (i) =>
-                                                        `${i.product.nama_item} x${i.qty}`,
-                                                )
-                                                .join(', ')}
-                                        </td>
-                                        <td className="p-3">
-                                            {sale.metode_pembayaran === 'bon'
-                                                ? `Bon (${sale.nama_pelanggan})`
-                                                : 'Tunai'}
-                                        </td>
-                                        <td className="p-3">
-                                            {sale.status === 'dibatalkan' ? (
-                                                <span className="text-destructive">
-                                                    Dibatalkan
-                                                </span>
-                                            ) : sale.metode_pembayaran ===
-                                                  'bon' && sisaPiutang > 0 ? (
-                                                <span className="text-amber-600 dark:text-amber-400">
-                                                    Sisa{' '}
-                                                    {formatRupiah(sisaPiutang)}
-                                                </span>
-                                            ) : (
-                                                <span className="text-green-600 dark:text-green-400">
-                                                    Lunas
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="p-3 text-right">
-                                            {formatRupiah(sale.total)}
-                                        </td>
-                                        <td className="p-3">
-                                            <div className="flex gap-2">
-                                                {sale.status === 'selesai' && (
-                                                    <>
-                                                        {sale.metode_pembayaran ===
-                                                            'bon' &&
-                                                            sisaPiutang > 0 && (
-                                                                <BonPaymentDialog
-                                                                    sale={sale}
-                                                                    sisaPiutang={
-                                                                        sisaPiutang
-                                                                    }
-                                                                />
-                                                            )}
-                                                        {Number(
-                                                            sale.dibayar,
-                                                        ) === 0 && (
-                                                            <Button
-                                                                variant="destructive"
-                                                                size="sm"
-                                                                onClick={() =>
-                                                                    cancelSale(
-                                                                        sale,
-                                                                    )
-                                                                }
-                                                            >
-                                                                Batalkan
-                                                            </Button>
-                                                        )}
-                                                    </>
-                                                )}
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        setReceiptSale(sale)
-                                                    }
-                                                >
-                                                    Cetak Struk
-                                                </Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                            {sales.data.length === 0 && (
-                                <tr>
-                                    <td
-                                        colSpan={7}
-                                        className="p-6 text-center text-muted-foreground"
-                                    >
+                <div
+                    ref={(node) => {
+                        widthRef(node);
+                        heightRef(node);
+                    }}
+                >
+                    {gridWidth > 0 && (
+                        <DataGrid
+                            className={
+                                resolvedAppearance === 'dark'
+                                    ? 'rdg-dark'
+                                    : 'rdg-light'
+                            }
+                            columns={columns}
+                            rows={sales.data}
+                            rowKeyGetter={(row) => row.id}
+                            renderers={{
+                                noRowsFallback: (
+                                    <div className="col-span-full p-6 text-center text-sm text-muted-foreground">
                                         Tidak ada transaksi.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                    </div>
+                                ),
+                            }}
+                            style={{
+                                blockSize: gridHeight,
+                                minHeight: 300,
+                            }}
+                        />
+                    )}
                 </div>
 
                 <div className="flex flex-wrap gap-1">
@@ -297,68 +337,6 @@ export default function KasirHistory({
 
             {receiptSale && <Receipt sale={receiptSale} />}
         </>
-    );
-}
-
-function BonPaymentDialog({
-    sale,
-    sisaPiutang,
-}: {
-    sale: Sale;
-    sisaPiutang: number;
-}) {
-    const [open, setOpen] = useState(false);
-    const [jumlah, setJumlah] = useState('');
-    const [processing, setProcessing] = useState(false);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-
-    function submit(e: FormEvent) {
-        e.preventDefault();
-        setProcessing(true);
-        router.post(
-            BonPaymentController.store.url(sale.id),
-            { jumlah },
-            {
-                onSuccess: () => {
-                    setOpen(false);
-                    setJumlah('');
-                },
-                onError: (e) => setErrors(e as Record<string, string>),
-                onFinish: () => setProcessing(false),
-            },
-        );
-    }
-
-    return (
-        <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                    Bayar Bon
-                </Button>
-            </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>
-                        Bayar Bon - Sisa {formatRupiah(sisaPiutang)}
-                    </DialogTitle>
-                </DialogHeader>
-                <form onSubmit={submit} className="space-y-4">
-                    <div className="grid gap-2">
-                        <Label htmlFor="jumlah">Jumlah Bayar</Label>
-                        <Input
-                            id="jumlah"
-                            type="number"
-                            value={jumlah}
-                            onChange={(e) => setJumlah(e.target.value)}
-                        />
-                        <InputError message={errors.jumlah} />
-                    </div>
-                    <Button type="submit" disabled={processing}>
-                        Simpan
-                    </Button>
-                </form>
-            </DialogContent>
-        </Dialog>
     );
 }
 

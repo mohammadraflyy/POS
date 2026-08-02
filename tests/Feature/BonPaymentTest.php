@@ -4,6 +4,31 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\User;
 
+test('the bon payment page shows the sale and its payment history', function () {
+    $user = User::factory()->create();
+    $product = Product::factory()->create(['stok' => 10, 'harga_jual' => 5000]);
+
+    $this->actingAs($user)->post(route('kasir.store'), [
+        'metode_pembayaran' => 'bon',
+        'nama_pelanggan' => 'Budi',
+        'items' => [
+            ['product_id' => $product->id, 'qty' => 4],
+        ],
+    ]);
+
+    $sale = Sale::first();
+    $this->actingAs($user)->post(route('kasir.bon-payments.store', $sale), ['jumlah' => 8000]);
+
+    $response = $this->actingAs($user)->get(route('kasir.bon-payments.show', $sale));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('kasir/bon-payment')
+        ->where('sale.id', $sale->id)
+        ->where('sale.bon_payments.0.jumlah', '8000.00')
+    );
+});
+
 test('bon payment reduces sisa piutang', function () {
     $user = User::factory()->create();
     $product = Product::factory()->create(['stok' => 10, 'harga_jual' => 5000]);

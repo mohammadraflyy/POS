@@ -22,6 +22,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('kasir', [SaleController::class, 'store'])->name('kasir.store');
     Route::get('kasir/history', [SaleController::class, 'history'])->name('kasir.history');
     Route::post('kasir/{sale}/cancel', [SaleController::class, 'cancel'])->name('kasir.cancel');
+    Route::get('kasir/{sale}/bon-payments', [BonPaymentController::class, 'show'])->name('kasir.bon-payments.show');
     Route::post('kasir/{sale}/bon-payments', [BonPaymentController::class, 'store'])->name('kasir.bon-payments.store');
 
     Route::get('supplier', [SupplierController::class, 'index'])->name('supplier');

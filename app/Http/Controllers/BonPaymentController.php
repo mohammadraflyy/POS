@@ -7,9 +7,22 @@ use App\Models\Sale;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class BonPaymentController extends Controller
 {
+    public function show(Sale $sale): Response
+    {
+        $sale->load([
+            'items.product:id,nama_item',
+            'bonPayments' => fn ($query) => $query->latest('tanggal')->latest('id'),
+        ]);
+
+        return Inertia::render('kasir/bon-payment', [
+            'sale' => $sale,
+        ]);
+    }
+
     public function store(StoreBonPaymentRequest $request, Sale $sale): RedirectResponse
     {
         if ($sale->metode_pembayaran !== 'bon' || $sale->status !== 'selesai') {
