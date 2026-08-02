@@ -342,7 +342,7 @@ export default function KasirHistory({
 
 KasirHistory.layout = {
     breadcrumbs: [
-        { title: 'Kasir', href: kasir() },
+        { title: 'Penjualan', href: kasir() },
         { title: 'Riwayat Transaksi', href: SaleController.history() },
     ],
 };

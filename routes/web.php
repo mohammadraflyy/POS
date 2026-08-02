@@ -43,12 +43,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('inventory', [ProductController::class, 'bulkDestroy'])->name('inventory.bulk-destroy');
     Route::get('inventory/search', [ProductController::class, 'search'])->name('inventory.search');
     Route::get('inventory/mass-input', [ProductController::class, 'massInput'])->name('inventory.mass-input');
-    Route::post('inventory/stock-in', [PurchaseController::class, 'store'])->name('inventory.stock-in');
     Route::post('inventory/{product}/units', [ProductUnitController::class, 'store'])->name('inventory.units.store');
     Route::delete('inventory/{product}/units/{productUnit}', [ProductUnitController::class, 'destroy'])->name('inventory.units.destroy');
     Route::post('inventory/{product}/price-tiers', [ProductPriceTierController::class, 'store'])->name('inventory.price-tiers.store');
     Route::delete('inventory/{product}/price-tiers/{priceTier}', [ProductPriceTierController::class, 'destroy'])->name('inventory.price-tiers.destroy');
     Route::post('inventory/bulk', [ProductController::class, 'bulkSave'])->name('inventory.bulk-save');
+
+    Route::get('pembelian', [PurchaseController::class, 'index'])->name('purchase');
+    Route::post('pembelian', [PurchaseController::class, 'store'])->name('purchase.store');
 
     Route::post('categories', [CategoryController::class, 'store'])->name('categories.store');
 });

@@ -212,7 +212,7 @@ export default function BonPayment({ sale }: { sale: SaleDetail }) {
 
 BonPayment.layout = {
     breadcrumbs: [
-        { title: 'Kasir', href: kasir() },
+        { title: 'Penjualan', href: kasir() },
         { title: 'Riwayat Transaksi', href: SaleController.history() },
     ],
 };

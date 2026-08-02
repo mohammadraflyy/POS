@@ -425,7 +425,7 @@ export default function Kasir({
 
     return (
         <>
-            <Head title="Kasir" />
+            <Head title="Penjualan" />
             <div className="flex-1 space-y-4 p-4 sm:p-6">
                 <div className="flex justify-end">
                     <Button asChild variant="outline" size="sm">
@@ -1051,5 +1051,5 @@ function PaymentDialog({
 }
 
 Kasir.layout = {
-    breadcrumbs: [{ title: 'Kasir', href: kasir() }],
+    breadcrumbs: [{ title: 'Penjualan', href: kasir() }],
 };

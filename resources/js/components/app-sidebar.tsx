@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { BookOpen, Boxes, ClipboardCheck, ClipboardList, FolderGit2, History, LayoutGrid, ShoppingCart, Truck } from 'lucide-react';
+import { BookOpen, Boxes, ClipboardCheck, ClipboardList, FolderGit2, History, LayoutGrid, PackagePlus, ShoppingCart } from 'lucide-react';
 import SaleController from '@/actions/App/Http/Controllers/SaleController';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
@@ -14,17 +14,20 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard, inventory, kasir, rekap, stockOpname, supplier } from '@/routes';
+import { dashboard, inventory, kasir, purchase, rekap, stockOpname } from '@/routes';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
+const overviewNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
     },
+];
+
+const penjualanNavItems: NavItem[] = [
     {
-        title: 'Kasir',
+        title: 'Penjualan',
         href: kasir(),
         icon: ShoppingCart,
     },
@@ -33,18 +36,16 @@ const mainNavItems: NavItem[] = [
         href: SaleController.history(),
         icon: History,
     },
+];
+
+const pembelianNavItems: NavItem[] = [
     {
-        title: 'Supplier',
-        href: supplier(),
-        icon: Truck,
+        title: 'Pembelian',
+        href: purchase(),
+        icon: PackagePlus,
     },
     {
-        title: 'Rekap',
-        href: rekap(),
-        icon: ClipboardList,
-    },
-    {
-        title: 'Inventory',
+        title: 'Katalog Produk',
         href: inventory(),
         icon: Boxes,
     },
@@ -52,6 +53,14 @@ const mainNavItems: NavItem[] = [
         title: 'Stock Opname',
         href: stockOpname(),
         icon: ClipboardCheck,
+    },
+];
+
+const laporanNavItems: NavItem[] = [
+    {
+        title: 'Rekap',
+        href: rekap(),
+        icon: ClipboardList,
     },
 ];
 
@@ -84,7 +93,10 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain items={overviewNavItems} label="Ringkasan" />
+                <NavMain items={penjualanNavItems} label="Penjualan" />
+                <NavMain items={pembelianNavItems} label="Pembelian & Stok" />
+                <NavMain items={laporanNavItems} label="Laporan" />
             </SidebarContent>
 
             <SidebarFooter>

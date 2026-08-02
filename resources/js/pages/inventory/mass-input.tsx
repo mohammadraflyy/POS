@@ -427,7 +427,7 @@ export default function MassInput({
 
 MassInput.layout = {
     breadcrumbs: [
-        { title: 'Inventory', href: inventory() },
+        { title: 'Katalog Produk', href: inventory() },
         { title: 'Input Massal', href: ProductController.massInput() },
     ],
 };

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreSupplierRequest;
 use App\Http\Requests\UpdateSupplierRequest;
 use App\Models\Supplier;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -29,9 +30,13 @@ class SupplierController extends Controller
         ]);
     }
 
-    public function store(StoreSupplierRequest $request): RedirectResponse
+    public function store(StoreSupplierRequest $request): RedirectResponse|JsonResponse
     {
-        Supplier::create($request->validated());
+        $supplier = Supplier::create($request->validated());
+
+        if ($request->wantsJson()) {
+            return response()->json($supplier);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Supplier ditambahkan.')]);
 

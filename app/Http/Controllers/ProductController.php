@@ -94,9 +94,13 @@ class ProductController extends Controller
         ]);
     }
 
-    public function store(StoreProductRequest $request): RedirectResponse
+    public function store(StoreProductRequest $request): RedirectResponse|JsonResponse
     {
-        Product::create([...$request->validated(), 'is_active' => true]);
+        $product = Product::create([...$request->validated(), 'is_active' => true]);
+
+        if ($request->wantsJson()) {
+            return response()->json($product);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Produk ditambahkan.')]);
 
