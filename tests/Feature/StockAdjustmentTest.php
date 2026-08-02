@@ -39,6 +39,24 @@ test('opname search can be scoped to a category without typing a query', functio
     $response->assertJsonCount(1)->assertJsonFragment(['id' => $kopiProduct->id]);
 });
 
+test('opname search can be scoped to multiple categories at once', function () {
+    $user = User::factory()->create();
+    $kopi = Category::factory()->create(['nama' => 'Kopi']);
+    $teh = Category::factory()->create(['nama' => 'Teh']);
+    $gula = Category::factory()->create(['nama' => 'Gula']);
+    $kopiProduct = Product::factory()->create(['category_id' => $kopi->id]);
+    $tehProduct = Product::factory()->create(['category_id' => $teh->id]);
+    Product::factory()->create(['category_id' => $gula->id]);
+
+    $response = $this->actingAs($user)->getJson(
+        route('stock-opname.search', ['category_id' => [$kopi->id, $teh->id]]),
+    );
+
+    $response->assertJsonCount(2)
+        ->assertJsonFragment(['id' => $kopiProduct->id])
+        ->assertJsonFragment(['id' => $tehProduct->id]);
+});
+
 test('the stock opname page lists categories for the filter', function () {
     $user = User::factory()->create();
     Category::factory()->create(['nama' => 'Kopi']);

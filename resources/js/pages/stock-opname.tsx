@@ -1,21 +1,29 @@
 import { Head, router } from '@inertiajs/react';
+import { CheckIcon, ChevronDownIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DataGrid, renderTextEditor } from 'react-data-grid';
 import type { Column, RowsChangeData } from 'react-data-grid';
 import 'react-data-grid/lib/styles.css';
 import StockAdjustmentController from '@/actions/App/Http/Controllers/StockAdjustmentController';
 import { Button } from '@/components/ui/button';
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import { useAppearance } from '@/hooks/use-appearance';
 import { useAvailableHeight } from '@/hooks/use-available-height';
 import { useElementWidth } from '@/hooks/use-element-width';
+import { cn } from '@/lib/utils';
 import { stockOpname } from '@/routes';
 
 type Category = { id: number; nama: string };
@@ -77,7 +85,8 @@ export default function StockOpname({
     const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>();
     const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(16);
     const [query, setQuery] = useState('');
-    const [categoryId, setCategoryId] = useState('');
+    const [categoryIds, setCategoryIds] = useState<string[]>([]);
+    const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
     const [rows, setRows] = useState<OpnameRow[]>([]);
     const [searching, setSearching] = useState(false);
     const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -117,18 +126,26 @@ export default function StockOpname({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    async function runSearch(q: string, catId: string) {
-        if (q.trim() === '' && catId === '') {
+    async function runSearch(q: string, catIds: string[]) {
+        if (q.trim() === '' && catIds.length === 0) {
             setRows([]);
 
             return;
         }
 
         setSearching(true);
+        const params = new URLSearchParams();
+
+        if (q !== '') {
+            params.set('q', q);
+        }
+
+        for (const id of catIds) {
+            params.append('category_id[]', id);
+        }
+
         const response = await fetch(
-            StockAdjustmentController.search.url({
-                query: { q, category_id: catId || undefined },
-            }),
+            `${StockAdjustmentController.search.url()}?${params.toString()}`,
         );
         const products = (await response.json()) as OpnameProduct[];
         setRows(products.map(rowFromProduct));
@@ -137,13 +154,33 @@ export default function StockOpname({
 
     function search(q: string) {
         setQuery(q);
-        runSearch(q, categoryId);
+        runSearch(q, categoryIds);
     }
 
-    function changeCategory(value: string) {
-        setCategoryId(value);
-        runSearch(query, value);
+    function toggleCategory(id: string) {
+        setCategoryIds((prev) => {
+            const next = prev.includes(id)
+                ? prev.filter((c) => c !== id)
+                : [...prev, id];
+
+            runSearch(query, next);
+
+            return next;
+        });
     }
+
+    function clearCategories() {
+        setCategoryIds([]);
+        runSearch(query, []);
+    }
+
+    const categoryLabel =
+        categoryIds.length === 0
+            ? 'Semua Kategori'
+            : categoryIds.length === 1
+              ? (categories.find((c) => String(c.id) === categoryIds[0])
+                    ?.nama ?? 'Semua Kategori')
+              : `${categoryIds.length} kategori`;
 
     function saveRow(row: OpnameRow) {
         setSaving((prev) => new Set(prev).add(row.key));
@@ -324,7 +361,77 @@ export default function StockOpname({
         [rowErrors, saving, savedKeys, namaWidth],
     );
 
-    const idle = query.trim() === '' && categoryId === '' && rows.length === 0;
+    const idle =
+        query.trim() === '' && categoryIds.length === 0 && rows.length === 0;
+
+    function categoryPicker(triggerClassName: string) {
+        return (
+            <Popover open={categoryPickerOpen} onOpenChange={setCategoryPickerOpen}>
+                <PopoverTrigger asChild>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className={cn('justify-between gap-2', triggerClassName)}
+                    >
+                        <span className="truncate">{categoryLabel}</span>
+                        <ChevronDownIcon className="size-4 shrink-0 opacity-50" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                    className="w-64 p-0"
+                    align="start"
+                    avoidCollisions={false}
+                >
+                    <Command>
+                        <CommandInput placeholder="Cari kategori..." />
+                        <CommandList>
+                            <CommandEmpty>
+                                Kategori tidak ditemukan.
+                            </CommandEmpty>
+                            <CommandGroup>
+                                <CommandItem
+                                    value="Semua Kategori"
+                                    onSelect={clearCategories}
+                                >
+                                    <CheckIcon
+                                        className={cn(
+                                            'size-4',
+                                            categoryIds.length === 0
+                                                ? 'opacity-100'
+                                                : 'opacity-0',
+                                        )}
+                                    />
+                                    Semua Kategori
+                                </CommandItem>
+                                {categories.map((c) => {
+                                    const id = String(c.id);
+                                    const checked = categoryIds.includes(id);
+
+                                    return (
+                                        <CommandItem
+                                            key={c.id}
+                                            value={c.nama}
+                                            onSelect={() => toggleCategory(id)}
+                                        >
+                                            <CheckIcon
+                                                className={cn(
+                                                    'size-4',
+                                                    checked
+                                                        ? 'opacity-100'
+                                                        : 'opacity-0',
+                                                )}
+                                            />
+                                            {c.nama}
+                                        </CommandItem>
+                                    );
+                                })}
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
+        );
+    }
 
     if (idle) {
         return (
@@ -345,18 +452,7 @@ export default function StockOpname({
                                 /
                             </kbd>
                         </div>
-                        <Select value={categoryId} onValueChange={changeCategory}>
-                            <SelectTrigger className="h-14 w-48 text-base">
-                                <SelectValue placeholder="Semua Kategori" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {categories.map((c) => (
-                                    <SelectItem key={c.id} value={String(c.id)}>
-                                        {c.nama}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        {categoryPicker('h-14 w-56 text-base')}
                     </div>
                 </div>
             </>
@@ -383,18 +479,7 @@ export default function StockOpname({
                             /
                         </kbd>
                     </div>
-                    <Select value={categoryId} onValueChange={changeCategory}>
-                        <SelectTrigger className="w-48">
-                            <SelectValue placeholder="Semua Kategori" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {categories.map((c) => (
-                                <SelectItem key={c.id} value={String(c.id)}>
-                                    {c.nama}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    {categoryPicker('w-56')}
                 </div>
 
                 {searching && (

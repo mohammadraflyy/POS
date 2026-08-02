@@ -24,17 +24,24 @@ class StockAdjustmentController extends Controller
 
     /**
      * Find-by-fields product search for stock opname (kode, nama, kategori,
-     * barcode), optionally scoped to a category.
+     * barcode), optionally scoped to one or more categories. Browsing by
+     * category alone (no text typed) skips the result cap, since the point
+     * is to see everything in that category to count it.
      */
     public function search(Request $request): JsonResponse
     {
         $q = $request->string('q')->toString();
-        $categoryId = $request->integer('category_id');
+        $categoryIds = collect($request->array('category_id'))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $browsing = $q === '' && $categoryIds !== [];
 
         $products = Product::query()
             ->with('category:id,nama')
             ->where('is_active', true)
-            ->when($categoryId, fn ($query, $categoryId) => $query->where('category_id', $categoryId))
+            ->when($categoryIds !== [], fn ($query) => $query->whereIn('category_id', $categoryIds))
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($query) use ($q) {
                     $query->where('kode_item', 'like', "%{$q}%")
@@ -44,7 +51,7 @@ class StockAdjustmentController extends Controller
                 });
             })
             ->orderBy('nama_item')
-            ->limit(20)
+            ->when(! $browsing, fn ($query) => $query->limit(20))
             ->get(['id', 'kode_item', 'barcode', 'nama_item', 'category_id', 'satuan', 'stok']);
 
         return response()->json($products);
