@@ -395,16 +395,18 @@ export default function Kasir({
 
         window.print();
 
-        // afterprint doesn't reliably fire in every browser when the print
-        // dialog is cancelled rather than completed - the window regaining
-        // focus is a reliable signal either way, so it backs afterprint up
-        // instead of leaving the UI stuck showing "Mencetak struk...".
+        // Neither afterprint nor the window regaining focus fires reliably
+        // in every browser/OS combination - a hard timeout guarantees the
+        // UI never gets stuck showing "Mencetak struk..." forever even if
+        // both of those signals fail to fire.
         window.addEventListener('afterprint', finish, { once: true });
         window.addEventListener('focus', finish, { once: true });
+        const timeout = window.setTimeout(finish, 5000);
 
         return () => {
             window.removeEventListener('afterprint', finish);
             window.removeEventListener('focus', finish);
+            window.clearTimeout(timeout);
         };
     }, [receiptSale]);
 

@@ -95,15 +95,17 @@ export default function KasirHistory({
 
         window.print();
 
-        // afterprint doesn't reliably fire in every browser when the print
-        // dialog is cancelled rather than completed - the window regaining
-        // focus backs it up either way.
+        // Neither afterprint nor the window regaining focus fires reliably
+        // in every browser - a hard timeout guarantees this never gets
+        // stuck either.
         window.addEventListener('afterprint', finish, { once: true });
         window.addEventListener('focus', finish, { once: true });
+        const timeout = window.setTimeout(finish, 5000);
 
         return () => {
             window.removeEventListener('afterprint', finish);
             window.removeEventListener('focus', finish);
+            window.clearTimeout(timeout);
         };
     }, [receiptSale]);
 

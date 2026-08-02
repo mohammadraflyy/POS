@@ -74,10 +74,12 @@ function TestPrint() {
 
         window.addEventListener('afterprint', clear, { once: true });
         window.addEventListener('focus', clear, { once: true });
+        const timeout = window.setTimeout(clear, 5000);
 
         return () => {
             window.removeEventListener('afterprint', clear);
             window.removeEventListener('focus', clear);
+            window.clearTimeout(timeout);
         };
     }, [testSale]);
 
