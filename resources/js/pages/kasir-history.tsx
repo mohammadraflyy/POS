@@ -82,17 +82,29 @@ export default function KasirHistory({
             return;
         }
 
-        window.print();
+        let finished = false;
 
-        function clearAfterPrint() {
+        function finish() {
+            if (finished) {
+                return;
+            }
+
+            finished = true;
             setReceiptSale(null);
         }
 
-        window.addEventListener('afterprint', clearAfterPrint, {
-            once: true,
-        });
+        window.print();
 
-        return () => window.removeEventListener('afterprint', clearAfterPrint);
+        // afterprint doesn't reliably fire in every browser when the print
+        // dialog is cancelled rather than completed - the window regaining
+        // focus backs it up either way.
+        window.addEventListener('afterprint', finish, { once: true });
+        window.addEventListener('focus', finish, { once: true });
+
+        return () => {
+            window.removeEventListener('afterprint', finish);
+            window.removeEventListener('focus', finish);
+        };
     }, [receiptSale]);
 
     const itemWidth = Math.max(

@@ -377,18 +377,31 @@ export default function Kasir({
             return;
         }
 
-        window.print();
+        let finished = false;
 
-        function clearAfterPrint() {
+        function finish() {
+            if (finished) {
+                return;
+            }
+
+            finished = true;
             setReceiptSale(null);
             resetAfterCheckout();
         }
 
-        window.addEventListener('afterprint', clearAfterPrint, {
-            once: true,
-        });
+        window.print();
 
-        return () => window.removeEventListener('afterprint', clearAfterPrint);
+        // afterprint doesn't reliably fire in every browser when the print
+        // dialog is cancelled rather than completed - the window regaining
+        // focus is a reliable signal either way, so it backs afterprint up
+        // instead of leaving the UI stuck showing "Mencetak struk...".
+        window.addEventListener('afterprint', finish, { once: true });
+        window.addEventListener('focus', finish, { once: true });
+
+        return () => {
+            window.removeEventListener('afterprint', finish);
+            window.removeEventListener('focus', finish);
+        };
     }, [receiptSale]);
 
     return (

@@ -57,15 +57,26 @@ function TestPrint() {
             return;
         }
 
-        window.print();
+        let finished = false;
 
         function clear() {
+            if (finished) {
+                return;
+            }
+
+            finished = true;
             setTestSale(null);
         }
 
-        window.addEventListener('afterprint', clear, { once: true });
+        window.print();
 
-        return () => window.removeEventListener('afterprint', clear);
+        window.addEventListener('afterprint', clear, { once: true });
+        window.addEventListener('focus', clear, { once: true });
+
+        return () => {
+            window.removeEventListener('afterprint', clear);
+            window.removeEventListener('focus', clear);
+        };
     }, [testSale]);
 
     return (
