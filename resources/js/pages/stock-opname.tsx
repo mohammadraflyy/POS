@@ -6,10 +6,19 @@ import 'react-data-grid/lib/styles.css';
 import StockAdjustmentController from '@/actions/App/Http/Controllers/StockAdjustmentController';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { useAppearance } from '@/hooks/use-appearance';
 import { useAvailableHeight } from '@/hooks/use-available-height';
 import { useElementWidth } from '@/hooks/use-element-width';
 import { stockOpname } from '@/routes';
+
+type Category = { id: number; nama: string };
 
 type OpnameProduct = {
     id: number;
@@ -59,11 +68,16 @@ function rowFromProduct(product: OpnameProduct): OpnameRow {
     };
 }
 
-export default function StockOpname() {
+export default function StockOpname({
+    categories,
+}: {
+    categories: Category[];
+}) {
     const { resolvedAppearance } = useAppearance();
     const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>();
     const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(16);
     const [query, setQuery] = useState('');
+    const [categoryId, setCategoryId] = useState('');
     const [rows, setRows] = useState<OpnameRow[]>([]);
     const [searching, setSearching] = useState(false);
     const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -103,10 +117,8 @@ export default function StockOpname() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    async function search(q: string) {
-        setQuery(q);
-
-        if (q.trim() === '') {
+    async function runSearch(q: string, catId: string) {
+        if (q.trim() === '' && catId === '') {
             setRows([]);
 
             return;
@@ -114,11 +126,23 @@ export default function StockOpname() {
 
         setSearching(true);
         const response = await fetch(
-            StockAdjustmentController.search.url({ query: { q } }),
+            StockAdjustmentController.search.url({
+                query: { q, category_id: catId || undefined },
+            }),
         );
         const products = (await response.json()) as OpnameProduct[];
         setRows(products.map(rowFromProduct));
         setSearching(false);
+    }
+
+    function search(q: string) {
+        setQuery(q);
+        runSearch(q, categoryId);
+    }
+
+    function changeCategory(value: string) {
+        setCategoryId(value);
+        runSearch(query, value);
     }
 
     function saveRow(row: OpnameRow) {
@@ -300,25 +324,39 @@ export default function StockOpname() {
         [rowErrors, saving, savedKeys, namaWidth],
     );
 
-    const idle = query.trim() === '' && rows.length === 0;
+    const idle = query.trim() === '' && categoryId === '' && rows.length === 0;
 
     if (idle) {
         return (
             <>
                 <Head title="Stock Opname" />
                 <div className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
-                    <div className="relative w-full max-w-2xl">
-                        <Input
-                            ref={searchInputRef}
-                            autoFocus
-                            value={query}
-                            onChange={(e) => search(e.target.value)}
-                            placeholder="Cari kode / nama / kategori / barcode..."
-                            className="h-14 pr-10 text-lg"
-                        />
-                        <kbd className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                            /
-                        </kbd>
+                    <div className="flex w-full max-w-2xl gap-2">
+                        <div className="relative flex-1">
+                            <Input
+                                ref={searchInputRef}
+                                autoFocus
+                                value={query}
+                                onChange={(e) => search(e.target.value)}
+                                placeholder="Cari kode / nama / kategori / barcode..."
+                                className="h-14 pr-10 text-lg"
+                            />
+                            <kbd className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                                /
+                            </kbd>
+                        </div>
+                        <Select value={categoryId} onValueChange={changeCategory}>
+                            <SelectTrigger className="h-14 w-48 text-base">
+                                <SelectValue placeholder="Semua Kategori" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {categories.map((c) => (
+                                    <SelectItem key={c.id} value={String(c.id)}>
+                                        {c.nama}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
             </>
@@ -331,24 +369,38 @@ export default function StockOpname() {
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <h1 className="text-xl font-semibold">Stock Opname</h1>
 
-                <div className="relative max-w-md">
-                    <Input
-                        ref={searchInputRef}
-                        autoFocus
-                        value={query}
-                        onChange={(e) => search(e.target.value)}
-                        placeholder="Cari kode / nama / kategori / barcode..."
-                        className="pr-8"
-                    />
-                    <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                        /
-                    </kbd>
+                <div className="flex max-w-2xl gap-2">
+                    <div className="relative flex-1">
+                        <Input
+                            ref={searchInputRef}
+                            autoFocus
+                            value={query}
+                            onChange={(e) => search(e.target.value)}
+                            placeholder="Cari kode / nama / kategori / barcode..."
+                            className="pr-8"
+                        />
+                        <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                            /
+                        </kbd>
+                    </div>
+                    <Select value={categoryId} onValueChange={changeCategory}>
+                        <SelectTrigger className="w-48">
+                            <SelectValue placeholder="Semua Kategori" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {categories.map((c) => (
+                                <SelectItem key={c.id} value={String(c.id)}>
+                                    {c.nama}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
 
                 {searching && (
                     <p className="text-sm text-muted-foreground">Mencari...</p>
                 )}
-                {!searching && query.trim() !== '' && rows.length === 0 && (
+                {!searching && rows.length === 0 && (
                     <p className="text-sm text-muted-foreground">
                         Produk tidak ditemukan.
                     </p>

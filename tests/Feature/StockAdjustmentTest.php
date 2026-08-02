@@ -25,6 +25,33 @@ test('opname search finds products by kode, nama, barcode, or category', functio
     $byCategory->assertJsonCount(1)->assertJsonFragment(['id' => $product->id]);
 });
 
+test('opname search can be scoped to a category without typing a query', function () {
+    $user = User::factory()->create();
+    $kopi = Category::factory()->create(['nama' => 'Kopi']);
+    $teh = Category::factory()->create(['nama' => 'Teh']);
+    $kopiProduct = Product::factory()->create(['category_id' => $kopi->id]);
+    Product::factory()->create(['category_id' => $teh->id]);
+
+    $response = $this->actingAs($user)->getJson(
+        route('stock-opname.search', ['category_id' => $kopi->id]),
+    );
+
+    $response->assertJsonCount(1)->assertJsonFragment(['id' => $kopiProduct->id]);
+});
+
+test('the stock opname page lists categories for the filter', function () {
+    $user = User::factory()->create();
+    Category::factory()->create(['nama' => 'Kopi']);
+
+    $response = $this->actingAs($user)->get(route('stock-opname'));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('stock-opname')
+        ->has('categories', 1)
+    );
+});
+
 test('recording an opname updates stock and logs the adjustment', function () {
     $user = User::factory()->create();
     $product = Product::factory()->create(['stok' => 50]);

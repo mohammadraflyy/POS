@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreStockAdjustmentRequest;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\StockAdjustment;
 use Illuminate\Http\JsonResponse;
@@ -16,19 +17,24 @@ class StockAdjustmentController extends Controller
 {
     public function index(): Response
     {
-        return Inertia::render('stock-opname');
+        return Inertia::render('stock-opname', [
+            'categories' => Category::query()->orderBy('nama')->get(['id', 'nama']),
+        ]);
     }
 
     /**
-     * Find-by-fields product search for stock opname (kode, nama, kategori, barcode).
+     * Find-by-fields product search for stock opname (kode, nama, kategori,
+     * barcode), optionally scoped to a category.
      */
     public function search(Request $request): JsonResponse
     {
         $q = $request->string('q')->toString();
+        $categoryId = $request->integer('category_id');
 
         $products = Product::query()
             ->with('category:id,nama')
             ->where('is_active', true)
+            ->when($categoryId, fn ($query, $categoryId) => $query->where('category_id', $categoryId))
             ->when($q !== '', function ($query) use ($q) {
                 $query->where(function ($query) use ($q) {
                     $query->where('kode_item', 'like', "%{$q}%")
