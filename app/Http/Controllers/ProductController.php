@@ -10,6 +10,7 @@ use App\Http\Requests\UpdateProductRequest;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductPriceHistory;
+use App\Models\StockAdjustment;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -210,7 +211,7 @@ class ProductController extends Controller
     {
         [$rows, $skipped] = $this->parseImportFile($request->file('file'));
 
-        $counts = DB::transaction(fn () => $this->saveRows($rows, $request->user()?->id));
+        $counts = DB::transaction(fn () => $this->saveRows($rows, $request->user()?->id, updateStok: true));
 
         Inertia::flash('toast', [
             'type' => 'success',
@@ -226,14 +227,17 @@ class ProductController extends Controller
     /**
      * Create-or-update each row (matching the mass-input grid's shape):
      * rows without an `id` are created, rows with an `id` are updated only
-     * if something actually changed. Stock is only ever set on creation -
-     * changes to existing stock flow through Purchase/StockAdjustment for
-     * an audit trail.
+     * if something actually changed. Stock is always set on creation; on
+     * update it's only touched when `$updateStok` is true (the Excel
+     * import wants the sheet's stock to win, but the manual mass-input
+     * grid keeps stock changes routed through Purchase/StockAdjustment
+     * for an audit trail), and any change is itself logged as a
+     * StockAdjustment so the trail stays intact either way.
      *
      * @param  array<int, array<string, mixed>>  $rows
      * @return array{created: int, updated: int, unchanged: int}
      */
-    private function saveRows(array $rows, ?int $userId): array
+    private function saveRows(array $rows, ?int $userId, bool $updateStok = false): array
     {
         $created = 0;
         $updated = 0;
@@ -260,12 +264,18 @@ class ProductController extends Controller
                 $product = Product::findOrFail($row['id']);
                 $hargaPokokLama = $product->harga_pokok;
                 $hargaJualLama = $product->harga_jual;
+                $stokSebelum = $product->stok;
+
+                if ($updateStok) {
+                    $attributes['stok'] = $row['stok'] ?? 0;
+                }
 
                 $product->update($attributes);
 
                 if ($product->wasChanged()) {
                     $updated++;
                     $this->logPriceChange($product, $hargaPokokLama, $hargaJualLama, $userId);
+                    $this->logStockChange($product, $stokSebelum, $userId);
                 } else {
                     $unchanged++;
                 }
@@ -298,6 +308,26 @@ class ProductController extends Controller
             'harga_pokok_baru' => $product->harga_pokok,
             'harga_jual_lama' => $hargaJualLama,
             'harga_jual_baru' => $product->harga_jual,
+        ]);
+    }
+
+    /**
+     * Record an audit-trail entry when a product's stock actually changed.
+     */
+    private function logStockChange(Product $product, int $stokSebelum, ?int $userId): void
+    {
+        if ($product->stok === $stokSebelum) {
+            return;
+        }
+
+        StockAdjustment::create([
+            'product_id' => $product->id,
+            'user_id' => $userId,
+            'stok_sebelum' => $stokSebelum,
+            'stok_sesudah' => $product->stok,
+            'selisih' => $product->stok - $stokSebelum,
+            'alasan' => __('Import Excel'),
+            'tanggal' => today(),
         ]);
     }
 

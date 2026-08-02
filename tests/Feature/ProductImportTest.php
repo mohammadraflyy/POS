@@ -2,6 +2,7 @@
 
 use App\Models\Product;
 use App\Models\ProductPriceHistory;
+use App\Models\StockAdjustment;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -50,6 +51,7 @@ test('importing a catalog creates new products and updates changed ones, skippin
         'satuan' => 'PCS',
         'harga_pokok' => 1000,
         'harga_jual' => 1500,
+        'stok' => 10,
     ]);
     $changed = Product::factory()->create([
         'kode_item' => '002',
@@ -83,7 +85,7 @@ test('importing a catalog creates new products and updates changed ones, skippin
         ->and(ProductPriceHistory::where('product_id', $unchanged->id)->count())->toBe(0);
 });
 
-test('importing does not touch stock on existing products', function () {
+test('importing updates stock on existing products and logs a stock adjustment', function () {
     $user = User::factory()->create();
     $product = Product::factory()->create([
         'kode_item' => '010',
@@ -98,5 +100,38 @@ test('importing does not touch stock on existing products', function () {
 
     $this->actingAs($user)->post(route('inventory.import'), ['file' => $file]);
 
-    expect($product->fresh()->stok)->toBe(40);
+    expect($product->fresh()->stok)->toBe(999);
+
+    $adjustment = StockAdjustment::where('product_id', $product->id)->first();
+    expect($adjustment)->not->toBeNull()
+        ->and($adjustment->stok_sebelum)->toBe(40)
+        ->and($adjustment->stok_sesudah)->toBe(999)
+        ->and($adjustment->selisih)->toBe(959)
+        ->and($adjustment->user_id)->toBe($user->id);
+});
+
+test('bulk-save from the mass-input grid still leaves stock untouched', function () {
+    $user = User::factory()->create();
+    $product = Product::factory()->create([
+        'kode_item' => '020',
+        'nama_item' => 'Gula Merah',
+        'satuan' => 'PCS',
+        'stok' => 12,
+    ]);
+
+    $this->actingAs($user)->post(route('inventory.bulk-save'), [
+        'rows' => [[
+            'id' => $product->id,
+            'kode_item' => '020',
+            'barcode' => null,
+            'nama_item' => 'Gula Merah',
+            'kategori' => null,
+            'satuan' => 'PCS',
+            'harga_pokok' => $product->harga_pokok,
+            'harga_jual' => $product->harga_jual,
+            'stok' => 500,
+        ]],
+    ]);
+
+    expect($product->fresh()->stok)->toBe(12);
 });
