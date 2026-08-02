@@ -1,12 +1,14 @@
-import { Form, Head } from '@inertiajs/react';
-import { Printer, ScanLine } from 'lucide-react';
+import { Form, Head, router } from '@inertiajs/react';
+import { Printer, ScanLine, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import PurgeSalesController from '@/actions/App/Http/Controllers/Settings/PurgeSalesController';
 import StoreController from '@/actions/App/Http/Controllers/Settings/StoreController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConfirm } from '@/hooks/use-confirm';
 import { Receipt } from '@/pages/kasir/shared';
 import type { Sale } from '@/pages/kasir/shared';
 import { edit } from '@/routes/store-settings';
@@ -188,6 +190,79 @@ function TestScan() {
     );
 }
 
+function PurgeHistory() {
+    const [before, setBefore] = useState('');
+    const [processing, setProcessing] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const { confirm, ConfirmDialog } = useConfirm();
+
+    async function purge() {
+        if (!before) {
+            return;
+        }
+
+        const ok = await confirm({
+            title: 'Hapus Riwayat Transaksi',
+            description: `Semua transaksi sebelum ${new Date(before).toLocaleDateString('id-ID')} akan dihapus permanen, termasuk transaksi Bon yang belum lunas - piutang yang tercatat akan ikut hilang. Tindakan ini tidak bisa dibatalkan.`,
+            confirmLabel: 'Hapus Permanen',
+            destructive: true,
+        });
+
+        if (!ok) {
+            return;
+        }
+
+        setProcessing(true);
+        setErrors({});
+        router.delete(PurgeSalesController.url(), {
+            data: { before },
+            preserveScroll: true,
+            onSuccess: () => setBefore(''),
+            onError: (e) => setErrors(e as Record<string, string>),
+            onFinish: () => setProcessing(false),
+        });
+    }
+
+    return (
+        <div className="space-y-3 rounded-lg border border-destructive/50 p-4">
+            <div className="space-y-1">
+                <p className="text-sm font-medium">Hapus Riwayat Transaksi</p>
+                <p className="text-sm text-muted-foreground">
+                    Hapus permanen semua transaksi sebelum tanggal tertentu,
+                    termasuk transaksi Bon yang belum lunas. Tidak bisa
+                    dibatalkan - pastikan sudah tidak dibutuhkan lagi.
+                </p>
+            </div>
+            <div className="flex items-end gap-2">
+                <div className="grid gap-1">
+                    <Label htmlFor="purge_before" className="text-xs">
+                        Sebelum tanggal
+                    </Label>
+                    <Input
+                        id="purge_before"
+                        type="date"
+                        value={before}
+                        onChange={(e) => setBefore(e.target.value)}
+                        disabled={processing}
+                        className="w-48"
+                    />
+                    <InputError message={errors.before} />
+                </div>
+                <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={!before || processing}
+                    onClick={purge}
+                >
+                    <Trash2 className="size-4" />
+                    Hapus Riwayat
+                </Button>
+            </div>
+            {ConfirmDialog}
+        </div>
+    );
+}
+
 export default function Store({
     storeSetting,
 }: {
@@ -277,6 +352,14 @@ export default function Store({
                     <TestPrint />
                     <TestScan />
                 </div>
+
+                <Heading
+                    variant="small"
+                    title="Zona Berbahaya"
+                    description="Tindakan permanen yang tidak bisa dibatalkan"
+                />
+
+                <PurgeHistory />
             </div>
         </>
     );

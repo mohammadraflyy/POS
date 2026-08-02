@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Settings\PurgeSalesController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Settings\StoreController;
 use Illuminate\Auth\Middleware\RequirePassword;
@@ -26,6 +27,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('settings/password', [SecurityController::class, 'update'])
         ->middleware('throttle:6,1')
         ->name('user-password.update');
+
+    Route::delete('settings/riwayat-transaksi', PurgeSalesController::class)
+        ->middleware(RequirePassword::class)
+        ->name('sales.purge');
 
     Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
 });
