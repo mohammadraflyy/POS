@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { Layers, Plus, TrendingUp } from 'lucide-react';
+import { History, Layers, Plus, TrendingUp } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useState } from 'react';
 import ProductPriceTierController from '@/actions/App/Http/Controllers/ProductPriceTierController';
@@ -27,6 +27,16 @@ export type PriceTierRow = {
     harga_jual: string;
 };
 
+export type PriceHistoryRow = {
+    id: number;
+    harga_pokok_lama: string;
+    harga_pokok_baru: string;
+    harga_jual_lama: string;
+    harga_jual_baru: string;
+    created_at: string;
+    user: { name: string } | null;
+};
+
 export type Product = {
     id: number;
     kode_item: string;
@@ -40,6 +50,7 @@ export type Product = {
     is_active: boolean;
     product_units: ProductUnitRow[];
     price_tiers: PriceTierRow[];
+    price_histories: PriceHistoryRow[];
 };
 
 export type ProductOption = Pick<Product, 'id' | 'kode_item' | 'nama_item'>;
@@ -304,6 +315,60 @@ export function ProductPriceTiersManager({ product }: { product: Product }) {
                 </Button>
             </form>
             {ConfirmDialog}
+        </div>
+    );
+}
+
+export function ProductPriceHistoryList({ product }: { product: Product }) {
+    return (
+        <div className="space-y-3 border-t pt-4">
+            <div className="flex items-center gap-2">
+                <History className="size-4 text-muted-foreground" />
+                <Label className="text-sm font-semibold">
+                    Riwayat Perubahan Harga
+                </Label>
+            </div>
+            {product.price_histories.length > 0 ? (
+                <div className="space-y-1.5">
+                    {product.price_histories.map((entry) => (
+                        <div
+                            key={entry.id}
+                            className="rounded-lg border px-3 py-2 text-sm"
+                        >
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>
+                                    {new Date(entry.created_at).toLocaleString(
+                                        'id-ID',
+                                    )}
+                                </span>
+                                <span>{entry.user?.name ?? 'Sistem'}</span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-x-4">
+                                <span>
+                                    Harga Pokok:{' '}
+                                    {formatRupiah(entry.harga_pokok_lama)}{' '}
+                                    &rarr;{' '}
+                                    <span className="font-medium">
+                                        {formatRupiah(entry.harga_pokok_baru)}
+                                    </span>
+                                </span>
+                                <span>
+                                    Harga Jual:{' '}
+                                    {formatRupiah(entry.harga_jual_lama)}{' '}
+                                    &rarr;{' '}
+                                    <span className="font-medium">
+                                        {formatRupiah(entry.harga_jual_baru)}
+                                    </span>
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <p className="text-sm text-muted-foreground">
+                    Belum ada perubahan harga.
+                </p>
+            )}
         </div>
     );
 }

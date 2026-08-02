@@ -85,6 +85,54 @@ test('updating a product resolves a new kategori by name', function () {
     expect(Category::where('nama', 'Minuman Dingin')->count())->toBe(1);
 });
 
+test('changing a product price logs a price history entry', function () {
+    $user = User::factory()->create();
+    $product = Product::factory()->create([
+        'harga_pokok' => 1000,
+        'harga_jual' => 1500,
+    ]);
+
+    $this->actingAs($user)->put(route('inventory.update', $product), [
+        'kode_item' => $product->kode_item,
+        'barcode' => $product->barcode,
+        'nama_item' => $product->nama_item,
+        'kategori' => null,
+        'satuan' => $product->satuan,
+        'harga_pokok' => 1200,
+        'harga_jual' => 1800,
+        'is_active' => true,
+    ])->assertRedirect();
+
+    $history = $product->priceHistories()->first();
+    expect($history)->not->toBeNull()
+        ->and($history->user_id)->toBe($user->id)
+        ->and($history->harga_pokok_lama)->toEqual(1000)
+        ->and($history->harga_pokok_baru)->toEqual(1200)
+        ->and($history->harga_jual_lama)->toEqual(1500)
+        ->and($history->harga_jual_baru)->toEqual(1800);
+});
+
+test('updating a product without changing its price does not log history', function () {
+    $user = User::factory()->create();
+    $product = Product::factory()->create([
+        'harga_pokok' => 1000,
+        'harga_jual' => 1500,
+    ]);
+
+    $this->actingAs($user)->put(route('inventory.update', $product), [
+        'kode_item' => $product->kode_item,
+        'barcode' => $product->barcode,
+        'nama_item' => 'Nama Lain',
+        'kategori' => null,
+        'satuan' => $product->satuan,
+        'harga_pokok' => 1000,
+        'harga_jual' => 1500,
+        'is_active' => true,
+    ])->assertRedirect();
+
+    expect($product->priceHistories()->count())->toBe(0);
+});
+
 test('the quick search endpoint finds products by kode, nama, or barcode', function () {
     $user = User::factory()->create();
     Product::factory()->create(['kode_item' => '999', 'nama_item' => 'Kopi Susu Gula Aren', 'barcode' => 'ABC123']);

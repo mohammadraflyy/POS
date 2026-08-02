@@ -1,5 +1,5 @@
 import { Head, router } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { DataGrid, renderTextEditor, SelectColumn } from 'react-data-grid';
 import type { Column, RowsChangeData } from 'react-data-grid';
@@ -35,6 +35,7 @@ import { useAvailableHeight } from '@/hooks/use-available-height';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useElementWidth } from '@/hooks/use-element-width';
 import {
+    ProductPriceHistoryList,
     ProductPriceTiersManager,
     ProductUnitsManager,
 } from '@/pages/inventory/shared';
@@ -132,6 +133,32 @@ export default function Inventory({
     const [paletteResults, setPaletteResults] = useState<SearchResult[]>([]);
     const perPage = filters.per_page ?? '25';
     const { confirm, ConfirmDialog } = useConfirm();
+
+    const importInputRef = useRef<HTMLInputElement>(null);
+    const [importing, setImporting] = useState(false);
+
+    function pickImportFile() {
+        importInputRef.current?.click();
+    }
+
+    function importFile(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0] ?? null;
+        e.target.value = '';
+
+        if (!file) {
+            return;
+        }
+
+        setImporting(true);
+        router.post(
+            ProductController.import.url(),
+            { file },
+            {
+                forceFormData: true,
+                onFinish: () => setImporting(false),
+            },
+        );
+    }
 
     if (products.data !== syncedProductsData) {
         setSyncedProductsData(products.data);
@@ -473,7 +500,7 @@ export default function Inventory({
 
     return (
         <>
-            <Head title="Inventory" />
+            <Head title="Katalog Produk" />
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <InputError message={deleteError} />
                 {errorSummary.length > 0 && (
@@ -502,6 +529,21 @@ export default function Inventory({
                         </Button>
                     </form>
                     <div className="flex gap-2">
+                        <input
+                            ref={importInputRef}
+                            type="file"
+                            accept=".xlsx,.xls,.csv"
+                            onChange={importFile}
+                            className="hidden"
+                        />
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={importing}
+                            onClick={pickImportFile}
+                        >
+                            {importing ? 'Mengimpor...' : 'Import Excel'}
+                        </Button>
                         <Button
                             type="button"
                             variant="outline"
@@ -607,17 +649,20 @@ export default function Inventory({
                 open={unitsProductId !== null}
                 onOpenChange={(open) => !open && setUnitsProductId(null)}
             >
-                <DialogContent>
+                <DialogContent className="max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
-                            {activeUnitsProduct?.nama_item} &mdash; Satuan &
-                            Harga Bertingkat
+                            {activeUnitsProduct?.nama_item} &mdash; Satuan,
+                            Harga Bertingkat & Riwayat Harga
                         </DialogTitle>
                     </DialogHeader>
                     {activeUnitsProduct && (
                         <>
                             <ProductUnitsManager product={activeUnitsProduct} />
                             <ProductPriceTiersManager
+                                product={activeUnitsProduct}
+                            />
+                            <ProductPriceHistoryList
                                 product={activeUnitsProduct}
                             />
                         </>
@@ -707,5 +752,5 @@ export default function Inventory({
 }
 
 Inventory.layout = {
-    breadcrumbs: [{ title: 'Inventory', href: inventory() }],
+    breadcrumbs: [{ title: 'Katalog Produk', href: inventory() }],
 };

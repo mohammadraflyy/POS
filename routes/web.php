@@ -48,6 +48,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('inventory/{product}/price-tiers', [ProductPriceTierController::class, 'store'])->name('inventory.price-tiers.store');
     Route::delete('inventory/{product}/price-tiers/{priceTier}', [ProductPriceTierController::class, 'destroy'])->name('inventory.price-tiers.destroy');
     Route::post('inventory/bulk', [ProductController::class, 'bulkSave'])->name('inventory.bulk-save');
+    Route::post('inventory/import', [ProductController::class, 'import'])->name('inventory.import');
 
     Route::get('pembelian', [PurchaseController::class, 'index'])->name('purchase');
     Route::post('pembelian', [PurchaseController::class, 'store'])->name('purchase.store');

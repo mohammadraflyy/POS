@@ -80,4 +80,12 @@ class Product extends Model
     {
         return $this->hasMany(SaleItem::class);
     }
+
+    /**
+     * @return HasMany<ProductPriceHistory, $this>
+     */
+    public function priceHistories(): HasMany
+    {
+        return $this->hasMany(ProductPriceHistory::class);
+    }
 }
