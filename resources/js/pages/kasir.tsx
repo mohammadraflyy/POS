@@ -45,8 +45,6 @@ import { Receipt } from '@/pages/kasir/shared';
 import type { Sale } from '@/pages/kasir/shared';
 import { kasir } from '@/routes';
 
-type Category = { id: number; nama: string };
-
 type ProductUnitOption = {
     id: number;
     satuan: string;
@@ -65,7 +63,6 @@ type Product = {
     kode_item: string;
     barcode: string | null;
     nama_item: string;
-    category_id: number | null;
     satuan: string;
     harga_jual: string;
     stok: number;
@@ -103,18 +100,12 @@ function lineKey(productId: number, productUnitId: number | null): string {
     return `${productId}:${productUnitId ?? 'base'}`;
 }
 
-const PRODUCT_BATCH_SIZE = 60;
-
 export default function Kasir({
     products,
-    categories,
 }: {
     products: Product[];
-    categories: Category[];
 }) {
     const [cart, setCart] = useState<CartLine[]>([]);
-    const [categoryId, setCategoryId] = useState<number | null>(null);
-    const [productSearch, setProductSearch] = useState('');
     const [scanError, setScanError] = useState('');
     const [metode, setMetode] = useState<'tunai' | 'bon'>('tunai');
     const [namaPelanggan, setNamaPelanggan] = useState('');
@@ -136,27 +127,6 @@ export default function Kasir({
         [cart],
     );
 
-    const visibleProducts = useMemo(() => {
-        const q = productSearch.trim().toLowerCase();
-
-        return products.filter((p) => {
-            if (categoryId !== null && p.category_id !== categoryId) {
-                return false;
-            }
-
-            if (!q) {
-                return true;
-            }
-
-            return (
-                p.nama_item.toLowerCase().includes(q) ||
-                p.kode_item.toLowerCase().includes(q)
-            );
-        });
-    }, [products, categoryId, productSearch]);
-
-    // Ignores the category filter so "/" is a global quick-add, not scoped
-    // to whatever tab happens to be active.
     const paletteResults = useMemo(() => {
         const q = paletteQuery.trim().toLowerCase();
 
@@ -170,25 +140,8 @@ export default function Kasir({
                     p.nama_item.toLowerCase().includes(q) ||
                     p.kode_item.toLowerCase().includes(q),
             )
-            .slice(0, 20);
+            .slice(0, 50);
     }, [products, paletteQuery]);
-
-    // The product list can run into the thousands, and rendering every card
-    // at once is what actually made page switches feel sluggish (DOM size,
-    // not the network payload) - show a bounded batch and let the cashier
-    // reveal more, instead of pulling in a virtualization library.
-    const [visibleCount, setVisibleCount] = useState(PRODUCT_BATCH_SIZE);
-    const [visibleCountFilterKey, setVisibleCountFilterKey] = useState(
-        `${categoryId}:${productSearch}`,
-    );
-    const filterKey = `${categoryId}:${productSearch}`;
-
-    if (filterKey !== visibleCountFilterKey) {
-        setVisibleCountFilterKey(filterKey);
-        setVisibleCount(PRODUCT_BATCH_SIZE);
-    }
-
-    const shownProducts = visibleProducts.slice(0, visibleCount);
 
     function addProductToCart(product: Product) {
         const key = lineKey(product.id, null);
@@ -435,184 +388,73 @@ export default function Kasir({
                     </Button>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-                    <div className="min-w-0 space-y-3">
-                        {scanError && <InputError message={scanError} />}
+                {scanError && <InputError message={scanError} />}
 
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                value={productSearch}
-                                onChange={(e) =>
-                                    setProductSearch(e.target.value)
-                                }
-                                onKeyDown={(e) => {
-                                    if (e.key !== 'Enter') {
-                                        return;
-                                    }
-
-                                    const code = productSearch.trim();
-                                    const product = products.find(
-                                        (p) => p.barcode === code,
-                                    );
-
-                                    if (!product) {
-                                        return;
-                                    }
-
-                                    e.preventDefault();
-                                    addProductToCart(product);
-                                    setProductSearch('');
-                                }}
-                                placeholder="Cari nama / kode produk..."
-                                className="h-12 pr-11 pl-11 text-base"
-                            />
-                            <kbd className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                                /
-                            </kbd>
-                        </div>
-
-                        <div className="flex min-w-0 gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
+                <div className="flex items-center justify-between gap-2">
+                    <h2 className="flex items-center gap-2 font-semibold">
+                        <ShoppingCart className="size-4" />
+                        Keranjang
+                        {cartItemCount > 0 && (
+                            <Badge variant="secondary">{cartItemCount}</Badge>
+                        )}
+                    </h2>
+                    <div className="flex items-center gap-2">
+                        {cart.length > 0 && (
                             <Button
                                 type="button"
+                                variant="ghost"
                                 size="sm"
-                                variant={
-                                    categoryId === null ? 'default' : 'outline'
-                                }
-                                className="shrink-0"
-                                onClick={() => setCategoryId(null)}
+                                className="text-muted-foreground hover:text-destructive"
+                                onClick={clearCart}
                             >
-                                Semua
+                                <Trash2 className="size-3.5" />
+                                Kosongkan
                             </Button>
-                            {categories.map((category) => (
-                                <Button
-                                    key={category.id}
-                                    type="button"
-                                    size="sm"
-                                    variant={
-                                        categoryId === category.id
-                                            ? 'default'
-                                            : 'outline'
-                                    }
-                                    className="shrink-0"
-                                    onClick={() => setCategoryId(category.id)}
-                                >
-                                    {category.nama}
-                                </Button>
-                            ))}
-                        </div>
-
-                        <div className="max-h-[65vh] overflow-y-auto">
-                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                            {shownProducts.map((product) => {
-                                return (
-                                    <button
-                                        key={product.id}
-                                        type="button"
-                                        disabled={product.stok <= 0}
-                                        onClick={() =>
-                                            addProductToCart(product)
-                                        }
-                                        className="flex flex-col items-start gap-1 rounded-xl border border-sidebar-border/70 p-3 text-left transition-all hover:border-primary/50 hover:bg-accent hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-sidebar-border/70 disabled:hover:shadow-none dark:border-sidebar-border"
-                                    >
-                                        <span className="line-clamp-2 text-sm font-medium">
-                                            {product.nama_item}
-                                        </span>
-                                        <span className="text-base font-semibold">
-                                            {formatRupiah(product.harga_jual)}
-                                        </span>
-                                        {product.stok <= 5 && (
-                                            <Badge
-                                                variant={
-                                                    product.stok <= 0
-                                                        ? 'destructive'
-                                                        : 'outline'
-                                                }
-                                                className={cn(
-                                                    'text-[10px]',
-                                                    product.stok > 0 &&
-                                                        'border-amber-500 text-amber-600 dark:text-amber-400',
-                                                )}
-                                            >
-                                                {product.stok <= 0
-                                                    ? 'Habis'
-                                                    : `Sisa ${product.stok}`}
-                                            </Badge>
-                                        )}
-                                    </button>
-                                );
-                            })}
-                            </div>
-                            {visibleProducts.length === 0 && (
-                                <p className="p-8 text-center text-muted-foreground">
-                                    Produk tidak ditemukan.
-                                </p>
-                            )}
-                            {visibleProducts.length > visibleCount && (
-                                <div className="flex justify-center p-3">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                            setVisibleCount(
-                                                (c) =>
-                                                    c + PRODUCT_BATCH_SIZE,
-                                            )
-                                        }
-                                    >
-                                        Tampilkan lebih banyak (
-                                        {visibleProducts.length -
-                                            visibleCount}{' '}
-                                        lagi)
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
+                        )}
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                setPaletteQuery('');
+                                setPaletteOpen(true);
+                            }}
+                        >
+                            <Search className="size-4" />
+                            Cari / Tambah Produk
+                            <kbd className="ml-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-xs">
+                                /
+                            </kbd>
+                        </Button>
                     </div>
+                </div>
 
-                    <div className="flex flex-col gap-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="flex items-center gap-2 font-semibold">
-                                <ShoppingCart className="size-4" />
-                                Keranjang
-                                {cartItemCount > 0 && (
-                                    <Badge variant="secondary">
-                                        {cartItemCount}
-                                    </Badge>
-                                )}
-                            </h2>
-                            {cart.length > 0 && (
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-muted-foreground hover:text-destructive"
-                                    onClick={clearCart}
-                                >
-                                    <Trash2 className="size-3.5" />
-                                    Kosongkan
-                                </Button>
-                            )}
+                <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
+                    {cart.length === 0 ? (
+                        <div className="flex flex-col items-center gap-2 p-12 text-center text-sm text-muted-foreground">
+                            <ShoppingCart className="size-8 opacity-40" />
+                            Keranjang kosong. Scan barcode atau cari produk
+                            untuk mulai.
                         </div>
-
-                        <div className="max-h-64 overflow-y-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                            {cart.length === 0 ? (
-                                <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-muted-foreground">
-                                    <ShoppingCart className="size-8 opacity-40" />
-                                    Keranjang kosong.
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50 text-left">
+                                    <tr>
+                                        <th className="p-3">Produk</th>
+                                        <th className="w-40 p-3">Satuan</th>
+                                        <th className="w-36 p-3">Qty</th>
+                                        <th className="w-32 p-3 text-right">
+                                            Subtotal
+                                        </th>
+                                        <th className="w-10 p-3" />
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                                     {cart.map((line) => (
-                                        <div
-                                            key={line.key}
-                                            className="flex items-center gap-2 p-3"
-                                        >
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-sm font-medium">
-                                                    {line.product.nama_item}
-                                                </p>
+                                        <tr key={line.key}>
+                                            <td className="p-3 font-medium">
+                                                {line.product.nama_item}
+                                            </td>
+                                            <td className="p-3">
                                                 {line.product.product_units
                                                     .length > 0 ? (
                                                     <Select
@@ -633,7 +475,7 @@ export default function Kasir({
                                                             )
                                                         }
                                                     >
-                                                        <SelectTrigger className="h-6 w-fit gap-1 border-none bg-transparent px-0 text-xs text-muted-foreground shadow-none hover:text-foreground">
+                                                        <SelectTrigger className="h-8 w-full gap-1 text-xs">
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
@@ -669,96 +511,103 @@ export default function Kasir({
                                                         </SelectContent>
                                                     </Select>
                                                 ) : (
-                                                    <p className="text-xs text-muted-foreground">
+                                                    <span className="text-xs text-muted-foreground">
                                                         {formatRupiah(
                                                             unitPrice(line),
                                                         )}{' '}
                                                         / {line.satuan}
-                                                    </p>
+                                                    </span>
                                                 )}
-                                            </div>
-
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                className="size-8"
-                                                onClick={() =>
-                                                    changeQty(line.key, -1)
-                                                }
-                                            >
-                                                <Minus className="size-3.5" />
-                                            </Button>
-                                            <Input
-                                                type="number"
-                                                min={1}
-                                                value={line.qty}
-                                                onChange={(e) =>
-                                                    setLineQty(
-                                                        line.key,
-                                                        Number(
-                                                            e.target.value,
-                                                        ),
-                                                    )
-                                                }
-                                                className="h-8 w-14 px-1 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                className="size-8"
-                                                onClick={() =>
-                                                    changeQty(line.key, 1)
-                                                }
-                                            >
-                                                <Plus className="size-3.5" />
-                                            </Button>
-
-                                            <p className="w-24 text-right text-sm font-semibold">
+                                            </td>
+                                            <td className="p-3">
+                                                <div className="flex items-center gap-1">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="size-8"
+                                                        onClick={() =>
+                                                            changeQty(
+                                                                line.key,
+                                                                -1,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Minus className="size-3.5" />
+                                                    </Button>
+                                                    <Input
+                                                        type="number"
+                                                        min={1}
+                                                        value={line.qty}
+                                                        onChange={(e) =>
+                                                            setLineQty(
+                                                                line.key,
+                                                                Number(
+                                                                    e.target
+                                                                        .value,
+                                                                ),
+                                                            )
+                                                        }
+                                                        className="h-8 w-14 px-1 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="size-8"
+                                                        onClick={() =>
+                                                            changeQty(
+                                                                line.key,
+                                                                1,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Plus className="size-3.5" />
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                            <td className="p-3 text-right font-semibold">
                                                 {formatRupiah(
                                                     line.qty * unitPrice(line),
                                                 )}
-                                            </p>
-
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                className="text-muted-foreground hover:text-destructive"
-                                                onClick={() =>
-                                                    removeFromCart(line.key)
-                                                }
-                                            >
-                                                <X className="size-4" />
-                                            </Button>
-                                        </div>
+                                            </td>
+                                            <td className="p-3">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-muted-foreground hover:text-destructive"
+                                                    onClick={() =>
+                                                        removeFromCart(
+                                                            line.key,
+                                                        )
+                                                    }
+                                                >
+                                                    <X className="size-4" />
+                                                </Button>
+                                            </td>
+                                        </tr>
                                     ))}
-                                </div>
-                            )}
+                                </tbody>
+                            </table>
                         </div>
+                    )}
+                </div>
 
-                        <div className="space-y-4 rounded-xl border border-sidebar-border/70 p-4 dark:border-sidebar-border">
-                            <div className="flex items-center justify-between">
-                                <span className="text-muted-foreground">
-                                    Total
-                                </span>
-                                <span className="text-2xl font-bold">
-                                    {formatRupiah(total)}
-                                </span>
-                            </div>
-
-                            <Button
-                                type="button"
-                                size="lg"
-                                className="h-14 w-full text-lg"
-                                disabled={cart.length === 0}
-                                onClick={() => setPaymentOpen(true)}
-                            >
-                                Bayar
-                            </Button>
-                        </div>
-                    </div>
+                <div className="flex items-center justify-between rounded-xl border border-sidebar-border/70 p-4 dark:border-sidebar-border">
+                    <span className="text-muted-foreground">Total</span>
+                    <span className="text-2xl font-bold">
+                        {formatRupiah(total)}
+                    </span>
+                    <Button
+                        type="button"
+                        size="lg"
+                        className="h-14 px-10 text-lg"
+                        disabled={cart.length === 0}
+                        onClick={() => setPaymentOpen(true)}
+                    >
+                        Bayar
+                    </Button>
                 </div>
 
                 <PaymentDialog
@@ -787,6 +636,24 @@ export default function Kasir({
                     <CommandInput
                         value={paletteQuery}
                         onValueChange={setPaletteQuery}
+                        onKeyDown={(e) => {
+                            if (e.key !== 'Enter') {
+                                return;
+                            }
+
+                            const code = paletteQuery.trim();
+                            const product = products.find(
+                                (p) => p.barcode === code,
+                            );
+
+                            if (!product) {
+                                return;
+                            }
+
+                            e.preventDefault();
+                            addProductToCart(product);
+                            setPaletteQuery('');
+                        }}
                         placeholder="Cari nama / kode produk..."
                     />
                     <CommandList>

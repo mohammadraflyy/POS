@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSaleRequest;
-use App\Models\Category;
 use App\Models\Product;
 use App\Models\Sale;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +20,7 @@ class SaleController extends Controller
             ->where('is_active', true)
             ->with('productUnits', 'priceTiers')
             ->orderBy('nama_item')
-            ->get(['id', 'kode_item', 'barcode', 'nama_item', 'category_id', 'satuan', 'harga_jual', 'stok']);
+            ->get(['id', 'kode_item', 'barcode', 'nama_item', 'satuan', 'harga_jual', 'stok']);
 
         $sales = Sale::query()
             ->with(['items.product:id,nama_item', 'user:id,name'])
@@ -32,7 +31,6 @@ class SaleController extends Controller
         return Inertia::render('kasir', [
             'products' => $products,
             'sales' => $sales,
-            'categories' => Category::query()->orderBy('nama')->get(['id', 'nama']),
         ]);
     }
 
