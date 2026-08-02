@@ -36,7 +36,15 @@ export default defineConfig(({ mode }) => {
             }),
         ],
         server: env.VITE_DEV_HOST
-            ? { host: env.VITE_DEV_HOST }
+            ? {
+                  // Bind every interface (localhost included) so both work,
+                  // but pin the asset URLs written to the hot file at the
+                  // LAN address specifically - Vite would otherwise report
+                  // its literal 0.0.0.0/[::] bind address there, which no
+                  // browser can actually connect to.
+                  host: true,
+                  hmr: { host: env.VITE_DEV_HOST },
+              }
             : undefined,
     };
 });
