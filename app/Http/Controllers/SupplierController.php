@@ -35,7 +35,7 @@ class SupplierController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Supplier ditambahkan.')]);
 
-        return to_route('supplier');
+        return back();
     }
 
     public function update(UpdateSupplierRequest $request, Supplier $supplier): RedirectResponse
@@ -44,7 +44,7 @@ class SupplierController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Supplier diperbarui.')]);
 
-        return to_route('supplier');
+        return back();
     }
 
     public function destroy(Supplier $supplier): RedirectResponse
@@ -53,6 +53,6 @@ class SupplierController extends Controller
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Supplier dihapus.')]);
 
-        return to_route('supplier');
+        return back();
     }
 }
