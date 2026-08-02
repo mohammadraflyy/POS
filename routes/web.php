@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BonPaymentController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductPriceTierController;
 use App\Http\Controllers\ProductUnitController;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Route;
 Route::inertia('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::get('dashboard', DashboardController::class)->name('dashboard');
 
     Route::get('kasir', [SaleController::class, 'index'])->name('kasir');
     Route::post('kasir', [SaleController::class, 'store'])->name('kasir.store');
