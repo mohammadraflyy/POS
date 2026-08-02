@@ -13,6 +13,12 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             sidebarOpen: boolean;
+            storeSettings: {
+                nama_toko: string;
+                alamat: string | null;
+                telepon: string | null;
+                pesan_footer: string | null;
+            };
             [key: string]: unknown;
         };
     }

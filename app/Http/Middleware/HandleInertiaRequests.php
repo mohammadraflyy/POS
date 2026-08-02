@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\StoreSetting;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -37,7 +38,8 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
-            'name' => config('app.name'),
+            'name' => fn () => StoreSetting::current()->nama_toko ?: config('app.name'),
+            'storeSettings' => fn () => StoreSetting::current(),
             'auth' => [
                 'user' => $request->user(),
             ],
