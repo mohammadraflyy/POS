@@ -5,6 +5,7 @@ import type { Column } from 'react-data-grid';
 import 'react-data-grid/lib/styles.css';
 import ProductController from '@/actions/App/Http/Controllers/ProductController';
 import InputError from '@/components/input-error';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -13,6 +14,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { useAppearance } from '@/hooks/use-appearance';
+import { useAvailableHeight } from '@/hooks/use-available-height';
 import { useElementWidth } from '@/hooks/use-element-width';
 import {
     ProductPriceTiersManager,
@@ -169,7 +171,8 @@ export default function MassInput({
     initialProducts: Product[];
 }) {
     const { resolvedAppearance } = useAppearance();
-    const [gridWrapperRef, gridWidth] = useElementWidth<HTMLDivElement>();
+    const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>();
+    const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(72);
     const [rows, setRows] = useState<DraftRow[]>(() =>
         initialProducts.length > 0
             ? initialProducts.map(rowFromProduct)
@@ -282,11 +285,29 @@ export default function MassInput({
                     return (
                         <button
                             type="button"
-                            className="text-xs underline underline-offset-2"
+                            className="flex h-full items-center gap-1"
                             onClick={() => setUnitsRowKey(row.key)}
                         >
-                            {live.product_units.length} unit &middot;{' '}
-                            {live.price_tiers.length} tingkat
+                            <Badge
+                                variant={
+                                    live.product_units.length > 0
+                                        ? 'secondary'
+                                        : 'outline'
+                                }
+                                className="text-[10px]"
+                            >
+                                {live.product_units.length} unit
+                            </Badge>
+                            <Badge
+                                variant={
+                                    live.price_tiers.length > 0
+                                        ? 'secondary'
+                                        : 'outline'
+                                }
+                                className="text-[10px]"
+                            >
+                                {live.price_tiers.length} tingkat
+                            </Badge>
                         </button>
                     );
                 },
@@ -332,7 +353,12 @@ export default function MassInput({
                     </Button>
                 </div>
 
-                <div ref={gridWrapperRef} className="flex-1">
+                <div
+                    ref={(node) => {
+                        widthRef(node);
+                        heightRef(node);
+                    }}
+                >
                     {gridWidth > 0 && (
                         <DataGrid
                             className={
@@ -345,7 +371,7 @@ export default function MassInput({
                             rowKeyGetter={(row) => row.key}
                             onRowsChange={setRows}
                             style={{
-                                blockSize: 'calc(100vh - 260px)',
+                                blockSize: gridHeight,
                                 minHeight: 300,
                             }}
                         />

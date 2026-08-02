@@ -1,23 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 /** Tracks an element's rendered width, for grids whose column library needs a pixel width to fill available space. */
 export function useElementWidth<T extends HTMLElement>() {
-    const ref = useRef<T>(null);
     const [width, setWidth] = useState(0);
+    const observerRef = useRef<ResizeObserver | null>(null);
 
-    useEffect(() => {
-        const el = ref.current;
+    const ref = useCallback((el: T | null) => {
+        observerRef.current?.disconnect();
 
         if (!el) {
             return;
         }
 
-        const observer = new ResizeObserver((entries) => {
+        observerRef.current = new ResizeObserver((entries) => {
             setWidth(entries[0].contentRect.width);
         });
-        observer.observe(el);
-
-        return () => observer.disconnect();
+        observerRef.current.observe(el);
     }, []);
 
     return [ref, width] as const;

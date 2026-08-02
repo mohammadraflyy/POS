@@ -27,7 +27,7 @@ class UpdateProductRequest extends FormRequest
             'kode_item' => ['required', 'string', 'max:50', Rule::unique('products', 'kode_item')->ignore($this->route('product'))],
             'barcode' => ['nullable', 'string', 'max:100', Rule::unique('products', 'barcode')->ignore($this->route('product'))],
             'nama_item' => ['required', 'string', 'max:255'],
-            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'kategori' => ['nullable', 'string', 'max:255'],
             'satuan' => ['required', 'string', 'max:20'],
             'harga_pokok' => ['required', 'numeric', 'min:0'],
             'harga_jual' => ['required', 'numeric', 'min:0'],

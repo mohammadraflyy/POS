@@ -38,6 +38,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('inventory', [ProductController::class, 'index'])->name('inventory');
     Route::post('inventory', [ProductController::class, 'store'])->name('inventory.store');
     Route::put('inventory/{product}', [ProductController::class, 'update'])->name('inventory.update');
+    Route::delete('inventory/{product}', [ProductController::class, 'destroy'])->name('inventory.destroy');
+    Route::delete('inventory', [ProductController::class, 'bulkDestroy'])->name('inventory.bulk-destroy');
+    Route::get('inventory/search', [ProductController::class, 'search'])->name('inventory.search');
     Route::get('inventory/mass-input', [ProductController::class, 'massInput'])->name('inventory.mass-input');
     Route::post('inventory/stock-in', [PurchaseController::class, 'store'])->name('inventory.stock-in');
     Route::post('inventory/{product}/units', [ProductUnitController::class, 'store'])->name('inventory.units.store');

@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\BulkDestroyProductRequest;
 use App\Http\Requests\BulkSaveProductRequest;
 use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Models\Category;
 use App\Models\Product;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,8 +18,17 @@ use Inertia\Response;
 
 class ProductController extends Controller
 {
+    /** @var array<int, int> */
+    private const PER_PAGE_OPTIONS = [10, 25, 50, 100];
+
     public function index(Request $request): Response
     {
+        $perPage = $request->integer('per_page', 25);
+
+        if (! in_array($perPage, self::PER_PAGE_OPTIONS, true)) {
+            $perPage = 25;
+        }
+
         $products = Product::query()
             ->with(['category:id,nama', 'productUnits', 'priceTiers'])
             ->when($request->string('search')->toString(), function ($query, $search) {
@@ -27,14 +39,37 @@ class ProductController extends Controller
                 });
             })
             ->orderBy('nama_item')
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         return Inertia::render('inventory', [
             'products' => $products,
-            'filters' => $request->only('search'),
-            'categories' => Category::query()->orderBy('nama')->get(['id', 'nama']),
+            'filters' => $request->only('search', 'per_page'),
+            'perPageOptions' => self::PER_PAGE_OPTIONS,
         ]);
+    }
+
+    /**
+     * Live search for the command-palette quick search (`/` shortcut).
+     */
+    public function search(Request $request): JsonResponse
+    {
+        $q = $request->string('q')->toString();
+
+        $products = Product::query()
+            ->with('category:id,nama')
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($query) use ($q) {
+                    $query->where('kode_item', 'like', "%{$q}%")
+                        ->orWhere('nama_item', 'like', "%{$q}%")
+                        ->orWhere('barcode', 'like', "%{$q}%");
+                });
+            })
+            ->orderBy('nama_item')
+            ->limit(20)
+            ->get(['id', 'kode_item', 'barcode', 'nama_item', 'category_id', 'satuan', 'harga_jual', 'is_active']);
+
+        return response()->json($products);
     }
 
     /**
@@ -70,11 +105,64 @@ class ProductController extends Controller
 
     public function update(UpdateProductRequest $request, Product $product): RedirectResponse
     {
-        $product->update($request->validated());
+        $categoryId = null;
+        $kategori = $request->validated('kategori');
+
+        if (! empty($kategori)) {
+            $categoryId = Category::firstOrCreate(['nama' => $kategori])->id;
+        }
+
+        $product->update([
+            ...$request->safe()->except('kategori'),
+            'category_id' => $categoryId,
+        ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Produk diperbarui.')]);
 
-        return to_route('inventory');
+        return back();
+    }
+
+    public function destroy(Product $product): RedirectResponse
+    {
+        try {
+            $product->delete();
+        } catch (QueryException) {
+            return back()->withErrors([
+                'product' => __('Produk tidak bisa dihapus karena sudah punya riwayat transaksi. Nonaktifkan saja lewat tombol Edit.'),
+            ]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Produk dihapus.')]);
+
+        return back();
+    }
+
+    public function bulkDestroy(BulkDestroyProductRequest $request): RedirectResponse
+    {
+        $blocked = [];
+        $deleted = 0;
+
+        foreach (Product::whereIn('id', $request->validated('ids'))->get() as $product) {
+            try {
+                $product->delete();
+                $deleted++;
+            } catch (QueryException) {
+                $blocked[] = $product->nama_item;
+            }
+        }
+
+        if ($blocked !== []) {
+            return back()->withErrors([
+                'product' => __(':n produk tidak bisa dihapus karena sudah punya riwayat transaksi: :list.', [
+                    'n' => count($blocked),
+                    'list' => implode(', ', $blocked),
+                ]),
+            ]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __(':n produk dihapus.', ['n' => $deleted])]);
+
+        return back();
     }
 
     /**
