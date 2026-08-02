@@ -55,7 +55,7 @@ test('purging cascades to sale items', function () {
     expect($sale->items()->count())->toBe(0);
 });
 
-test('purge requires a date before today', function () {
+test('purge rejects a date in the future', function () {
     $user = User::factory()->create();
 
     $response = purgeAs($user)->delete(route('sales.purge'), [
@@ -63,6 +63,21 @@ test('purge requires a date before today', function () {
     ]);
 
     $response->assertSessionHasErrors('before');
+});
+
+test('purge accepts today as the cutoff, deleting everything except today', function () {
+    $user = User::factory()->create();
+
+    $yesterday = Sale::factory()->create(['created_at' => now()->subDay()]);
+    $today = Sale::factory()->create(['created_at' => now()]);
+
+    $response = purgeAs($user)->delete(route('sales.purge'), [
+        'before' => now()->toDateString(),
+    ]);
+
+    $response->assertRedirect();
+    expect(Sale::find($yesterday->id))->toBeNull()
+        ->and(Sale::find($today->id))->not->toBeNull();
 });
 
 test('purge requires password confirmation', function () {

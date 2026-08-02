@@ -23,7 +23,7 @@ class PurgeSalesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'before' => ['required', 'date', 'before:today'],
+            'before' => ['required', 'date', 'before_or_equal:today'],
         ];
     }
 }
