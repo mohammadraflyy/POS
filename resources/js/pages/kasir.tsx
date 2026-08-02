@@ -343,6 +343,10 @@ export default function Kasir({
                 })),
             },
             {
+                // The redirect after checkout lands back on this same page -
+                // without `only`, that reloads the entire product catalog
+                // (1000+ rows) just to get the fresh sale for the receipt.
+                only: ['sales'],
                 onSuccess: (page) => {
                     if (shouldPrint) {
                         // Keep the dialog open (showing this sale's totals)
