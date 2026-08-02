@@ -1,5 +1,5 @@
 import { Head, router } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DataGrid, renderTextEditor } from 'react-data-grid';
 import type { Column, RowsChangeData } from 'react-data-grid';
 import 'react-data-grid/lib/styles.css';
@@ -7,6 +7,7 @@ import StockAdjustmentController from '@/actions/App/Http/Controllers/StockAdjus
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAppearance } from '@/hooks/use-appearance';
+import { useAvailableHeight } from '@/hooks/use-available-height';
 import { useElementWidth } from '@/hooks/use-element-width';
 import { stockOpname } from '@/routes';
 
@@ -60,13 +61,47 @@ function rowFromProduct(product: OpnameProduct): OpnameRow {
 
 export default function StockOpname() {
     const { resolvedAppearance } = useAppearance();
-    const [gridWrapperRef, gridWidth] = useElementWidth<HTMLDivElement>();
+    const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>();
+    const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(16);
     const [query, setQuery] = useState('');
     const [rows, setRows] = useState<OpnameRow[]>([]);
     const [searching, setSearching] = useState(false);
     const [saving, setSaving] = useState<Set<string>>(new Set());
     const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
     const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set());
+    const searchInputRef = useRef<HTMLInputElement>(null);
+
+    // "/" refocuses search when the grid has stolen focus - skip while
+    // typing in a field.
+    useEffect(() => {
+        function isEditableTarget(target: EventTarget | null): boolean {
+            if (!(target instanceof HTMLElement)) {
+                return false;
+            }
+
+            return (
+                target.tagName === 'INPUT' ||
+                target.tagName === 'TEXTAREA' ||
+                target.tagName === 'SELECT' ||
+                target.isContentEditable
+            );
+        }
+
+        function handleKeyDown(e: KeyboardEvent) {
+            if (isEditableTarget(e.target)) {
+                return;
+            }
+
+            if (e.key === '/') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     async function search(q: string) {
         setQuery(q);
@@ -265,19 +300,50 @@ export default function StockOpname() {
         [rowErrors, saving, savedKeys, namaWidth],
     );
 
+    const idle = query.trim() === '' && rows.length === 0;
+
+    if (idle) {
+        return (
+            <>
+                <Head title="Stock Opname" />
+                <div className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
+                    <div className="relative w-full max-w-2xl">
+                        <Input
+                            ref={searchInputRef}
+                            autoFocus
+                            value={query}
+                            onChange={(e) => search(e.target.value)}
+                            placeholder="Cari kode / nama / kategori / barcode..."
+                            className="h-14 pr-10 text-lg"
+                        />
+                        <kbd className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                            /
+                        </kbd>
+                    </div>
+                </div>
+            </>
+        );
+    }
+
     return (
         <>
             <Head title="Stock Opname" />
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <h1 className="text-xl font-semibold">Stock Opname</h1>
 
-                <Input
-                    autoFocus
-                    value={query}
-                    onChange={(e) => search(e.target.value)}
-                    placeholder="Cari kode / nama / kategori / barcode..."
-                    className="max-w-md"
-                />
+                <div className="relative max-w-md">
+                    <Input
+                        ref={searchInputRef}
+                        autoFocus
+                        value={query}
+                        onChange={(e) => search(e.target.value)}
+                        placeholder="Cari kode / nama / kategori / barcode..."
+                        className="pr-8"
+                    />
+                    <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                        /
+                    </kbd>
+                </div>
 
                 {searching && (
                     <p className="text-sm text-muted-foreground">Mencari...</p>
@@ -288,7 +354,12 @@ export default function StockOpname() {
                     </p>
                 )}
 
-                <div ref={gridWrapperRef} className="flex-1">
+                <div
+                    ref={(node) => {
+                        widthRef(node);
+                        heightRef(node);
+                    }}
+                >
                     {rows.length > 0 && gridWidth > 0 && (
                         <DataGrid
                             className={
@@ -301,7 +372,7 @@ export default function StockOpname() {
                             rowKeyGetter={(row) => row.key}
                             onRowsChange={handleRowsChange}
                             style={{
-                                blockSize: 'calc(100vh - 260px)',
+                                blockSize: gridHeight,
                                 minHeight: 300,
                             }}
                         />
