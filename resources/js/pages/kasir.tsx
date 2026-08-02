@@ -247,6 +247,21 @@ export default function Kasir({
                 scanBuffer.current = '';
 
                 if (code.length < 4) {
+                    // Not a fast scan burst - treat a lone Enter as the
+                    // "Bayar" shortcut so checkout can be fully keyboard
+                    // driven (scan items, hit Enter, pay). Only when
+                    // nothing else is focused, so it doesn't double-fire
+                    // alongside a button's own native Enter-activates click.
+                    if (
+                        cart.length > 0 &&
+                        !paymentOpen &&
+                        (document.activeElement === document.body ||
+                            document.activeElement === null)
+                    ) {
+                        e.preventDefault();
+                        setPaymentOpen(true);
+                    }
+
                     return;
                 }
 
@@ -271,7 +286,7 @@ export default function Kasir({
         window.addEventListener('keydown', handleKeydown);
 
         return () => window.removeEventListener('keydown', handleKeydown);
-    }, [products]);
+    }, [products, cart.length, paymentOpen]);
 
     function changeQty(key: string, delta: number) {
         setCart((prev) =>
