@@ -1,8 +1,28 @@
 import { Head, Link, router } from '@inertiajs/react';
+import {
+    Banknote,
+    HandCoins,
+    Minus,
+    Plus,
+    Printer,
+    Search,
+    ShoppingCart,
+    Trash2,
+    X,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SaleController from '@/actions/App/Http/Controllers/SaleController';
 import InputError from '@/components/input-error';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    CommandDialog,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command';
 import {
     Dialog,
     DialogContent,
@@ -11,6 +31,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Spinner } from '@/components/ui/spinner';
 import { cn, formatRupiah } from '@/lib/utils';
 import { Receipt } from '@/pages/kasir/shared';
 import type { Sale } from '@/pages/kasir/shared';
@@ -70,12 +99,11 @@ function unitPrice(line: CartLine): number {
     return Number(tier?.harga_jual ?? line.product.harga_jual);
 }
 
-/** numpad target: the cash field, a cart line's qty, or nothing selected */
-type NumpadTarget = 'dibayar' | { key: string } | null;
-
 function lineKey(productId: number, productUnitId: number | null): string {
     return `${productId}:${productUnitId ?? 'base'}`;
 }
+
+const PRODUCT_BATCH_SIZE = 60;
 
 export default function Kasir({
     products,
@@ -91,19 +119,23 @@ export default function Kasir({
     const [metode, setMetode] = useState<'tunai' | 'bon'>('tunai');
     const [namaPelanggan, setNamaPelanggan] = useState('');
     const [dibayar, setDibayar] = useState('');
-    const [numpadTarget, setNumpadTarget] = useState<NumpadTarget>('dibayar');
-    const [numpadFresh, setNumpadFresh] = useState(true);
     const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [receiptSale, setReceiptSale] = useState<Sale | null>(null);
     const [paymentOpen, setPaymentOpen] = useState(false);
+    const [paletteOpen, setPaletteOpen] = useState(false);
+    const [paletteQuery, setPaletteQuery] = useState('');
 
     const total = useMemo(
         () => cart.reduce((sum, line) => sum + line.qty * unitPrice(line), 0),
         [cart],
     );
 
-    // ponytail: no virtualization yet, fine up to a few hundred products per category - revisit if a category grows past ~1-2k items
+    const cartItemCount = useMemo(
+        () => cart.reduce((sum, line) => sum + line.qty, 0),
+        [cart],
+    );
+
     const visibleProducts = useMemo(() => {
         const q = productSearch.trim().toLowerCase();
 
@@ -122,6 +154,41 @@ export default function Kasir({
             );
         });
     }, [products, categoryId, productSearch]);
+
+    // Ignores the category filter so "/" is a global quick-add, not scoped
+    // to whatever tab happens to be active.
+    const paletteResults = useMemo(() => {
+        const q = paletteQuery.trim().toLowerCase();
+
+        if (!q) {
+            return [];
+        }
+
+        return products
+            .filter(
+                (p) =>
+                    p.nama_item.toLowerCase().includes(q) ||
+                    p.kode_item.toLowerCase().includes(q),
+            )
+            .slice(0, 20);
+    }, [products, paletteQuery]);
+
+    // The product list can run into the thousands, and rendering every card
+    // at once is what actually made page switches feel sluggish (DOM size,
+    // not the network payload) - show a bounded batch and let the cashier
+    // reveal more, instead of pulling in a virtualization library.
+    const [visibleCount, setVisibleCount] = useState(PRODUCT_BATCH_SIZE);
+    const [visibleCountFilterKey, setVisibleCountFilterKey] = useState(
+        `${categoryId}:${productSearch}`,
+    );
+    const filterKey = `${categoryId}:${productSearch}`;
+
+    if (filterKey !== visibleCountFilterKey) {
+        setVisibleCountFilterKey(filterKey);
+        setVisibleCount(PRODUCT_BATCH_SIZE);
+    }
+
+    const shownProducts = visibleProducts.slice(0, visibleCount);
 
     function addProductToCart(product: Product) {
         const key = lineKey(product.id, null);
@@ -185,7 +252,7 @@ export default function Kasir({
     // Hardware scanners type a barcode + Enter almost instantly (unlike a
     // human). We buffer keystrokes globally and treat a fast burst ending in
     // Enter as a scan - only while no input/textarea is focused, so it never
-    // fights with normal typing in the search box, numpad fields, etc.
+    // fights with normal typing in the search box, payment fields, etc.
     const scanBuffer = useRef('');
     const scanLastKeyAt = useRef(0);
 
@@ -203,6 +270,14 @@ export default function Kasir({
 
         function handleKeydown(e: globalThis.KeyboardEvent) {
             if (isEditableFocused()) {
+                return;
+            }
+
+            if (e.key === '/' && scanBuffer.current === '') {
+                e.preventDefault();
+                setPaletteQuery('');
+                setPaletteOpen(true);
+
                 return;
             }
 
@@ -257,63 +332,31 @@ export default function Kasir({
         setCart((prev) => prev.filter((i) => i.key !== key));
     }
 
-    function selectNumpadTarget(target: NumpadTarget) {
-        setNumpadTarget(target);
-        setNumpadFresh(true);
-    }
-
-    function pressDigit(digit: string) {
-        if (numpadTarget === 'dibayar') {
-            setDibayar((prev) => (numpadFresh ? digit : prev + digit));
-        } else if (numpadTarget) {
-            const { key } = numpadTarget;
-            setCart((prev) =>
-                prev.map((i) =>
-                    i.key === key
-                        ? {
-                              ...i,
-                              qty:
-                                  Number(
-                                      (numpadFresh ? '' : i.qty.toString()) +
-                                          digit,
-                                  ) || 1,
-                          }
-                        : i,
-                ),
-            );
+    function clearCart() {
+        if (cart.length === 0) {
+            return;
         }
 
-        setNumpadFresh(false);
-    }
-
-    function pressBackspace() {
-        if (numpadTarget === 'dibayar') {
-            setDibayar((prev) => prev.slice(0, -1));
-        } else if (numpadTarget) {
-            const { key } = numpadTarget;
-            setCart((prev) =>
-                prev.map((i) =>
-                    i.key === key
-                        ? { ...i, qty: Math.floor(i.qty / 10) || 1 }
-                        : i,
-                ),
-            );
+        if (!confirm('Kosongkan keranjang?')) {
+            return;
         }
 
-        setNumpadFresh(false);
+        setCart([]);
     }
 
-    function pressClear() {
-        if (numpadTarget === 'dibayar') {
-            setDibayar('');
-        } else if (numpadTarget) {
-            const { key } = numpadTarget;
-            setCart((prev) =>
-                prev.map((i) => (i.key === key ? { ...i, qty: 1 } : i)),
-            );
-        }
+    function setLineQty(key: string, qty: number) {
+        setCart((prev) =>
+            prev.map((i) =>
+                i.key === key ? { ...i, qty: Math.max(1, qty || 1) } : i,
+            ),
+        );
+    }
 
-        setNumpadFresh(true);
+    function resetAfterCheckout() {
+        setPaymentOpen(false);
+        setCart([]);
+        setNamaPelanggan('');
+        setDibayar('');
     }
 
     function checkout(shouldPrint: boolean) {
@@ -334,6 +377,9 @@ export default function Kasir({
             {
                 onSuccess: (page) => {
                     if (shouldPrint) {
+                        // Keep the dialog open (showing this sale's totals)
+                        // until printing actually finishes - it resets and
+                        // closes from the print effect below instead.
                         const freshSales = (
                             page.props as unknown as { sales: Sale[] }
                         ).sales;
@@ -341,13 +387,11 @@ export default function Kasir({
                         if (freshSales?.[0]) {
                             setReceiptSale(freshSales[0]);
                         }
+
+                        return;
                     }
 
-                    setPaymentOpen(false);
-                    setCart([]);
-                    setNamaPelanggan('');
-                    setDibayar('');
-                    selectNumpadTarget('dibayar');
+                    resetAfterCheckout();
                 },
                 onError: (e) => setErrors(e as Record<string, string>),
                 onFinish: () => setProcessing(false),
@@ -369,6 +413,7 @@ export default function Kasir({
 
         function clearAfterPrint() {
             setReceiptSale(null);
+            resetAfterCheckout();
         }
 
         window.addEventListener('afterprint', clearAfterPrint, {
@@ -381,7 +426,7 @@ export default function Kasir({
     return (
         <>
             <Head title="Kasir" />
-            <div className="flex-1 space-y-6 p-4 sm:p-6">
+            <div className="flex-1 space-y-4 p-4 sm:p-6">
                 <div className="flex justify-end">
                     <Button asChild variant="outline" size="sm">
                         <Link href={SaleController.history()}>
@@ -391,27 +436,50 @@ export default function Kasir({
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-                    <div className="space-y-4">
+                    <div className="min-w-0 space-y-3">
                         {scanError && <InputError message={scanError} />}
 
-                        <Input
-                            value={productSearch}
-                            onChange={(e) => setProductSearch(e.target.value)}
-                            placeholder="Cari nama / kode produk..."
-                            className="h-12 text-base"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            Scan barcode kapan saja (asal tidak sedang mengetik
-                            di kolom lain) - otomatis masuk keranjang.
-                        </p>
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={productSearch}
+                                onChange={(e) =>
+                                    setProductSearch(e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                    if (e.key !== 'Enter') {
+                                        return;
+                                    }
 
-                        <div className="flex flex-wrap gap-2">
+                                    const code = productSearch.trim();
+                                    const product = products.find(
+                                        (p) => p.barcode === code,
+                                    );
+
+                                    if (!product) {
+                                        return;
+                                    }
+
+                                    e.preventDefault();
+                                    addProductToCart(product);
+                                    setProductSearch('');
+                                }}
+                                placeholder="Cari nama / kode produk..."
+                                className="h-12 pr-11 pl-11 text-base"
+                            />
+                            <kbd className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                                /
+                            </kbd>
+                        </div>
+
+                        <div className="flex min-w-0 gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
                             <Button
                                 type="button"
                                 size="sm"
                                 variant={
                                     categoryId === null ? 'default' : 'outline'
                                 }
+                                className="shrink-0"
                                 onClick={() => setCategoryId(null)}
                             >
                                 Semua
@@ -426,6 +494,7 @@ export default function Kasir({
                                             ? 'default'
                                             : 'outline'
                                     }
+                                    className="shrink-0"
                                     onClick={() => setCategoryId(category.id)}
                                 >
                                     {category.nama}
@@ -433,40 +502,106 @@ export default function Kasir({
                             ))}
                         </div>
 
-                        <div className="grid max-h-[65vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3 xl:grid-cols-4">
-                            {visibleProducts.map((product) => (
-                                <button
-                                    key={product.id}
-                                    type="button"
-                                    disabled={product.stok <= 0}
-                                    onClick={() => addProductToCart(product)}
-                                    className="flex flex-col items-start gap-1 rounded-xl border border-sidebar-border/70 p-3 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 dark:border-sidebar-border"
-                                >
-                                    <span className="line-clamp-2 text-sm font-medium">
-                                        {product.nama_item}
-                                    </span>
-                                    <span className="text-base font-semibold">
-                                        {formatRupiah(product.harga_jual)}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                        Stok {product.stok}
-                                    </span>
-                                </button>
-                            ))}
+                        <div className="max-h-[65vh] overflow-y-auto">
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                            {shownProducts.map((product) => {
+                                return (
+                                    <button
+                                        key={product.id}
+                                        type="button"
+                                        disabled={product.stok <= 0}
+                                        onClick={() =>
+                                            addProductToCart(product)
+                                        }
+                                        className="flex flex-col items-start gap-1 rounded-xl border border-sidebar-border/70 p-3 text-left transition-all hover:border-primary/50 hover:bg-accent hover:shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-sidebar-border/70 disabled:hover:shadow-none dark:border-sidebar-border"
+                                    >
+                                        <span className="line-clamp-2 text-sm font-medium">
+                                            {product.nama_item}
+                                        </span>
+                                        <span className="text-base font-semibold">
+                                            {formatRupiah(product.harga_jual)}
+                                        </span>
+                                        {product.stok <= 5 && (
+                                            <Badge
+                                                variant={
+                                                    product.stok <= 0
+                                                        ? 'destructive'
+                                                        : 'outline'
+                                                }
+                                                className={cn(
+                                                    'text-[10px]',
+                                                    product.stok > 0 &&
+                                                        'border-amber-500 text-amber-600 dark:text-amber-400',
+                                                )}
+                                            >
+                                                {product.stok <= 0
+                                                    ? 'Habis'
+                                                    : `Sisa ${product.stok}`}
+                                            </Badge>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                            </div>
                             {visibleProducts.length === 0 && (
-                                <p className="col-span-full p-8 text-center text-muted-foreground">
+                                <p className="p-8 text-center text-muted-foreground">
                                     Produk tidak ditemukan.
                                 </p>
+                            )}
+                            {visibleProducts.length > visibleCount && (
+                                <div className="flex justify-center p-3">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            setVisibleCount(
+                                                (c) =>
+                                                    c + PRODUCT_BATCH_SIZE,
+                                            )
+                                        }
+                                    >
+                                        Tampilkan lebih banyak (
+                                        {visibleProducts.length -
+                                            visibleCount}{' '}
+                                        lagi)
+                                    </Button>
+                                </div>
                             )}
                         </div>
                     </div>
 
                     <div className="flex flex-col gap-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="flex items-center gap-2 font-semibold">
+                                <ShoppingCart className="size-4" />
+                                Keranjang
+                                {cartItemCount > 0 && (
+                                    <Badge variant="secondary">
+                                        {cartItemCount}
+                                    </Badge>
+                                )}
+                            </h2>
+                            {cart.length > 0 && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    onClick={clearCart}
+                                >
+                                    <Trash2 className="size-3.5" />
+                                    Kosongkan
+                                </Button>
+                            )}
+                        </div>
+
                         <div className="max-h-64 overflow-y-auto rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
                             {cart.length === 0 ? (
-                                <p className="p-6 text-center text-sm text-muted-foreground">
+                                <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-muted-foreground">
+                                    <ShoppingCart className="size-8 opacity-40" />
                                     Keranjang kosong.
-                                </p>
+                                </div>
                             ) : (
                                 <div className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
                                     {cart.map((line) => (
@@ -480,57 +615,59 @@ export default function Kasir({
                                                 </p>
                                                 {line.product.product_units
                                                     .length > 0 ? (
-                                                    <select
-                                                        value={
+                                                    <Select
+                                                        value={(
                                                             line.productUnitId ??
-                                                            ''
-                                                        }
-                                                        onChange={(e) =>
+                                                            0
+                                                        ).toString()}
+                                                        onValueChange={(
+                                                            value,
+                                                        ) =>
                                                             changeLineUnit(
                                                                 line,
-                                                                e.target.value
-                                                                    ? Number(
-                                                                          e
-                                                                              .target
-                                                                              .value,
-                                                                      )
-                                                                    : null,
+                                                                value === '0'
+                                                                    ? null
+                                                                    : Number(
+                                                                          value,
+                                                                      ),
                                                             )
                                                         }
-                                                        className="rounded border-none bg-transparent text-xs text-muted-foreground"
                                                     >
-                                                        <option value="">
-                                                            {formatRupiah(
-                                                                line.product
-                                                                    .harga_jual,
-                                                            )}{' '}
-                                                            /{' '}
-                                                            {
-                                                                line.product
-                                                                    .satuan
-                                                            }
-                                                        </option>
-                                                        {line.product.product_units.map(
-                                                            (unit) => (
-                                                                <option
-                                                                    key={
-                                                                        unit.id
-                                                                    }
-                                                                    value={
-                                                                        unit.id
-                                                                    }
-                                                                >
-                                                                    {formatRupiah(
-                                                                        unit.harga_jual,
-                                                                    )}{' '}
-                                                                    /{' '}
-                                                                    {
-                                                                        unit.satuan
-                                                                    }
-                                                                </option>
-                                                            ),
-                                                        )}
-                                                    </select>
+                                                        <SelectTrigger className="h-6 w-fit gap-1 border-none bg-transparent px-0 text-xs text-muted-foreground shadow-none hover:text-foreground">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="0">
+                                                                {formatRupiah(
+                                                                    line.product
+                                                                        .harga_jual,
+                                                                )}{' '}
+                                                                /{' '}
+                                                                {
+                                                                    line.product
+                                                                        .satuan
+                                                                }
+                                                            </SelectItem>
+                                                            {line.product.product_units.map(
+                                                                (unit) => (
+                                                                    <SelectItem
+                                                                        key={
+                                                                            unit.id
+                                                                        }
+                                                                        value={unit.id.toString()}
+                                                                    >
+                                                                        {formatRupiah(
+                                                                            unit.harga_jual,
+                                                                        )}{' '}
+                                                                        /{' '}
+                                                                        {
+                                                                            unit.satuan
+                                                                        }
+                                                                    </SelectItem>
+                                                                ),
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
                                                 ) : (
                                                     <p className="text-xs text-muted-foreground">
                                                         {formatRupiah(
@@ -550,26 +687,22 @@ export default function Kasir({
                                                     changeQty(line.key, -1)
                                                 }
                                             >
-                                                −
+                                                <Minus className="size-3.5" />
                                             </Button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    selectNumpadTarget({
-                                                        key: line.key,
-                                                    })
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                value={line.qty}
+                                                onChange={(e) =>
+                                                    setLineQty(
+                                                        line.key,
+                                                        Number(
+                                                            e.target.value,
+                                                        ),
+                                                    )
                                                 }
-                                                className={cn(
-                                                    'w-8 rounded-md text-center text-base font-semibold',
-                                                    typeof numpadTarget ===
-                                                        'object' &&
-                                                        numpadTarget?.key ===
-                                                            line.key &&
-                                                        'bg-accent',
-                                                )}
-                                            >
-                                                {line.qty}
-                                            </button>
+                                                className="h-8 w-14 px-1 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                            />
                                             <Button
                                                 type="button"
                                                 variant="outline"
@@ -579,7 +712,7 @@ export default function Kasir({
                                                     changeQty(line.key, 1)
                                                 }
                                             >
-                                                +
+                                                <Plus className="size-3.5" />
                                             </Button>
 
                                             <p className="w-24 text-right text-sm font-semibold">
@@ -592,11 +725,12 @@ export default function Kasir({
                                                 type="button"
                                                 variant="ghost"
                                                 size="icon"
+                                                className="text-muted-foreground hover:text-destructive"
                                                 onClick={() =>
                                                     removeFromCart(line.key)
                                                 }
                                             >
-                                                ✕
+                                                <X className="size-4" />
                                             </Button>
                                         </div>
                                     ))}
@@ -637,15 +771,88 @@ export default function Kasir({
                     setNamaPelanggan={setNamaPelanggan}
                     dibayar={dibayar}
                     setDibayar={setDibayar}
-                    numpadTarget={numpadTarget}
-                    selectNumpadTarget={selectNumpadTarget}
-                    pressDigit={pressDigit}
-                    pressBackspace={pressBackspace}
-                    pressClear={pressClear}
                     processing={processing}
+                    printing={receiptSale !== null}
                     errors={errors}
                     onSubmit={checkout}
                 />
+
+                <CommandDialog
+                    open={paletteOpen}
+                    onOpenChange={setPaletteOpen}
+                    title="Cari Produk"
+                    description="Cari produk untuk ditambahkan ke keranjang"
+                    shouldFilter={false}
+                >
+                    <CommandInput
+                        value={paletteQuery}
+                        onValueChange={setPaletteQuery}
+                        placeholder="Cari nama / kode produk..."
+                    />
+                    <CommandList>
+                        <CommandEmpty>
+                            {paletteQuery.trim() === ''
+                                ? 'Ketik untuk mencari produk.'
+                                : 'Produk tidak ditemukan.'}
+                        </CommandEmpty>
+                        {paletteResults.length > 0 && (
+                            <CommandGroup heading="Produk">
+                                {paletteResults.map((product) => (
+                                    <CommandItem
+                                        key={product.id}
+                                        value={product.id.toString()}
+                                        disabled={product.stok <= 0}
+                                        onSelect={() => {
+                                            addProductToCart(product);
+                                            setPaletteQuery('');
+                                        }}
+                                        className="flex items-center justify-between"
+                                    >
+                                        <span>
+                                            <span className="font-medium">
+                                                {product.nama_item}
+                                            </span>
+                                            <span className="text-muted-foreground">
+                                                {' '}
+                                                &middot; {product.kode_item}
+                                            </span>
+                                        </span>
+                                        <span className="flex items-center gap-2 text-xs">
+                                            {formatRupiah(
+                                                product.harga_jual,
+                                            )}
+                                            {product.stok <= 0 && (
+                                                <span className="text-destructive">
+                                                    Habis
+                                                </span>
+                                            )}
+                                        </span>
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        )}
+                    </CommandList>
+                    <div className="flex items-center gap-3 border-t px-3 py-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                            <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                                &uarr;&darr;
+                            </kbd>
+                            pilih
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                                &crarr;
+                            </kbd>
+                            tambah
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                                esc
+                            </kbd>
+                            tutup
+                        </span>
+                    </div>
+                </CommandDialog>
             </div>
 
             {receiptSale && <Receipt sale={receiptSale} />}
@@ -663,12 +870,8 @@ function PaymentDialog({
     setNamaPelanggan,
     dibayar,
     setDibayar,
-    numpadTarget,
-    selectNumpadTarget,
-    pressDigit,
-    pressBackspace,
-    pressClear,
     processing,
+    printing,
     errors,
     onSubmit,
 }: {
@@ -681,22 +884,19 @@ function PaymentDialog({
     setNamaPelanggan: (value: string) => void;
     dibayar: string;
     setDibayar: (value: string) => void;
-    numpadTarget: NumpadTarget;
-    selectNumpadTarget: (target: NumpadTarget) => void;
-    pressDigit: (digit: string) => void;
-    pressBackspace: () => void;
-    pressClear: () => void;
     processing: boolean;
+    printing: boolean;
     errors: Record<string, string>;
     onSubmit: (shouldPrint: boolean) => void;
 }) {
     const totalBayar = metode === 'tunai' ? Number(dibayar || 0) : 0;
     const selisih = total - totalBayar;
     const isLunas = metode === 'tunai' && selisih <= 0;
+    const disabled = processing || printing;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-sm">
                 <DialogHeader>
                     <DialogTitle>Pembayaran</DialogTitle>
                 </DialogHeader>
@@ -705,54 +905,41 @@ function PaymentDialog({
                         e.preventDefault();
                         onSubmit(true);
                     }}
-                    className="space-y-4"
+                    className="space-y-5"
                 >
-                    <div className="rounded-lg bg-yellow-300 p-4 dark:bg-yellow-500/30">
-                        <p className="text-sm font-medium text-yellow-950 dark:text-yellow-100">
-                            Total
-                        </p>
-                        <p className="text-3xl font-bold text-yellow-950 dark:text-yellow-50">
-                            {formatRupiah(total)}
-                        </p>
-                    </div>
-
                     <div className="grid grid-cols-2 gap-2">
                         <Button
                             type="button"
                             variant={metode === 'tunai' ? 'default' : 'outline'}
-                            onClick={() => {
-                                setMetode('tunai');
-                                selectNumpadTarget('dibayar');
-                            }}
+                            disabled={disabled}
+                            onClick={() => setMetode('tunai')}
                         >
+                            <Banknote className="size-4" />
                             Tunai
                         </Button>
                         <Button
                             type="button"
                             variant={metode === 'bon' ? 'default' : 'outline'}
-                            onClick={() => {
-                                setMetode('bon');
-                                selectNumpadTarget(null);
-                            }}
+                            disabled={disabled}
+                            onClick={() => setMetode('bon')}
                         >
+                            <HandCoins className="size-4" />
                             Bon
                         </Button>
                     </div>
 
                     {metode === 'tunai' ? (
                         <div className="grid gap-2">
-                            <Label htmlFor="dibayar">Tunai</Label>
+                            <Label htmlFor="dibayar">Uang Tunai</Label>
                             <Input
                                 id="dibayar"
+                                autoFocus
                                 inputMode="numeric"
+                                placeholder="0"
                                 value={dibayar}
-                                onFocus={() => selectNumpadTarget('dibayar')}
+                                disabled={disabled}
                                 onChange={(e) => setDibayar(e.target.value)}
-                                className={cn(
-                                    'h-12 text-lg',
-                                    numpadTarget === 'dibayar' &&
-                                        'ring-2 ring-ring',
-                                )}
+                                className="h-12 text-lg"
                             />
                             <InputError message={errors.dibayar} />
                         </div>
@@ -763,7 +950,9 @@ function PaymentDialog({
                             </Label>
                             <Input
                                 id="nama_pelanggan"
+                                autoFocus
                                 value={namaPelanggan}
+                                disabled={disabled}
                                 onChange={(e) =>
                                     setNamaPelanggan(e.target.value)
                                 }
@@ -773,49 +962,44 @@ function PaymentDialog({
                         </div>
                     )}
 
-                    <Numpad
-                        target={numpadTarget}
-                        onDigit={pressDigit}
-                        onBackspace={pressBackspace}
-                        onClear={pressClear}
-                    />
-
-                    <div className="rounded-lg bg-green-300 p-3 dark:bg-green-500/30">
+                    <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
                         <div className="flex items-center justify-between">
-                            <span className="font-medium text-green-950 dark:text-green-100">
-                                Total Bayar
+                            <span className="text-sm text-muted-foreground">
+                                Total Tagihan
                             </span>
-                            <span className="text-xl font-bold text-green-950 dark:text-green-50">
+                            <span className="text-2xl font-bold">
+                                {formatRupiah(total)}
+                            </span>
+                        </div>
+
+                        <Separator />
+
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">
+                                {metode === 'tunai' ? 'Dibayar' : 'Bon'}
+                            </span>
+                            <span className="text-base font-semibold">
                                 {formatRupiah(totalBayar)}
                             </span>
                         </div>
-                    </div>
 
-                    <div
-                        className={cn(
-                            'rounded-lg p-3',
-                            isLunas
-                                ? 'bg-green-300 dark:bg-green-500/30'
-                                : 'bg-orange-300 dark:bg-orange-500/30',
-                        )}
-                    >
                         <div className="flex items-center justify-between">
                             <span
                                 className={cn(
-                                    'font-medium',
+                                    'text-sm font-medium',
                                     isLunas
-                                        ? 'text-green-950 dark:text-green-100'
-                                        : 'text-orange-950 dark:text-orange-100',
+                                        ? 'text-green-600 dark:text-green-400'
+                                        : 'text-orange-600 dark:text-orange-400',
                                 )}
                             >
                                 {isLunas ? 'Kembalian' : 'Kekurangan'}
                             </span>
                             <span
                                 className={cn(
-                                    'text-xl font-bold',
+                                    'text-lg font-bold',
                                     isLunas
-                                        ? 'text-green-950 dark:text-green-50'
-                                        : 'text-orange-950 dark:text-orange-50',
+                                        ? 'text-green-600 dark:text-green-400'
+                                        : 'text-orange-600 dark:text-orange-400',
                                 )}
                             >
                                 {formatRupiah(Math.abs(selisih))}
@@ -825,91 +1009,44 @@ function PaymentDialog({
 
                     <InputError message={errors.items} />
 
-                    <div className="grid grid-cols-3 gap-2">
-                        <Button
-                            type="submit"
-                            disabled={processing}
-                            className="col-span-1"
-                        >
-                            Simpan + Cetak
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            disabled={processing}
-                            onClick={() => onSubmit(false)}
-                        >
-                            Simpan
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => onOpenChange(false)}
-                        >
-                            Batal
-                        </Button>
-                    </div>
+                    {printing ? (
+                        <div className="flex items-center justify-center gap-2 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+                            <Spinner />
+                            Mencetak struk...
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <Button
+                                type="submit"
+                                disabled={disabled}
+                                className="w-full"
+                            >
+                                <Printer className="size-4" />
+                                Simpan + Cetak
+                            </Button>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    disabled={disabled}
+                                    onClick={() => onSubmit(false)}
+                                >
+                                    Simpan
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={disabled}
+                                    onClick={() => onOpenChange(false)}
+                                >
+                                    Batal
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </form>
             </DialogContent>
         </Dialog>
-    );
-}
-
-function Numpad({
-    target,
-    onDigit,
-    onBackspace,
-    onClear,
-}: {
-    target: NumpadTarget;
-    onDigit: (digit: string) => void;
-    onBackspace: () => void;
-    onClear: () => void;
-}) {
-    const disabled = target === null;
-
-    return (
-        <div className="grid grid-cols-3 gap-2">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-                <Button
-                    key={digit}
-                    type="button"
-                    variant="outline"
-                    disabled={disabled}
-                    className="h-12 text-lg"
-                    onClick={() => onDigit(digit)}
-                >
-                    {digit}
-                </Button>
-            ))}
-            <Button
-                type="button"
-                variant="secondary"
-                disabled={disabled}
-                className="h-12 text-sm"
-                onClick={onClear}
-            >
-                Clear
-            </Button>
-            <Button
-                type="button"
-                variant="outline"
-                disabled={disabled}
-                className="h-12 text-lg"
-                onClick={() => onDigit('0')}
-            >
-                0
-            </Button>
-            <Button
-                type="button"
-                variant="secondary"
-                disabled={disabled}
-                className="h-12 text-sm"
-                onClick={onBackspace}
-            >
-                ⌫
-            </Button>
-        </div>
     );
 }
 

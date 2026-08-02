@@ -24,7 +24,7 @@ class SaleController extends Controller
             ->get(['id', 'kode_item', 'barcode', 'nama_item', 'category_id', 'satuan', 'harga_jual', 'stok']);
 
         $sales = Sale::query()
-            ->with('items.product:id,nama_item')
+            ->with(['items.product:id,nama_item', 'user:id,name'])
             ->whereDate('created_at', today())
             ->latest()
             ->get();
@@ -39,7 +39,7 @@ class SaleController extends Controller
     public function history(Request $request): Response
     {
         $sales = Sale::query()
-            ->with('items.product:id,nama_item')
+            ->with(['items.product:id,nama_item', 'user:id,name'])
             ->when($request->date('dari'), fn ($query, $dari) => $query->whereDate('created_at', '>=', $dari))
             ->when($request->date('sampai'), fn ($query, $sampai) => $query->whereDate('created_at', '<=', $sampai))
             ->when($request->string('status')->toString(), fn ($query, $status) => $query->where('status', $status))
