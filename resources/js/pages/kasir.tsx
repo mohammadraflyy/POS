@@ -1,6 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import {
     Banknote,
+    CornerDownLeft,
     HandCoins,
     Minus,
     Plus,
@@ -11,6 +12,7 @@ import {
     X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import SaleController from '@/actions/App/Http/Controllers/SaleController';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
@@ -100,11 +102,7 @@ function lineKey(productId: number, productUnitId: number | null): string {
     return `${productId}:${productUnitId ?? 'base'}`;
 }
 
-export default function Kasir({
-    products,
-}: {
-    products: Product[];
-}) {
+export default function Kasir({ products }: { products: Product[] }) {
     const [cart, setCart] = useState<CartLine[]>([]);
     const [scanError, setScanError] = useState('');
     const [metode, setMetode] = useState<'tunai' | 'bon'>('tunai');
@@ -582,7 +580,7 @@ export default function Kasir({
                                                                 ),
                                                             )
                                                         }
-                                                        className="h-8 w-14 px-1 text-center text-base font-semibold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                        className="h-8 w-14 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                                     />
                                                     <Button
                                                         type="button"
@@ -612,9 +610,7 @@ export default function Kasir({
                                                     size="icon"
                                                     className="text-muted-foreground hover:text-destructive"
                                                     onClick={() =>
-                                                        removeFromCart(
-                                                            line.key,
-                                                        )
+                                                        removeFromCart(line.key)
                                                     }
                                                 >
                                                     <X className="size-4" />
@@ -719,9 +715,7 @@ export default function Kasir({
                                             </span>
                                         </span>
                                         <span className="flex items-center gap-2 text-xs">
-                                            {formatRupiah(
-                                                product.harga_jual,
-                                            )}
+                                            {formatRupiah(product.harga_jual)}
                                             {product.stok <= 0 && (
                                                 <span className="text-destructive">
                                                     Habis
@@ -795,6 +789,76 @@ function PaymentDialog({
     const isLunas = metode === 'tunai' && selisih <= 0;
     const disabled = processing || printing;
 
+    // PageUp/PageDown cycle which action Enter will fire, so the whole
+    // dialog can be driven without a mouse: type the amount, PgDn/PgUp to
+    // the action you want, Enter to run it. Alt+letter shortcuts don't type
+    // into focused inputs, so those work regardless of what's focused too.
+    const actions = ['cetak', 'simpan', 'batal'] as const;
+    type Action = (typeof actions)[number];
+    const [selectedAction, setSelectedAction] = useState<Action>('cetak');
+    const [prevOpen, setPrevOpen] = useState(open);
+
+    if (open !== prevOpen) {
+        setPrevOpen(open);
+
+        if (open) {
+            setSelectedAction('cetak');
+        }
+    }
+
+    function runAction(action: Action) {
+        if (action === 'cetak') {
+            onSubmit(true);
+        } else if (action === 'simpan') {
+            onSubmit(false);
+        } else {
+            onOpenChange(false);
+        }
+    }
+
+    function handleShortcut(e: ReactKeyboardEvent) {
+        if (disabled) {
+            return;
+        }
+
+        if (e.key === 'PageDown' || e.key === 'PageUp') {
+            e.preventDefault();
+            const index = actions.indexOf(selectedAction);
+            const delta = e.key === 'PageDown' ? 1 : -1;
+            setSelectedAction(
+                actions[(index + delta + actions.length) % actions.length],
+            );
+
+            return;
+        }
+
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            runAction(selectedAction);
+
+            return;
+        }
+
+        if (!e.altKey) {
+            return;
+        }
+
+        switch (e.key.toLowerCase()) {
+            case 't':
+                e.preventDefault();
+                setMetode('tunai');
+                break;
+            case 'b':
+                e.preventDefault();
+                setMetode('bon');
+                break;
+            case 's':
+                e.preventDefault();
+                onSubmit(false);
+                break;
+        }
+    }
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-sm">
@@ -806,6 +870,7 @@ function PaymentDialog({
                         e.preventDefault();
                         onSubmit(true);
                     }}
+                    onKeyDown={handleShortcut}
                     className="space-y-5"
                 >
                     <div className="grid grid-cols-2 gap-2">
@@ -817,6 +882,9 @@ function PaymentDialog({
                         >
                             <Banknote className="size-4" />
                             Tunai
+                            <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">
+                                Alt+T
+                            </kbd>
                         </Button>
                         <Button
                             type="button"
@@ -826,6 +894,9 @@ function PaymentDialog({
                         >
                             <HandCoins className="size-4" />
                             Bon
+                            <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">
+                                Alt+B
+                            </kbd>
                         </Button>
                     </div>
 
@@ -920,8 +991,15 @@ function PaymentDialog({
                             <Button
                                 type="submit"
                                 disabled={disabled}
-                                className="w-full"
+                                className={cn(
+                                    'w-full',
+                                    selectedAction === 'cetak' &&
+                                        'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                                )}
                             >
+                                {selectedAction === 'cetak' && (
+                                    <CornerDownLeft className="size-4" />
+                                )}
                                 <Printer className="size-4" />
                                 Simpan + Cetak
                             </Button>
@@ -930,19 +1008,49 @@ function PaymentDialog({
                                     type="button"
                                     variant="secondary"
                                     disabled={disabled}
+                                    className={cn(
+                                        selectedAction === 'simpan' &&
+                                            'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                                    )}
                                     onClick={() => onSubmit(false)}
                                 >
+                                    {selectedAction === 'simpan' && (
+                                        <CornerDownLeft className="size-3.5" />
+                                    )}
                                     Simpan
+                                    <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">
+                                        Alt+S
+                                    </kbd>
                                 </Button>
                                 <Button
                                     type="button"
                                     variant="outline"
                                     disabled={disabled}
+                                    className={cn(
+                                        selectedAction === 'batal' &&
+                                            'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                                    )}
                                     onClick={() => onOpenChange(false)}
                                 >
+                                    {selectedAction === 'batal' && (
+                                        <CornerDownLeft className="size-3.5" />
+                                    )}
                                     Batal
+                                    <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">
+                                        Esc
+                                    </kbd>
                                 </Button>
                             </div>
+                            <p className="text-center text-xs text-muted-foreground">
+                                <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                                    PgUp/PgDn
+                                </kbd>{' '}
+                                pilih aksi &middot;{' '}
+                                <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                                    Enter
+                                </kbd>{' '}
+                                jalankan
+                            </p>
                         </div>
                     )}
                 </form>
