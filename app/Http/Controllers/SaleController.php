@@ -16,21 +16,20 @@ class SaleController extends Controller
 {
     public function index(): Response
     {
-        $products = Product::query()
-            ->where('is_active', true)
-            ->with('productUnits', 'priceTiers')
-            ->orderBy('nama_item')
-            ->get(['id', 'kode_item', 'barcode', 'nama_item', 'satuan', 'harga_jual', 'stok']);
-
-        $sales = Sale::query()
-            ->with(['items.product:id,nama_item', 'user:id,name'])
-            ->whereDate('created_at', today())
-            ->latest()
-            ->get();
-
         return Inertia::render('kasir', [
-            'products' => $products,
-            'sales' => $sales,
+            // Lazy: on the partial reload after checkout (only: ['sales']),
+            // Inertia skips resolving this closure entirely, so the ~1400-row
+            // catalog query doesn't run just to be thrown away.
+            'products' => fn () => Product::query()
+                ->where('is_active', true)
+                ->with('productUnits', 'priceTiers')
+                ->orderBy('nama_item')
+                ->get(['id', 'kode_item', 'barcode', 'nama_item', 'satuan', 'harga_jual', 'stok']),
+            'sales' => fn () => Sale::query()
+                ->with(['items.product:id,nama_item', 'user:id,name'])
+                ->whereDate('created_at', today())
+                ->latest()
+                ->get(),
         ]);
     }
 
