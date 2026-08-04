@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { DataGrid } from 'react-data-grid';
 import type {
+    CellKeyboardEvent,
+    CellKeyDownArgs,
     Column,
     DataGridHandle,
     RenderEditCellProps,
@@ -334,6 +336,13 @@ export default function Kasir({ products }: { products: Product[] }) {
                 return;
             }
 
+            if (e.altKey && e.key.toLowerCase() === 'k' && !paymentOpen) {
+                e.preventDefault();
+                clearCart();
+
+                return;
+            }
+
             const now = Date.now();
 
             if (now - scanLastKeyAt.current > 100) {
@@ -386,6 +395,7 @@ export default function Kasir({ products }: { products: Product[] }) {
         window.addEventListener('keydown', handleKeydown);
 
         return () => window.removeEventListener('keydown', handleKeydown);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [products, cart.length, paymentOpen]);
 
     /** resolves rawQty to the cleanest satuan and merges into an existing line for that satuan if one exists */
@@ -447,6 +457,36 @@ export default function Kasir({ products }: { products: Product[] }) {
         const editedRow = newRows[indexes[0]];
 
         applyResolvedQty(editedRow.key, editedRow.qty);
+    }
+
+    // A cell being selected (not yet in edit mode) still counts as "nothing
+    // to type" - Enter there should behave like the global lone-Enter
+    // shortcut and jump to Bayar, not start editing the cell.
+    // A selected-but-not-editing cell would otherwise swallow these as
+    // "start editing" input (react-data-grid's own default), before our
+    // window-level shortcut listener ever sees them - so they're
+    // intercepted here too, at the grid level, ahead of that default.
+    function handleCartCellKeyDown(
+        args: CellKeyDownArgs<CartLine>,
+        event: CellKeyboardEvent,
+    ) {
+        if (args.mode !== 'ACTIVE') {
+            return;
+        }
+
+        if (event.key === 'Enter' && cart.length > 0 && !paymentOpen) {
+            event.preventGridDefault();
+            event.preventDefault();
+            setPaymentOpen(true);
+
+            return;
+        }
+
+        if (event.altKey && event.key.toLowerCase() === 'k' && !paymentOpen) {
+            event.preventGridDefault();
+            event.preventDefault();
+            clearCart();
+        }
     }
 
     function focusCartQty(key: string | null) {
@@ -642,7 +682,7 @@ export default function Kasir({ products }: { products: Product[] }) {
             name: 'Subtotal',
             width: 130,
             renderCell: ({ row }) => (
-                <span className="font-semibold">
+                <span className="w-full text-right font-semibold">
                     {formatRupiah(row.qty * unitPrice(row))}
                 </span>
             ),
@@ -698,6 +738,9 @@ export default function Kasir({ products }: { products: Product[] }) {
                             >
                                 <Trash2 className="size-3.5" />
                                 Kosongkan
+                                <kbd className="ml-1 rounded border px-1.5 py-0.5 text-xs">
+                                    Alt+K
+                                </kbd>
                             </Button>
                         )}
                         <Button
@@ -714,6 +757,34 @@ export default function Kasir({ products }: { products: Product[] }) {
                             </kbd>
                         </Button>
                     </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                        <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                            /
+                        </kbd>
+                        Cari Produk
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                            Enter
+                        </kbd>
+                        Bayar
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                            Alt+K
+                        </kbd>
+                        Kosongkan
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                            F2
+                        </kbd>
+                        Edit Qty
+                    </span>
+                    <span>Klik pill satuan untuk ganti satuan</span>
                 </div>
 
                 <div className="overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
@@ -736,6 +807,7 @@ export default function Kasir({ products }: { products: Product[] }) {
                                     columns={cartColumns}
                                     rows={cart}
                                     onRowsChange={handleCartRowsChange}
+                                    onCellKeyDown={handleCartCellKeyDown}
                                     rowKeyGetter={(row) => row.key}
                                     headerRowHeight={44}
                                     rowHeight={48}
