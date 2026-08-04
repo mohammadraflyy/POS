@@ -12,7 +12,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { DataGrid } from 'react-data-grid';
-import type { Column } from 'react-data-grid';
+import type {
+    Column,
+    DataGridHandle,
+    RenderEditCellProps,
+    RowsChangeData,
+} from 'react-data-grid';
 import 'react-data-grid/lib/styles.css';
 import SaleController from '@/actions/App/Http/Controllers/SaleController';
 import InputError from '@/components/input-error';
@@ -110,6 +115,9 @@ function unitKonversi(line: CartLine): number {
 
 const QTY_EPSILON = 1e-6;
 
+/** index of the 'qty' column within cartColumns (produk, satuan, harga, qty, subtotal, aksi) */
+const QTY_COLUMN_IDX = 3;
+
 /**
  * Picks the cleanest satuan for a quantity expressed in the product's base
  * unit: the one with the largest konversi that still divides evenly, so
@@ -158,6 +166,39 @@ function resolveLineQty(line: CartLine, typedQty: number) {
     return pickUnitForBaseQty(line.product, baseQty);
 }
 
+function focusAndSelectQtyInput(input: HTMLInputElement | null) {
+    input?.focus();
+    input?.select();
+}
+
+function renderQtyEditCell({
+    row,
+    onRowChange,
+    onClose,
+}: RenderEditCellProps<CartLine>) {
+    return (
+        <input
+            type="text"
+            inputMode="decimal"
+            ref={focusAndSelectQtyInput}
+            value={row.qty}
+            title="Boleh diisi pecahan, misalnya 0.5 - otomatis dibulatkan ke satuan yang pas"
+            className="h-full w-full bg-background px-2 text-center text-sm font-semibold outline-none"
+            onChange={(e) =>
+                onRowChange({ ...row, qty: Number(e.target.value) || 0 })
+            }
+            onBlur={() => onClose(true, false)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    onClose(true, false);
+                } else if (e.key === 'Escape') {
+                    onClose(false);
+                }
+            }}
+        />
+    );
+}
+
 export default function Kasir({ products }: { products: Product[] }) {
     const [cart, setCart] = useState<CartLine[]>([]);
     const [scanError, setScanError] = useState('');
@@ -172,6 +213,8 @@ export default function Kasir({ products }: { products: Product[] }) {
     const [paletteQuery, setPaletteQuery] = useState('');
     const { resolvedAppearance } = useAppearance();
     const [cartWidthRef, cartGridWidth] = useElementWidth<HTMLDivElement>();
+    const cartGridRef = useRef<DataGridHandle>(null);
+    const lastTouchedKeyRef = useRef<string | null>(null);
 
     const total = useMemo(
         () => cart.reduce((sum, line) => sum + line.qty * unitPrice(line), 0),
@@ -201,6 +244,7 @@ export default function Kasir({ products }: { products: Product[] }) {
 
     function addProductToCart(product: Product) {
         const key = lineKey(product.id, null);
+        lastTouchedKeyRef.current = key;
 
         setCart((prev) => {
             const existing = prev.find((i) => i.key === key);
@@ -396,17 +440,30 @@ export default function Kasir({ products }: { products: Product[] }) {
         setCart([]);
     }
 
-    /** live-typing: keep the raw value (including a transient fraction) so decimal entry isn't clobbered mid-keystroke - commitLineQty resolves it on blur/Enter */
-    function setLineQty(key: string, qty: number) {
-        setCart((prev) => prev.map((i) => (i.key === key ? { ...i, qty } : i)));
+    function handleCartRowsChange(
+        newRows: CartLine[],
+        { indexes }: RowsChangeData<CartLine>,
+    ) {
+        const editedRow = newRows[indexes[0]];
+
+        applyResolvedQty(editedRow.key, editedRow.qty);
     }
 
-    function commitLineQty(key: string) {
-        const line = cart.find((i) => i.key === key);
-
-        if (line) {
-            applyResolvedQty(key, line.qty);
+    function focusCartQty(key: string | null) {
+        if (!key) {
+            return;
         }
+
+        const rowIdx = cart.findIndex((line) => line.key === key);
+
+        if (rowIdx === -1) {
+            return;
+        }
+
+        cartGridRef.current?.setActivePosition(
+            { rowIdx, idx: QTY_COLUMN_IDX },
+            { shouldFocus: true },
+        );
     }
 
     function resetAfterCheckout() {
@@ -569,23 +626,15 @@ export default function Kasir({ products }: { products: Product[] }) {
             key: 'qty',
             name: 'Qty',
             width: 80,
+            editable: true,
+            renderEditCell: renderQtyEditCell,
             renderCell: ({ row }) => (
-                <Input
-                    type="number"
-                    step="any"
-                    value={row.qty}
-                    onChange={(e) =>
-                        setLineQty(row.key, Number(e.target.value))
-                    }
-                    onBlur={() => commitLineQty(row.key)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            e.currentTarget.blur();
-                        }
-                    }}
+                <span
+                    className="text-sm font-semibold"
                     title="Boleh diisi pecahan, misalnya 0.5 - otomatis dibulatkan ke satuan yang pas"
-                    className="h-8 w-16 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                />
+                >
+                    {row.qty}
+                </span>
             ),
         },
         {
@@ -678,6 +727,7 @@ export default function Kasir({ products }: { products: Product[] }) {
                         <div ref={cartWidthRef}>
                             {cartGridWidth > 0 && (
                                 <DataGrid
+                                    ref={cartGridRef}
                                     className={
                                         resolvedAppearance === 'dark'
                                             ? 'rdg-dark'
@@ -685,6 +735,7 @@ export default function Kasir({ products }: { products: Product[] }) {
                                     }
                                     columns={cartColumns}
                                     rows={cart}
+                                    onRowsChange={handleCartRowsChange}
                                     rowKeyGetter={(row) => row.key}
                                     headerRowHeight={44}
                                     rowHeight={48}
@@ -732,6 +783,10 @@ export default function Kasir({ products }: { products: Product[] }) {
                 <CommandDialog
                     open={paletteOpen}
                     onOpenChange={setPaletteOpen}
+                    onCloseAutoFocus={(e) => {
+                        e.preventDefault();
+                        focusCartQty(lastTouchedKeyRef.current);
+                    }}
                     title="Cari Produk"
                     description="Cari produk untuk ditambahkan ke keranjang"
                     shouldFilter={false}
