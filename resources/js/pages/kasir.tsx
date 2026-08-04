@@ -3,8 +3,6 @@ import {
     Banknote,
     CornerDownLeft,
     HandCoins,
-    Minus,
-    Plus,
     Printer,
     Search,
     ShoppingCart,
@@ -382,24 +380,6 @@ export default function Kasir({ products }: { products: Product[] }) {
         });
     }
 
-    function changeQty(key: string, delta: number) {
-        const line = cart.find((i) => i.key === key);
-
-        if (!line) {
-            return;
-        }
-
-        const nextQty = line.qty + delta;
-
-        if (nextQty <= 0) {
-            removeFromCart(key);
-
-            return;
-        }
-
-        applyResolvedQty(key, nextQty);
-    }
-
     function removeFromCart(key: string) {
         setCart((prev) => prev.filter((i) => i.key !== key));
     }
@@ -519,7 +499,7 @@ export default function Kasir({ products }: { products: Product[] }) {
         };
     }, [receiptSale]);
 
-    const CART_OTHER_COLUMNS_WIDTH = 180 + 120 + 150 + 130 + 50;
+    const CART_OTHER_COLUMNS_WIDTH = 180 + 120 + 80 + 130 + 50;
     const produkWidth = Math.max(
         160,
         cartGridWidth - CART_OTHER_COLUMNS_WIDTH - 2,
@@ -588,44 +568,24 @@ export default function Kasir({ products }: { products: Product[] }) {
         {
             key: 'qty',
             name: 'Qty',
-            width: 150,
+            width: 80,
             renderCell: ({ row }) => (
-                <div className="flex items-center gap-1 py-1">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="size-8"
-                        onClick={() => changeQty(row.key, -1)}
-                    >
-                        <Minus className="size-3.5" />
-                    </Button>
-                    <Input
-                        type="number"
-                        step="any"
-                        value={row.qty}
-                        onChange={(e) =>
-                            setLineQty(row.key, Number(e.target.value))
+                <Input
+                    type="number"
+                    step="any"
+                    value={row.qty}
+                    onChange={(e) =>
+                        setLineQty(row.key, Number(e.target.value))
+                    }
+                    onBlur={() => commitLineQty(row.key)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.currentTarget.blur();
                         }
-                        onBlur={() => commitLineQty(row.key)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.currentTarget.blur();
-                            }
-                        }}
-                        title="Boleh diisi pecahan, misalnya 0.5 - otomatis dibulatkan ke satuan yang pas"
-                        className="h-8 w-14 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    />
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="size-8"
-                        onClick={() => changeQty(row.key, 1)}
-                    >
-                        <Plus className="size-3.5" />
-                    </Button>
-                </div>
+                    }}
+                    title="Boleh diisi pecahan, misalnya 0.5 - otomatis dibulatkan ke satuan yang pas"
+                    className="h-8 w-16 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
             ),
         },
         {
