@@ -730,7 +730,8 @@ export default function Kasir({ products }: { products: Product[] }) {
                                             </span>
                                         </span>
                                         <span className="flex items-center gap-2 text-xs">
-                                            {formatRupiah(product.harga_jual)}
+                                            {formatRupiah(product.harga_jual)} /{' '}
+                                            {product.satuan}
                                             {product.stok <= 0 && (
                                                 <span className="text-destructive">
                                                     Habis
