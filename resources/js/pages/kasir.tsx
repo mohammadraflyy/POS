@@ -407,9 +407,9 @@ export default function Kasir({ products }: { products: Product[] }) {
         };
     }, [receiptSale]);
 
-    const CART_OTHER_COLUMNS_WIDTH = 220 + 130 + 130 + 50;
+    const CART_OTHER_COLUMNS_WIDTH = 180 + 120 + 150 + 130 + 50;
     const produkWidth = Math.max(
-        200,
+        160,
         cartGridWidth - CART_OTHER_COLUMNS_WIDTH - 2,
     );
 
@@ -425,7 +425,7 @@ export default function Kasir({ products }: { products: Product[] }) {
         {
             key: 'satuan',
             name: 'Satuan',
-            width: 220,
+            width: 180,
             renderCell: ({ row }) =>
                 row.product.product_units.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-1 py-1">
@@ -433,13 +433,12 @@ export default function Kasir({ products }: { products: Product[] }) {
                             type="button"
                             onClick={() => changeLineUnit(row, null)}
                             className={cn(
-                                'rounded-md border px-2 py-1 text-xs font-medium transition-colors',
+                                'rounded-md border px-2 py-0.5 text-xs font-medium transition-colors',
                                 row.productUnitId === null
                                     ? 'border-primary bg-primary text-primary-foreground'
                                     : 'border-input bg-background hover:bg-accent',
                             )}
                         >
-                            {formatRupiah(row.product.harga_jual)} /{' '}
                             {row.product.satuan}
                         </button>
                         {row.product.product_units.map((unit) => (
@@ -448,26 +447,36 @@ export default function Kasir({ products }: { products: Product[] }) {
                                 type="button"
                                 onClick={() => changeLineUnit(row, unit.id)}
                                 className={cn(
-                                    'rounded-md border px-2 py-1 text-xs font-medium transition-colors',
+                                    'rounded-md border px-2 py-0.5 text-xs font-medium transition-colors',
                                     row.productUnitId === unit.id
                                         ? 'border-primary bg-primary text-primary-foreground'
                                         : 'border-input bg-background hover:bg-accent',
                                 )}
                             >
-                                {formatRupiah(unit.harga_jual)} / {unit.satuan}
+                                {unit.satuan}
                             </button>
                         ))}
                     </div>
                 ) : (
                     <span className="text-xs text-muted-foreground">
-                        {formatRupiah(unitPrice(row))} / {row.satuan}
+                        {row.satuan}
                     </span>
                 ),
         },
         {
+            key: 'harga',
+            name: 'Harga',
+            width: 120,
+            renderCell: ({ row }) => (
+                <span className="text-xs text-muted-foreground">
+                    {formatRupiah(unitPrice(row))}
+                </span>
+            ),
+        },
+        {
             key: 'qty',
             name: 'Qty',
-            width: 130,
+            width: 150,
             renderCell: ({ row }) => (
                 <div className="flex items-center gap-1 py-1">
                     <Button
@@ -598,12 +607,10 @@ export default function Kasir({ products }: { products: Product[] }) {
                                     columns={cartColumns}
                                     rows={cart}
                                     rowKeyGetter={(row) => row.key}
-                                    rowHeight={60}
+                                    headerRowHeight={44}
+                                    rowHeight={48}
                                     style={{
-                                        blockSize: Math.min(
-                                            400,
-                                            40 + cart.length * 60,
-                                        ),
+                                        blockSize: 44 + cart.length * 48 + 2,
                                     }}
                                 />
                             )}
