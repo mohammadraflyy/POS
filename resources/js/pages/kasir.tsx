@@ -40,7 +40,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, formatRupiah } from '@/lib/utils';
 import { Receipt } from '@/pages/kasir/shared';
@@ -880,7 +879,7 @@ function PaymentDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-sm">
+            <DialogContent className="sm:max-w-[46rem]">
                 <DialogHeader>
                     <DialogTitle>Pembayaran</DialogTitle>
                 </DialogHeader>
@@ -919,6 +918,15 @@ function PaymentDialog({
                         </Button>
                     </div>
 
+                    <div className="flex items-center justify-between rounded-xl bg-foreground px-5 py-4">
+                        <span className="text-sm text-background/60">
+                            Total Tagihan
+                        </span>
+                        <span className="text-4xl font-bold text-background tabular-nums">
+                            {formatRupiah(total)}
+                        </span>
+                    </div>
+
                     {metode === 'tunai' ? (
                         <div className="grid gap-2">
                             <Label htmlFor="dibayar">Uang Tunai</Label>
@@ -930,7 +938,7 @@ function PaymentDialog({
                                 value={dibayar}
                                 disabled={disabled}
                                 onChange={(e) => setDibayar(e.target.value)}
-                                className="h-12 text-lg"
+                                className="h-16 text-right text-2xl font-semibold tabular-nums"
                             />
                             <InputError message={errors.dibayar} />
                         </div>
@@ -947,50 +955,46 @@ function PaymentDialog({
                                 onChange={(e) =>
                                     setNamaPelanggan(e.target.value)
                                 }
-                                className="h-12 text-lg"
+                                className="h-16 text-xl"
                             />
                             <InputError message={errors.nama_pelanggan} />
                         </div>
                     )}
 
-                    <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">
-                                Total Tagihan
-                            </span>
-                            <span className="text-2xl font-bold">
-                                {formatRupiah(total)}
-                            </span>
-                        </div>
-
-                        <Separator />
-
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between rounded-xl bg-green-500/15 px-5 py-3.5 dark:bg-green-500/20">
+                            <span className="text-sm font-semibold text-green-700 dark:text-green-400">
                                 {metode === 'tunai' ? 'Dibayar' : 'Bon'}
                             </span>
-                            <span className="text-base font-semibold">
+                            <span className="text-2xl font-bold text-green-700 tabular-nums dark:text-green-400">
                                 {formatRupiah(totalBayar)}
                             </span>
                         </div>
 
-                        <div className="flex items-center justify-between">
+                        <div
+                            className={cn(
+                                'flex items-center justify-between rounded-xl px-5 py-3.5',
+                                isLunas
+                                    ? 'bg-green-500/15 dark:bg-green-500/20'
+                                    : 'bg-orange-500/15 dark:bg-orange-500/20',
+                            )}
+                        >
                             <span
                                 className={cn(
-                                    'text-sm font-medium',
+                                    'text-sm font-semibold',
                                     isLunas
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : 'text-orange-600 dark:text-orange-400',
+                                        ? 'text-green-700 dark:text-green-400'
+                                        : 'text-orange-700 dark:text-orange-400',
                                 )}
                             >
                                 {isLunas ? 'Kembalian' : 'Kekurangan'}
                             </span>
                             <span
                                 className={cn(
-                                    'text-lg font-bold',
+                                    'text-2xl font-bold tabular-nums',
                                     isLunas
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : 'text-orange-600 dark:text-orange-400',
+                                        ? 'text-green-700 dark:text-green-400'
+                                        : 'text-orange-700 dark:text-orange-400',
                                 )}
                             >
                                 {formatRupiah(Math.abs(selisih))}
