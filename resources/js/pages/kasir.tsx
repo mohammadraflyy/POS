@@ -33,13 +33,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, formatRupiah } from '@/lib/utils';
 import { Receipt } from '@/pages/kasir/shared';
@@ -488,59 +481,65 @@ export default function Kasir({ products }: { products: Product[] }) {
                                             <td className="p-3">
                                                 {line.product.product_units
                                                     .length > 0 ? (
-                                                    <Select
-                                                        value={(
-                                                            line.productUnitId ??
-                                                            0
-                                                        ).toString()}
-                                                        onValueChange={(
-                                                            value,
-                                                        ) =>
-                                                            changeLineUnit(
-                                                                line,
-                                                                value === '0'
-                                                                    ? null
-                                                                    : Number(
-                                                                          value,
-                                                                      ),
-                                                            )
-                                                        }
-                                                    >
-                                                        <SelectTrigger className="h-8 w-full gap-1 text-xs">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="0">
-                                                                {formatRupiah(
-                                                                    line.product
-                                                                        .harga_jual,
-                                                                )}{' '}
-                                                                /{' '}
-                                                                {
-                                                                    line.product
-                                                                        .satuan
-                                                                }
-                                                            </SelectItem>
-                                                            {line.product.product_units.map(
-                                                                (unit) => (
-                                                                    <SelectItem
-                                                                        key={
-                                                                            unit.id
-                                                                        }
-                                                                        value={unit.id.toString()}
-                                                                    >
-                                                                        {formatRupiah(
-                                                                            unit.harga_jual,
-                                                                        )}{' '}
-                                                                        /{' '}
-                                                                        {
-                                                                            unit.satuan
-                                                                        }
-                                                                    </SelectItem>
-                                                                ),
+                                                    <div className="flex flex-wrap items-center gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                changeLineUnit(
+                                                                    line,
+                                                                    null,
+                                                                )
+                                                            }
+                                                            className={cn(
+                                                                'rounded-md border px-2 py-1 text-xs font-medium transition-colors',
+                                                                line.productUnitId ===
+                                                                    null
+                                                                    ? 'border-primary bg-primary text-primary-foreground'
+                                                                    : 'border-input bg-background hover:bg-accent',
                                                             )}
-                                                        </SelectContent>
-                                                    </Select>
+                                                        >
+                                                            {formatRupiah(
+                                                                line.product
+                                                                    .harga_jual,
+                                                            )}{' '}
+                                                            /{' '}
+                                                            {
+                                                                line.product
+                                                                    .satuan
+                                                            }
+                                                        </button>
+                                                        {line.product.product_units.map(
+                                                            (unit) => (
+                                                                <button
+                                                                    key={
+                                                                        unit.id
+                                                                    }
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        changeLineUnit(
+                                                                            line,
+                                                                            unit.id,
+                                                                        )
+                                                                    }
+                                                                    className={cn(
+                                                                        'rounded-md border px-2 py-1 text-xs font-medium transition-colors',
+                                                                        line.productUnitId ===
+                                                                            unit.id
+                                                                            ? 'border-primary bg-primary text-primary-foreground'
+                                                                            : 'border-input bg-background hover:bg-accent',
+                                                                    )}
+                                                                >
+                                                                    {formatRupiah(
+                                                                        unit.harga_jual,
+                                                                    )}{' '}
+                                                                    /{' '}
+                                                                    {
+                                                                        unit.satuan
+                                                                    }
+                                                                </button>
+                                                            ),
+                                                        )}
+                                                    </div>
                                                 ) : (
                                                     <span className="text-xs text-muted-foreground">
                                                         {formatRupiah(
