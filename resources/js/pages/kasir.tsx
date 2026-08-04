@@ -99,6 +99,67 @@ function lineKey(productId: number, productUnitId: number | null): string {
     return `${productId}:${productUnitId ?? 'base'}`;
 }
 
+function unitKonversi(line: CartLine): number {
+    if (line.productUnitId === null) {
+        return 1;
+    }
+
+    return (
+        line.product.product_units.find((u) => u.id === line.productUnitId)
+            ?.konversi ?? 1
+    );
+}
+
+const QTY_EPSILON = 1e-6;
+
+/**
+ * Picks the cleanest satuan for a quantity expressed in the product's base
+ * unit: the one with the largest konversi that still divides evenly, so
+ * typing e.g. 0.1 DUS (= 1 RNTNG at the base) resolves to "1 RNTNG" rather
+ * than staying "0.1 DUS", and typing 10 RNTNG while on the base unit
+ * resolves up to "1 DUS". Falls back to rounding at the base unit when
+ * nothing divides evenly (a true fractional amount with no matching unit).
+ */
+function pickUnitForBaseQty(
+    product: Product,
+    baseQty: number,
+): { productUnitId: number | null; qty: number; satuan: string } {
+    const candidates = [
+        { id: null as number | null, satuan: product.satuan, konversi: 1 },
+        ...product.product_units.map((u) => ({
+            id: u.id as number | null,
+            satuan: u.satuan,
+            konversi: u.konversi,
+        })),
+    ];
+
+    const exact = candidates
+        .filter((c) => {
+            const q = baseQty / c.konversi;
+
+            return Math.abs(q - Math.round(q)) < QTY_EPSILON;
+        })
+        .sort((a, b) => b.konversi - a.konversi);
+
+    const best = exact[0] ?? candidates[0];
+    const resolvedBaseQty = exact[0]
+        ? baseQty
+        : Math.max(1, Math.round(baseQty));
+
+    return {
+        productUnitId: best.id,
+        qty: Math.max(1, Math.round(resolvedBaseQty / best.konversi)),
+        satuan: best.satuan,
+    };
+}
+
+/** typedQty is in whatever satuan the line currently has selected */
+function resolveLineQty(line: CartLine, typedQty: number) {
+    const baseQty = typedQty * unitKonversi(line);
+
+    return pickUnitForBaseQty(line.product, baseQty);
+}
+
 export default function Kasir({ products }: { products: Product[] }) {
     const [cart, setCart] = useState<CartLine[]>([]);
     const [scanError, setScanError] = useState('');
@@ -285,12 +346,58 @@ export default function Kasir({ products }: { products: Product[] }) {
         return () => window.removeEventListener('keydown', handleKeydown);
     }, [products, cart.length, paymentOpen]);
 
+    /** resolves rawQty to the cleanest satuan and merges into an existing line for that satuan if one exists */
+    function applyResolvedQty(key: string, rawQty: number) {
+        setCart((prev) => {
+            const line = prev.find((i) => i.key === key);
+
+            if (!line) {
+                return prev;
+            }
+
+            const resolved = resolveLineQty(line, rawQty > 0 ? rawQty : 1);
+            const newKey = lineKey(line.product.id, resolved.productUnitId);
+
+            if (prev.some((i) => i.key === newKey && i.key !== line.key)) {
+                return prev
+                    .filter((i) => i.key !== line.key)
+                    .map((i) =>
+                        i.key === newKey
+                            ? { ...i, qty: i.qty + resolved.qty }
+                            : i,
+                    );
+            }
+
+            return prev.map((i) =>
+                i.key === line.key
+                    ? {
+                          ...i,
+                          key: newKey,
+                          productUnitId: resolved.productUnitId,
+                          satuan: resolved.satuan,
+                          qty: resolved.qty,
+                      }
+                    : i,
+            );
+        });
+    }
+
     function changeQty(key: string, delta: number) {
-        setCart((prev) =>
-            prev
-                .map((i) => (i.key === key ? { ...i, qty: i.qty + delta } : i))
-                .filter((i) => i.qty > 0),
-        );
+        const line = cart.find((i) => i.key === key);
+
+        if (!line) {
+            return;
+        }
+
+        const nextQty = line.qty + delta;
+
+        if (nextQty <= 0) {
+            removeFromCart(key);
+
+            return;
+        }
+
+        applyResolvedQty(key, nextQty);
     }
 
     function removeFromCart(key: string) {
@@ -309,12 +416,17 @@ export default function Kasir({ products }: { products: Product[] }) {
         setCart([]);
     }
 
+    /** live-typing: keep the raw value (including a transient fraction) so decimal entry isn't clobbered mid-keystroke - commitLineQty resolves it on blur/Enter */
     function setLineQty(key: string, qty: number) {
-        setCart((prev) =>
-            prev.map((i) =>
-                i.key === key ? { ...i, qty: Math.max(1, qty || 1) } : i,
-            ),
-        );
+        setCart((prev) => prev.map((i) => (i.key === key ? { ...i, qty } : i)));
+    }
+
+    function commitLineQty(key: string) {
+        const line = cart.find((i) => i.key === key);
+
+        if (line) {
+            applyResolvedQty(key, line.qty);
+        }
     }
 
     function resetAfterCheckout() {
@@ -490,11 +602,18 @@ export default function Kasir({ products }: { products: Product[] }) {
                     </Button>
                     <Input
                         type="number"
-                        min={1}
+                        step="any"
                         value={row.qty}
                         onChange={(e) =>
                             setLineQty(row.key, Number(e.target.value))
                         }
+                        onBlur={() => commitLineQty(row.key)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.currentTarget.blur();
+                            }
+                        }}
+                        title="Boleh diisi pecahan, misalnya 0.5 - otomatis dibulatkan ke satuan yang pas"
                         className="h-8 w-14 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                     <Button
