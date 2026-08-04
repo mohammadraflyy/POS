@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { DataGrid } from 'react-data-grid';
+import type { Column } from 'react-data-grid';
+import 'react-data-grid/lib/styles.css';
 import SaleController from '@/actions/App/Http/Controllers/SaleController';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +37,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { useAppearance } from '@/hooks/use-appearance';
+import { useElementWidth } from '@/hooks/use-element-width';
 import { cn, formatRupiah } from '@/lib/utils';
 import { Receipt } from '@/pages/kasir/shared';
 import type { Sale } from '@/pages/kasir/shared';
@@ -106,6 +111,8 @@ export default function Kasir({ products }: { products: Product[] }) {
     const [paymentOpen, setPaymentOpen] = useState(false);
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [paletteQuery, setPaletteQuery] = useState('');
+    const { resolvedAppearance } = useAppearance();
+    const [cartWidthRef, cartGridWidth] = useElementWidth<HTMLDivElement>();
 
     const total = useMemo(
         () => cart.reduce((sum, line) => sum + line.qty * unitPrice(line), 0),
@@ -400,6 +407,127 @@ export default function Kasir({ products }: { products: Product[] }) {
         };
     }, [receiptSale]);
 
+    const CART_OTHER_COLUMNS_WIDTH = 220 + 130 + 130 + 50;
+    const produkWidth = Math.max(
+        200,
+        cartGridWidth - CART_OTHER_COLUMNS_WIDTH - 2,
+    );
+
+    const cartColumns: Column<CartLine>[] = [
+        {
+            key: 'produk',
+            name: 'Produk',
+            width: produkWidth,
+            renderCell: ({ row }) => (
+                <span className="font-medium">{row.product.nama_item}</span>
+            ),
+        },
+        {
+            key: 'satuan',
+            name: 'Satuan',
+            width: 220,
+            renderCell: ({ row }) =>
+                row.product.product_units.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1 py-1">
+                        <button
+                            type="button"
+                            onClick={() => changeLineUnit(row, null)}
+                            className={cn(
+                                'rounded-md border px-2 py-1 text-xs font-medium transition-colors',
+                                row.productUnitId === null
+                                    ? 'border-primary bg-primary text-primary-foreground'
+                                    : 'border-input bg-background hover:bg-accent',
+                            )}
+                        >
+                            {formatRupiah(row.product.harga_jual)} /{' '}
+                            {row.product.satuan}
+                        </button>
+                        {row.product.product_units.map((unit) => (
+                            <button
+                                key={unit.id}
+                                type="button"
+                                onClick={() => changeLineUnit(row, unit.id)}
+                                className={cn(
+                                    'rounded-md border px-2 py-1 text-xs font-medium transition-colors',
+                                    row.productUnitId === unit.id
+                                        ? 'border-primary bg-primary text-primary-foreground'
+                                        : 'border-input bg-background hover:bg-accent',
+                                )}
+                            >
+                                {formatRupiah(unit.harga_jual)} / {unit.satuan}
+                            </button>
+                        ))}
+                    </div>
+                ) : (
+                    <span className="text-xs text-muted-foreground">
+                        {formatRupiah(unitPrice(row))} / {row.satuan}
+                    </span>
+                ),
+        },
+        {
+            key: 'qty',
+            name: 'Qty',
+            width: 130,
+            renderCell: ({ row }) => (
+                <div className="flex items-center gap-1 py-1">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => changeQty(row.key, -1)}
+                    >
+                        <Minus className="size-3.5" />
+                    </Button>
+                    <Input
+                        type="number"
+                        min={1}
+                        value={row.qty}
+                        onChange={(e) =>
+                            setLineQty(row.key, Number(e.target.value))
+                        }
+                        className="h-8 w-14 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => changeQty(row.key, 1)}
+                    >
+                        <Plus className="size-3.5" />
+                    </Button>
+                </div>
+            ),
+        },
+        {
+            key: 'subtotal',
+            name: 'Subtotal',
+            width: 130,
+            renderCell: ({ row }) => (
+                <span className="font-semibold">
+                    {formatRupiah(row.qty * unitPrice(row))}
+                </span>
+            ),
+        },
+        {
+            key: 'aksi',
+            name: '',
+            width: 50,
+            renderCell: ({ row }) => (
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => removeFromCart(row.key)}
+                >
+                    <X className="size-4" />
+                </Button>
+            ),
+        },
+    ];
+
     return (
         <>
             <Head title="Penjualan" />
@@ -459,165 +587,26 @@ export default function Kasir({ products }: { products: Product[] }) {
                             untuk mulai.
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-muted/50 text-left">
-                                    <tr>
-                                        <th className="p-3">Produk</th>
-                                        <th className="w-40 p-3">Satuan</th>
-                                        <th className="w-36 p-3">Qty</th>
-                                        <th className="w-32 p-3 text-right">
-                                            Subtotal
-                                        </th>
-                                        <th className="w-10 p-3" />
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-sidebar-border/70 dark:divide-sidebar-border">
-                                    {cart.map((line) => (
-                                        <tr key={line.key}>
-                                            <td className="p-3 font-medium">
-                                                {line.product.nama_item}
-                                            </td>
-                                            <td className="p-3">
-                                                {line.product.product_units
-                                                    .length > 0 ? (
-                                                    <div className="flex flex-wrap items-center gap-1">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                changeLineUnit(
-                                                                    line,
-                                                                    null,
-                                                                )
-                                                            }
-                                                            className={cn(
-                                                                'rounded-md border px-2 py-1 text-xs font-medium transition-colors',
-                                                                line.productUnitId ===
-                                                                    null
-                                                                    ? 'border-primary bg-primary text-primary-foreground'
-                                                                    : 'border-input bg-background hover:bg-accent',
-                                                            )}
-                                                        >
-                                                            {formatRupiah(
-                                                                line.product
-                                                                    .harga_jual,
-                                                            )}{' '}
-                                                            /{' '}
-                                                            {
-                                                                line.product
-                                                                    .satuan
-                                                            }
-                                                        </button>
-                                                        {line.product.product_units.map(
-                                                            (unit) => (
-                                                                <button
-                                                                    key={
-                                                                        unit.id
-                                                                    }
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        changeLineUnit(
-                                                                            line,
-                                                                            unit.id,
-                                                                        )
-                                                                    }
-                                                                    className={cn(
-                                                                        'rounded-md border px-2 py-1 text-xs font-medium transition-colors',
-                                                                        line.productUnitId ===
-                                                                            unit.id
-                                                                            ? 'border-primary bg-primary text-primary-foreground'
-                                                                            : 'border-input bg-background hover:bg-accent',
-                                                                    )}
-                                                                >
-                                                                    {formatRupiah(
-                                                                        unit.harga_jual,
-                                                                    )}{' '}
-                                                                    /{' '}
-                                                                    {
-                                                                        unit.satuan
-                                                                    }
-                                                                </button>
-                                                            ),
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {formatRupiah(
-                                                            unitPrice(line),
-                                                        )}{' '}
-                                                        / {line.satuan}
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="flex items-center gap-1">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="size-8"
-                                                        onClick={() =>
-                                                            changeQty(
-                                                                line.key,
-                                                                -1,
-                                                            )
-                                                        }
-                                                    >
-                                                        <Minus className="size-3.5" />
-                                                    </Button>
-                                                    <Input
-                                                        type="number"
-                                                        min={1}
-                                                        value={line.qty}
-                                                        onChange={(e) =>
-                                                            setLineQty(
-                                                                line.key,
-                                                                Number(
-                                                                    e.target
-                                                                        .value,
-                                                                ),
-                                                            )
-                                                        }
-                                                        className="h-8 w-14 [appearance:textfield] px-1 text-center text-base font-semibold [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                                    />
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="size-8"
-                                                        onClick={() =>
-                                                            changeQty(
-                                                                line.key,
-                                                                1,
-                                                            )
-                                                        }
-                                                    >
-                                                        <Plus className="size-3.5" />
-                                                    </Button>
-                                                </div>
-                                            </td>
-                                            <td className="p-3 text-right font-semibold">
-                                                {formatRupiah(
-                                                    line.qty * unitPrice(line),
-                                                )}
-                                            </td>
-                                            <td className="p-3">
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="text-muted-foreground hover:text-destructive"
-                                                    onClick={() =>
-                                                        removeFromCart(line.key)
-                                                    }
-                                                >
-                                                    <X className="size-4" />
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                        <div ref={cartWidthRef}>
+                            {cartGridWidth > 0 && (
+                                <DataGrid
+                                    className={
+                                        resolvedAppearance === 'dark'
+                                            ? 'rdg-dark'
+                                            : 'rdg-light'
+                                    }
+                                    columns={cartColumns}
+                                    rows={cart}
+                                    rowKeyGetter={(row) => row.key}
+                                    rowHeight={60}
+                                    style={{
+                                        blockSize: Math.min(
+                                            400,
+                                            40 + cart.length * 60,
+                                        ),
+                                    }}
+                                />
+                            )}
                         </div>
                     )}
                 </div>
