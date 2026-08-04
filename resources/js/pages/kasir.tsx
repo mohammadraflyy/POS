@@ -667,6 +667,21 @@ export default function Kasir({ products }: { products: Product[] }) {
                         value={paletteQuery}
                         onValueChange={setPaletteQuery}
                         onKeyDown={(e) => {
+                            if (e.key === 'PageDown' || e.key === 'PageUp') {
+                                e.preventDefault();
+                                e.currentTarget.dispatchEvent(
+                                    new KeyboardEvent('keydown', {
+                                        key:
+                                            e.key === 'PageDown'
+                                                ? 'ArrowDown'
+                                                : 'ArrowUp',
+                                        bubbles: true,
+                                    }),
+                                );
+
+                                return;
+                            }
+
                             if (e.key !== 'Enter') {
                                 return;
                             }
@@ -731,6 +746,9 @@ export default function Kasir({ products }: { products: Product[] }) {
                         <span className="flex items-center gap-1">
                             <kbd className="rounded border bg-muted px-1.5 py-0.5">
                                 &uarr;&darr;
+                            </kbd>
+                            <kbd className="rounded border bg-muted px-1.5 py-0.5">
+                                PgUp/PgDn
                             </kbd>
                             pilih
                         </span>
