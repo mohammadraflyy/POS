@@ -21,10 +21,12 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.8.1",
+    "clsx": "^2.1.1",
     "drizzle-orm": "^0.34.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.28.0",
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
