@@ -313,6 +313,7 @@ describe('checkout', () => {
     }
 
     expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
   it('throws when qty is zero', () => {
@@ -327,6 +328,7 @@ describe('checkout', () => {
     }
 
     expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
   it('throws when qty is not an integer', () => {
@@ -341,6 +343,7 @@ describe('checkout', () => {
     }
 
     expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
   it('throws when bon has an empty customer name', () => {
@@ -355,6 +358,7 @@ describe('checkout', () => {
     }
 
     expect(() => checkout(db, input)).toThrow('Nama pelanggan wajib diisi untuk transaksi bon.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
   it('throws when bon customer name is only whitespace', () => {
@@ -369,6 +373,7 @@ describe('checkout', () => {
     }
 
     expect(() => checkout(db, input)).toThrow('Nama pelanggan wajib diisi untuk transaksi bon.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
   it('succeeds for bon with a real customer name (regression guard)', () => {
