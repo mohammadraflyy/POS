@@ -66,7 +66,10 @@ export function Kasir() {
     }
     refreshProducts()
     refreshSalesToday()
-    window.api.kasir.getStoreSettings().then(setStoreSettings)
+    window.api.kasir
+      .getStoreSettings()
+      .then(setStoreSettings)
+      .catch(() => setStoreSettings({ namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
@@ -314,8 +317,19 @@ export function Kasir() {
 
     window.api.kasir
       .printReceipt()
+      .then(() => {
+        if (cancelled) {
+          return
+        }
+
+        setMessage('Transaksi disimpan.')
+      })
       .catch((err) => {
-        setCheckoutError(err instanceof Error ? err.message : 'Gagal mencetak struk')
+        if (cancelled) {
+          return
+        }
+
+        setError(err instanceof Error ? err.message : 'Gagal mencetak struk')
       })
       .finally(() => {
         if (cancelled) {
@@ -323,7 +337,6 @@ export function Kasir() {
         }
 
         setReceiptSale(null)
-        setMessage('Transaksi disimpan.')
         resetAfterCheckout()
         refreshProducts()
         refreshSalesToday()
@@ -354,7 +367,7 @@ export function Kasir() {
 
   return (
     <>
-      <div className="flex-1 space-y-4 p-4 sm:p-6">
+      <div className="flex-1 space-y-4 p-4 sm:p-6 print:hidden">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{user.name}</p>
         <Button
