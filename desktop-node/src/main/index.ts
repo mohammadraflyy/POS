@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 
 let mainWindow: BrowserWindow | null
@@ -41,9 +41,3 @@ app.on('activate', () => {
 app.whenReady().then(() => {
   createWindow()
 })
-
-if (!app.isPackaged) {
-  if (process.platform === 'win32') {
-    process.env['ELECTRON_RENDERER_URL'] = `http://localhost:5173`
-  }
-}
