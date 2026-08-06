@@ -1,7 +1,20 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
+import { createDb } from './db/migrate'
+import { registerAuthIpc } from './ipc/auth'
 
 let mainWindow: BrowserWindow | null
+
+function getDbPath(): string {
+  if (app.isPackaged) {
+    return join(app.getPath('userData'), 'pos.sqlite')
+  }
+  return join(__dirname, '../../dev.sqlite')
+}
+
+function getMigrationsFolder(): string {
+  return join(__dirname, '../../drizzle')
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -9,7 +22,7 @@ function createWindow(): void {
     height: 670,
     show: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false
     }
   })
@@ -39,5 +52,7 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
+  const db = createDb(getDbPath(), getMigrationsFolder())
+  registerAuthIpc(db)
   createWindow()
 })
