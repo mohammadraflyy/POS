@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { priceForQty, resolveCartItem, type ProductRow, type ProductUnitRow } from './kasir'
+import path from 'node:path'
+import { eq } from 'drizzle-orm'
+import { createDb } from './db/migrate'
+import { users, products, productUnits, productPriceTiers, sales, saleItems } from './db/schema'
+import { checkout, type CheckoutInput } from './kasir'
 
 describe('priceForQty', () => {
   it('falls back to the base price when there are no tiers', () => {
@@ -67,5 +72,214 @@ describe('resolveCartItem', () => {
   it('throws when a product-unit purchase would exceed base-unit stock', () => {
     const unit: ProductUnitRow = { id: 9, satuan: 'DUS', konversi: 12, hargaJual: 700000_00 }
     expect(() => resolveCartItem(product, unit, [], 3)).toThrow('Stok Beras 5kg tidak cukup.')
+  })
+})
+
+describe('checkout', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedDb() {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({
+        id: 1,
+        username: 'kasir1',
+        passwordHash: 'hash',
+        name: 'Kasir Satu',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(products)
+      .values([
+        {
+          id: 1,
+          kodeItem: 'BRS5',
+          namaItem: 'Beras 5kg',
+          satuan: 'PCS',
+          hargaJual: 65000_00,
+          hargaPokok: 60000_00,
+          stok: 10,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 2,
+          kodeItem: 'MIE1',
+          namaItem: 'Mie Instan',
+          satuan: 'PCS',
+          hargaJual: 3000_00,
+          hargaPokok: 2500_00,
+          stok: 100,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run()
+
+    db.insert(productUnits)
+      .values({
+        id: 9,
+        productId: 2,
+        satuan: 'DUS',
+        konversi: 40,
+        hargaJual: 110000_00,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(productPriceTiers)
+      .values({
+        id: 1,
+        productId: 1,
+        minQty: 5,
+        hargaJual: 62000_00,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    return db
+  }
+
+  it('checks out a tunai sale with base-unit tier pricing, decrements stock, snapshots sale_items', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 310000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 5 }],
+    }
+
+    const result = checkout(db, input)
+
+    expect(result.total).toBe(5 * 62000_00)
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.total).toBe(5 * 62000_00)
+    expect(sale?.dibayar).toBe(310000_00)
+    expect(sale?.status).toBe('selesai')
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      productId: 1,
+      productUnitId: null,
+      qty: 5,
+      konversi: 1,
+      satuan: 'PCS',
+      hargaJual: 62000_00,
+      hargaPokok: 60000_00,
+      subtotal: 5 * 62000_00,
+    })
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(5)
+  })
+
+  it('checks out a product-unit line, converting qty to base-unit stock', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 110000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: 9, qty: 1 }],
+    }
+
+    checkout(db, input)
+
+    const product = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(product?.stok).toBe(60) // 100 - (1 * 40)
+  })
+
+  it('creates a bon sale with dibayar = 0, no dibayar validation', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Siti',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 3 }],
+    }
+
+    const result = checkout(db, input)
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.metodePembayaran).toBe('bon')
+    expect(sale?.namaPelanggan).toBe('Bu Siti')
+    expect(sale?.dibayar).toBe(0)
+  })
+
+  it('rolls back everything when stock is insufficient', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 999999_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 999 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Stok Beras 5kg tidak cukup.')
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(10)
+    expect(db.select().from(sales).all()).toHaveLength(0)
+  })
+
+  it('rolls back the whole transaction when dibayar is less than the total', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 1000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Uang bayar kurang dari total belanja.')
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(10)
+    expect(db.select().from(sales).all()).toHaveLength(0)
+  })
+
+  it('throws when a product does not exist', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 100_00,
+      userId: 1,
+      items: [{ productId: 999, productUnitId: null, qty: 1 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Produk tidak ditemukan.')
+  })
+
+  it('throws when the given product unit does not belong to the product', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 100_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: 9, qty: 1 }], // unit 9 belongs to product 2
+    }
+
+    expect(() => checkout(db, input)).toThrow('Satuan tidak valid untuk Beras 5kg.')
   })
 })
