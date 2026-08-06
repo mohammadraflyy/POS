@@ -1,0 +1,252 @@
+import { useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Banknote, CornerDownLeft, HandCoins } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { cn, formatRupiah } from '@/lib/utils'
+
+const actions = ['simpan', 'batal'] as const
+type Action = (typeof actions)[number]
+
+export interface PaymentDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  total: number
+  metode: 'tunai' | 'bon'
+  setMetode: (metode: 'tunai' | 'bon') => void
+  namaPelanggan: string
+  setNamaPelanggan: (value: string) => void
+  dibayar: string
+  setDibayar: (value: string) => void
+  processing: boolean
+  error: string | null
+  onSubmit: () => void
+}
+
+export function PaymentDialog({
+  open,
+  onOpenChange,
+  total,
+  metode,
+  setMetode,
+  namaPelanggan,
+  setNamaPelanggan,
+  dibayar,
+  setDibayar,
+  processing,
+  error,
+  onSubmit,
+}: PaymentDialogProps) {
+  const totalBayar = metode === 'tunai' ? Number(dibayar || 0) : 0
+  const selisih = total - totalBayar
+  const isLunas = metode === 'tunai' && selisih <= 0
+
+  // PageUp/PageDown cycle which action Enter will fire, so the whole
+  // dialog can be driven without a mouse: type the amount, PgDn/PgUp to
+  // the action you want, Enter to run it. Alt+letter shortcuts don't type
+  // into focused inputs, so those work regardless of what's focused too.
+  const [selectedAction, setSelectedAction] = useState<Action>('simpan')
+  const [prevOpen, setPrevOpen] = useState(open)
+
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+
+    if (open) {
+      setSelectedAction('simpan')
+    }
+  }
+
+  function runAction(action: Action) {
+    if (action === 'simpan') {
+      onSubmit()
+    } else {
+      onOpenChange(false)
+    }
+  }
+
+  function handleShortcut(e: ReactKeyboardEvent) {
+    if (processing) {
+      return
+    }
+
+    if (e.key === 'PageDown' || e.key === 'PageUp') {
+      e.preventDefault()
+      const index = actions.indexOf(selectedAction)
+      const delta = e.key === 'PageDown' ? 1 : -1
+      setSelectedAction(actions[(index + delta + actions.length) % actions.length])
+
+      return
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      runAction(selectedAction)
+
+      return
+    }
+
+    if (!e.altKey) {
+      return
+    }
+
+    switch (e.key.toLowerCase()) {
+      case 't':
+        e.preventDefault()
+        setMetode('tunai')
+        break
+      case 'b':
+        e.preventDefault()
+        setMetode('bon')
+        break
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[46rem]">
+        <DialogHeader>
+          <DialogTitle>Pembayaran</DialogTitle>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            onSubmit()
+          }}
+          onKeyDown={handleShortcut}
+          className="space-y-5"
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant={metode === 'tunai' ? 'default' : 'outline'}
+              disabled={processing}
+              onClick={() => setMetode('tunai')}
+            >
+              <Banknote className="size-4" />
+              Tunai
+              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+T</kbd>
+            </Button>
+            <Button
+              type="button"
+              variant={metode === 'bon' ? 'default' : 'outline'}
+              disabled={processing}
+              onClick={() => setMetode('bon')}
+            >
+              <HandCoins className="size-4" />
+              Bon
+              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+B</kbd>
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl bg-foreground px-5 py-4">
+            <span className="text-sm text-background/60">Total Tagihan</span>
+            <span className="text-4xl font-bold text-background tabular-nums">{formatRupiah(total)}</span>
+          </div>
+
+          {metode === 'tunai' ? (
+            <div className="grid gap-2">
+              <Label htmlFor="dibayar">Uang Tunai</Label>
+              <Input
+                id="dibayar"
+                autoFocus
+                inputMode="numeric"
+                placeholder="0"
+                value={dibayar}
+                disabled={processing}
+                onChange={(e) => setDibayar(e.target.value)}
+                className="h-16 text-right text-2xl font-semibold tabular-nums"
+              />
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              <Label htmlFor="nama_pelanggan">Nama Pelanggan</Label>
+              <Input
+                id="nama_pelanggan"
+                autoFocus
+                value={namaPelanggan}
+                disabled={processing}
+                onChange={(e) => setNamaPelanggan(e.target.value)}
+                className="h-16 text-xl"
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between rounded-xl bg-green-500/15 px-5 py-3.5 dark:bg-green-500/20">
+              <span className="text-sm font-semibold text-green-700 dark:text-green-400">
+                {metode === 'tunai' ? 'Dibayar' : 'Bon'}
+              </span>
+              <span className="text-2xl font-bold text-green-700 tabular-nums dark:text-green-400">
+                {formatRupiah(totalBayar)}
+              </span>
+            </div>
+
+            <div
+              className={cn(
+                'flex items-center justify-between rounded-xl px-5 py-3.5',
+                isLunas ? 'bg-green-500/15 dark:bg-green-500/20' : 'bg-orange-500/15 dark:bg-orange-500/20',
+              )}
+            >
+              <span
+                className={cn(
+                  'text-sm font-semibold',
+                  isLunas ? 'text-green-700 dark:text-green-400' : 'text-orange-700 dark:text-orange-400',
+                )}
+              >
+                {isLunas ? 'Kembalian' : 'Kekurangan'}
+              </span>
+              <span
+                className={cn(
+                  'text-2xl font-bold tabular-nums',
+                  isLunas ? 'text-green-700 dark:text-green-400' : 'text-orange-700 dark:text-orange-400',
+                )}
+              >
+                {formatRupiah(Math.abs(selisih))}
+              </span>
+            </div>
+          </div>
+
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <div className="space-y-2">
+            <Button
+              type="submit"
+              disabled={processing}
+              className={cn(
+                'w-full',
+                selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+              )}
+            >
+              {selectedAction === 'simpan' && <CornerDownLeft className="size-4" />}
+              Simpan
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={processing}
+              className={cn(
+                'w-full',
+                selectedAction === 'batal' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+              )}
+              onClick={() => onOpenChange(false)}
+            >
+              {selectedAction === 'batal' && <CornerDownLeft className="size-3.5" />}
+              Batal
+              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Esc</kbd>
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">PgUp/PgDn</kbd> pilih aksi &middot;{' '}
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd> jalankan
+            </p>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
