@@ -20,6 +20,7 @@ declare global {
             hargaJual: number
             stok: number
             productUnits: { id: number; satuan: string; konversi: number; hargaJual: number }[]
+            priceTiers: { minQty: number; hargaJual: number }[]
           }[]
         >
         listSalesToday: () => Promise<
@@ -30,6 +31,7 @@ declare global {
             status: 'selesai' | 'dibatalkan'
             total: number
             dibayar: number
+            items: { productId: number; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
           }[]
         >
         checkout: (input: {

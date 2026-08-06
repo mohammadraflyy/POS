@@ -1,8 +1,8 @@
 import { ipcMain } from 'electron'
-import { eq, gte } from 'drizzle-orm'
+import { eq, gte, inArray } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
-import { products, productUnits, sales, saleItems } from '../db/schema'
+import { products, productUnits, productPriceTiers, sales, saleItems } from '../db/schema'
 import { checkout, cancelSale, type CheckoutInput } from '../kasir'
 import { getCurrentUser } from './auth'
 
@@ -23,8 +23,13 @@ interface CheckoutRendererInput {
 
 export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle('kasir:listProducts', () => {
-    const productRows = db.select().from(products).where(eq(products.isActive, true)).all()
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const productRows = db.select().from(products).where(eq(products.isActive, true)).orderBy(products.namaItem).all()
     const unitRows = db.select().from(productUnits).all()
+    const tierRows = db.select().from(productPriceTiers).all()
 
     return productRows.map((product) => ({
       id: product.id,
@@ -41,15 +46,23 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
           konversi: unit.konversi,
           hargaJual: toRupiah(unit.hargaJual),
         })),
+      priceTiers: tierRows
+        .filter((tier) => tier.productId === product.id)
+        .map((tier) => ({ minQty: tier.minQty, hargaJual: toRupiah(tier.hargaJual) })),
     }))
   })
 
   ipcMain.handle('kasir:listSalesToday', () => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
     const startOfDay = new Date()
     startOfDay.setHours(0, 0, 0, 0)
 
     const saleRows = db.select().from(sales).where(gte(sales.createdAt, startOfDay)).all()
-    const itemRows = db.select().from(saleItems).all()
+    const saleIds = saleRows.map((sale) => sale.id)
+    const itemRows = saleIds.length > 0 ? db.select().from(saleItems).where(inArray(saleItems.saleId, saleIds)).all() : []
 
     return saleRows
       .map((sale) => ({

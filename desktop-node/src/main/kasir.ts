@@ -1,3 +1,8 @@
+import { eq, inArray, sql } from 'drizzle-orm'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import * as schema from './db/schema'
+import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments } from './db/schema'
+
 export interface PriceTier {
   minQty: number
   hargaJual: number
@@ -79,11 +84,6 @@ export function resolveCartItem(
   }
 }
 
-import { eq, inArray, sql } from 'drizzle-orm'
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import * as schema from './db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments } from './db/schema'
-
 export interface CartItemInput {
   productId: number
   productUnitId: number | null
@@ -104,6 +104,20 @@ export interface CheckoutResult {
 }
 
 export function checkout(db: BetterSQLite3Database<typeof schema>, input: CheckoutInput): CheckoutResult {
+  if (input.items.length < 1) {
+    throw new Error('Keranjang tidak boleh kosong.')
+  }
+
+  for (const item of input.items) {
+    if (!Number.isInteger(item.qty) || item.qty < 1) {
+      throw new Error('Qty harus bilangan bulat minimal 1.')
+    }
+  }
+
+  if (input.metodePembayaran === 'bon' && !input.namaPelanggan?.trim()) {
+    throw new Error('Nama pelanggan wajib diisi untuk transaksi bon.')
+  }
+
   const productIds = input.items.map((item) => item.productId)
   const productRows = db.select().from(products).where(inArray(products.id, productIds)).all()
   const productsById = new Map(productRows.map((product) => [product.id, product]))
@@ -116,6 +130,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     .all()
 
   const resolvedItems: ResolvedItem[] = []
+  const qtyDasarByProduct = new Map<number, number>()
 
   for (const item of input.items) {
     const product = productsById.get(item.productId)
@@ -137,7 +152,14 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
       .filter((row) => row.productId === product.id)
       .map((row) => ({ minQty: row.minQty, hargaJual: row.hargaJual }))
 
-    resolvedItems.push(resolveCartItem(product, unit, tiers, item.qty))
+    const resolved = resolveCartItem(product, unit, tiers, item.qty)
+    const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
+    const totalQtyDasar = previousQtyDasar + resolved.qtyDasar
+    if (product.stok < totalQtyDasar) {
+      throw new Error(`Stok ${product.namaItem} tidak cukup.`)
+    }
+    qtyDasarByProduct.set(product.id, totalQtyDasar)
+    resolvedItems.push(resolved)
   }
 
   return db.transaction((tx) => {

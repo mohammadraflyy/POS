@@ -17,6 +17,15 @@ interface ProductDto {
   hargaJual: number
   stok: number
   productUnits: ProductUnitDto[]
+  priceTiers: { minQty: number; hargaJual: number }[]
+}
+
+// Mirrors main/kasir.ts's priceForQty — duplicated (not imported) because
+// main/kasir.ts also pulls in drizzle-orm/better-sqlite3, which must not
+// end up in the renderer bundle.
+function priceForQty(priceTiers: { minQty: number; hargaJual: number }[], hargaJualDasar: number, qty: number): number {
+  const applicable = priceTiers.filter((tier) => qty >= tier.minQty).sort((a, b) => b.minQty - a.minQty)
+  return applicable[0]?.hargaJual ?? hargaJualDasar
 }
 
 interface CartLine {
@@ -46,15 +55,19 @@ export function Kasir() {
   const [dibayar, setDibayar] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    window.api.auth.me().then((result) => {
-      if (!result) {
-        navigate('/login')
-        return
-      }
-      setUser(result)
-    })
+    window.api.auth
+      .me()
+      .then((result) => {
+        if (!result) {
+          navigate('/login')
+          return
+        }
+        setUser(result)
+      })
+      .catch(() => navigate('/login'))
   }, [navigate])
 
   useEffect(() => {
@@ -66,11 +79,17 @@ export function Kasir() {
   }, [user])
 
   function refreshProducts() {
-    window.api.kasir.listProducts().then(setProducts)
+    window.api.kasir
+      .listProducts()
+      .then(setProducts)
+      .catch(() => setError('Gagal memuat data.'))
   }
 
   function refreshSalesToday() {
-    window.api.kasir.listSalesToday().then(setSalesToday)
+    window.api.kasir
+      .listSalesToday()
+      .then(setSalesToday)
+      .catch(() => setError('Gagal memuat data.'))
   }
 
   function addToCart(productId: number) {
@@ -107,7 +126,7 @@ export function Kasir() {
     if (line.productUnitId) {
       return product.productUnits.find((unit) => unit.id === line.productUnitId)?.hargaJual ?? 0
     }
-    return product.hargaJual
+    return priceForQty(product.priceTiers, product.hargaJual, line.qty)
   }
 
   const total = cart.reduce((sum, line) => sum + line.qty * lineHargaJual(line), 0)
@@ -117,6 +136,7 @@ export function Kasir() {
   async function handleCheckout() {
     setError(null)
     setMessage(null)
+    setIsSubmitting(true)
     try {
       await window.api.kasir.checkout({
         metodePembayaran,
@@ -136,11 +156,14 @@ export function Kasir() {
       refreshSalesToday()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal checkout')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   async function handleCancel(saleId: number) {
     setError(null)
+    setMessage(null)
     try {
       await window.api.kasir.cancelSale(saleId)
       refreshProducts()
@@ -276,7 +299,7 @@ export function Kasir() {
           </label>
         )}
 
-        <button onClick={handleCheckout} disabled={cart.length === 0}>
+        <button onClick={handleCheckout} disabled={cart.length === 0 || isSubmitting}>
           Checkout
         </button>
       </section>

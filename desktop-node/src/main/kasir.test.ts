@@ -219,6 +219,9 @@ describe('checkout', () => {
     expect(sale?.dibayar).toBe(0)
   })
 
+  // This case throws during the pre-transaction resolve loop (proving the
+  // pre-check, not db.transaction rollback) — the 'dibayar' rollback test
+  // below is what actually exercises the transaction rollback path.
   it('rolls back everything when stock is insufficient', () => {
     const db = seedDb()
 
@@ -282,6 +285,131 @@ describe('checkout', () => {
 
     expect(() => checkout(db, input)).toThrow('Satuan tidak valid untuk Beras 5kg.')
   })
+
+  it('throws and creates no sale when the cart is empty', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 0,
+      userId: 1,
+      items: [],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Keranjang tidak boleh kosong.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
+  })
+
+  it('throws when qty is negative', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 100_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: -1 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+  })
+
+  it('throws when qty is zero', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 100_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 0 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+  })
+
+  it('throws when qty is not an integer', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 100_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1.5 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+  })
+
+  it('throws when bon has an empty customer name', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'bon',
+      namaPelanggan: '',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Nama pelanggan wajib diisi untuk transaksi bon.')
+  })
+
+  it('throws when bon customer name is only whitespace', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'bon',
+      namaPelanggan: '   ',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Nama pelanggan wajib diisi untuk transaksi bon.')
+  })
+
+  it('succeeds for bon with a real customer name (regression guard)', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Siti',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    }
+
+    const result = checkout(db, input)
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.namaPelanggan).toBe('Bu Siti')
+  })
+
+  it('throws when the same product across two cart lines exceeds stock cumulatively', () => {
+    const db = seedDb()
+
+    // Product 2 (Mie Instan) has stok: 100 and a DUS unit with konversi 40.
+    // Neither line alone exceeds stock (70 <= 100, 40 <= 100), but combined
+    // qtyDasar is 70 + 40 = 110 > 100.
+    const input: CheckoutInput = {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 999999_00,
+      userId: 1,
+      items: [
+        { productId: 2, productUnitId: null, qty: 70 },
+        { productId: 2, productUnitId: 9, qty: 1 },
+      ],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Stok Mie Instan tidak cukup.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
+
+    const product = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(product?.stok).toBe(100)
+  })
 })
 
 describe('cancelSale', () => {
@@ -344,6 +472,64 @@ describe('cancelSale', () => {
     cancelSale(db, saleId)
 
     expect(() => cancelSale(db, saleId)).toThrow('Transaksi sudah dibatalkan.')
+  })
+
+  it('restores stock multiplied by konversi when the sale line used a product unit', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({
+        id: 1,
+        username: 'kasir1',
+        passwordHash: 'hash',
+        name: 'Kasir Satu',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 2,
+        kodeItem: 'MIE1',
+        namaItem: 'Mie Instan',
+        satuan: 'PCS',
+        hargaJual: 3000_00,
+        hargaPokok: 2500_00,
+        stok: 100,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(productUnits)
+      .values({
+        id: 9,
+        productId: 2,
+        satuan: 'DUS',
+        konversi: 40,
+        hargaJual: 110000_00,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 220000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: 9, qty: 2 }],
+    })
+
+    const afterCheckout = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(afterCheckout?.stok).toBe(20) // 100 - (2 * 40)
+
+    cancelSale(db, result.saleId)
+
+    const afterCancel = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(afterCancel?.stok).toBe(100) // restored: 20 + (2 * 40)
   })
 
   it('throws when the sale has bon payments recorded', () => {
