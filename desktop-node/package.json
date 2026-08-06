@@ -12,7 +12,9 @@
     "preview": "electron-vite preview",
     "pack": "electron-builder --publish never",
     "dist": "electron-builder",
-    "rebuild:electron": "electron-builder install-app-deps"
+    "rebuild:electron": "electron-builder install-app-deps",
+    "db:generate": "drizzle-kit generate",
+    "test": "vitest run"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
