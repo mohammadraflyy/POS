@@ -15,6 +15,7 @@ declare global {
           {
             id: number
             kodeItem: string
+            barcode: string | null
             namaItem: string
             satuan: string
             hargaJual: number

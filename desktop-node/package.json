@@ -30,6 +30,7 @@
     "drizzle-orm": "^0.34.1",
     "lucide-react": "^1.29.0",
     "react": "^19.0.0",
+    "react-data-grid": "^7.0.0-beta.61",
     "react-dom": "^19.0.0",
     "react-router-dom": "^6.28.0",
     "tailwind-merge": "^3.6.0"

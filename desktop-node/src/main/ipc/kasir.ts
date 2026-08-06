@@ -34,6 +34,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     return productRows.map((product) => ({
       id: product.id,
       kodeItem: product.kodeItem,
+      barcode: product.barcode,
       namaItem: product.namaItem,
       satuan: product.satuan,
       hargaJual: toRupiah(product.hargaJual),
