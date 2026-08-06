@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Banknote, CornerDownLeft, HandCoins } from 'lucide-react'
+import { Banknote, CornerDownLeft, HandCoins, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Spinner } from '@/components/ui/spinner'
 import { cn, formatRupiah } from '@/lib/utils'
 
-const actions = ['simpan', 'batal'] as const
+const actions = ['cetak', 'simpan', 'batal'] as const
 type Action = (typeof actions)[number]
 
 export interface PaymentDialogProps {
@@ -21,8 +22,9 @@ export interface PaymentDialogProps {
   dibayar: string
   setDibayar: (value: string) => void
   processing: boolean
+  printing: boolean
   error: string | null
-  onSubmit: () => void
+  onSubmit: (shouldPrint: boolean) => void
 }
 
 export function PaymentDialog({
@@ -36,6 +38,7 @@ export function PaymentDialog({
   dibayar,
   setDibayar,
   processing,
+  printing,
   error,
   onSubmit,
 }: PaymentDialogProps) {
@@ -47,27 +50,29 @@ export function PaymentDialog({
   // dialog can be driven without a mouse: type the amount, PgDn/PgUp to
   // the action you want, Enter to run it. Alt+letter shortcuts don't type
   // into focused inputs, so those work regardless of what's focused too.
-  const [selectedAction, setSelectedAction] = useState<Action>('simpan')
+  const [selectedAction, setSelectedAction] = useState<Action>('cetak')
   const [prevOpen, setPrevOpen] = useState(open)
 
   if (open !== prevOpen) {
     setPrevOpen(open)
 
     if (open) {
-      setSelectedAction('simpan')
+      setSelectedAction('cetak')
     }
   }
 
   function runAction(action: Action) {
-    if (action === 'simpan') {
-      onSubmit()
+    if (action === 'cetak') {
+      onSubmit(true)
+    } else if (action === 'simpan') {
+      onSubmit(false)
     } else {
       onOpenChange(false)
     }
   }
 
   function handleShortcut(e: ReactKeyboardEvent) {
-    if (processing) {
+    if (processing || printing) {
       return
     }
 
@@ -102,7 +107,7 @@ export function PaymentDialog({
         break
       case 's':
         e.preventDefault()
-        onSubmit()
+        onSubmit(false)
         break
     }
   }
@@ -116,7 +121,7 @@ export function PaymentDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            onSubmit()
+            onSubmit(true)
           }}
           onKeyDown={handleShortcut}
           className="space-y-5"
@@ -125,7 +130,7 @@ export function PaymentDialog({
             <Button
               type="button"
               variant={metode === 'tunai' ? 'default' : 'outline'}
-              disabled={processing}
+              disabled={processing || printing}
               onClick={() => setMetode('tunai')}
             >
               <Banknote className="size-4" />
@@ -135,7 +140,7 @@ export function PaymentDialog({
             <Button
               type="button"
               variant={metode === 'bon' ? 'default' : 'outline'}
-              disabled={processing}
+              disabled={processing || printing}
               onClick={() => setMetode('bon')}
             >
               <HandCoins className="size-4" />
@@ -158,7 +163,7 @@ export function PaymentDialog({
                 inputMode="numeric"
                 placeholder="0"
                 value={dibayar}
-                disabled={processing}
+                disabled={processing || printing}
                 onChange={(e) => setDibayar(e.target.value)}
                 className="h-16 text-right text-2xl font-semibold tabular-nums"
               />
@@ -170,7 +175,7 @@ export function PaymentDialog({
                 id="nama_pelanggan"
                 autoFocus
                 value={namaPelanggan}
-                disabled={processing}
+                disabled={processing || printing}
                 onChange={(e) => setNamaPelanggan(e.target.value)}
                 className="h-16 text-xl"
               />
@@ -218,37 +223,59 @@ export function PaymentDialog({
             </p>
           )}
 
-          <div className="space-y-2">
-            <Button
-              type="submit"
-              disabled={processing}
-              className={cn(
-                'w-full',
-                selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
-              )}
-            >
-              {selectedAction === 'simpan' && <CornerDownLeft className="size-4" />}
-              Simpan
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={processing}
-              className={cn(
-                'w-full',
-                selectedAction === 'batal' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
-              )}
-              onClick={() => onOpenChange(false)}
-            >
-              {selectedAction === 'batal' && <CornerDownLeft className="size-3.5" />}
-              Batal
-              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Esc</kbd>
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              <kbd className="rounded border bg-muted px-1.5 py-0.5">PgUp/PgDn</kbd> pilih aksi &middot;{' '}
-              <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd> jalankan
-            </p>
-          </div>
+          {printing ? (
+            <div className="flex items-center justify-center gap-2 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
+              <Spinner />
+              Mencetak struk...
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Button
+                type="submit"
+                disabled={processing}
+                className={cn(
+                  'w-full',
+                  selectedAction === 'cetak' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                )}
+              >
+                {selectedAction === 'cetak' && <CornerDownLeft className="size-4" />}
+                <Printer className="size-4" />
+                Simpan + Cetak
+              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={processing}
+                  className={cn(
+                    selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                  )}
+                  onClick={() => onSubmit(false)}
+                >
+                  {selectedAction === 'simpan' && <CornerDownLeft className="size-3.5" />}
+                  Simpan
+                  <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+S</kbd>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={processing}
+                  className={cn(
+                    selectedAction === 'batal' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                  )}
+                  onClick={() => onOpenChange(false)}
+                >
+                  {selectedAction === 'batal' && <CornerDownLeft className="size-3.5" />}
+                  Batal
+                  <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Esc</kbd>
+                </Button>
+              </div>
+              <p className="text-center text-xs text-muted-foreground">
+                <kbd className="rounded border bg-muted px-1.5 py-0.5">PgUp/PgDn</kbd> pilih aksi &middot;{' '}
+                <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd> jalankan
+              </p>
+            </div>
+          )}
         </form>
       </DialogContent>
     </Dialog>
