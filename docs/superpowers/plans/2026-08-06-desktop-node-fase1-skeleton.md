@@ -19,6 +19,14 @@
 - Schema must match the existing Laravel migrations column-for-column (source of truth: `database/migrations/*create_{products,categories,product_units,product_price_tiers,product_price_histories,suppliers,purchases,purchase_items,sales,sale_items,bon_payments,stock_adjustments,store_settings}*.php`), except `users`, which is new/simplified for this app.
 - Printing, barcode scanning UI, and all business pages (Kasir, Inventory, etc.) are **out of scope** for this plan — Fase 2+.
 
+## Environment Notes (native module toolchain — read before Task 3 or Task 7)
+
+`better-sqlite3` is a native module and needs a working C++ toolchain to build. On this dev machine:
+
+- The bundled npm's `node-gyp` (9.4.x) does not recognize the installed Visual Studio 2026 Build Tools ("unknown version 'undefined'") — this is a real node-gyp version limitation, not a missing-toolchain problem. Fix already applied: `node-gyp@latest` (13.x, which does support VS 2026) was added as a devDependency in Task 1. If a fresh checkout hits the same "could not find any Visual Studio installation to use" error, the fix is `npm install -D node-gyp@latest` then rebuild (see below) — do not attempt to install a different Visual Studio version.
+- `better-sqlite3`'s compiled `.node` binary is ABI-specific: **plain Node** (used by Vitest — Tasks 3, 4, 5) and **Electron's bundled Node** (used by `npm run dev` — Task 7) need *different* builds of the same file, and installing one overwrites the other. As of the end of Task 1, the module is built for **plain Node** (Vitest works). Task 7's manual verification (which runs the real Electron app) must run `npm run rebuild:electron` (added in Task 1 — wraps `electron-builder install-app-deps`) immediately before `npm run dev` to switch to the Electron ABI. Nothing after Task 7 needs the plain-Node ABI again in this plan, so no further switching back is required.
+- If a build ever needs to switch back to plain Node (e.g. re-running Vitest after Task 7), run `npm rebuild better-sqlite3` from a Visual Studio Developer Command Prompt (or `cmd /c` with `vcvars64.bat` called first) — plain `npm rebuild` from a regular shell will fail with the VS-detection error above unless `cl.exe` is already on `PATH`.
+
 ---
 
 ## Task 1: Scaffold the Electron + Vite + React + TypeScript project
@@ -905,8 +913,11 @@ Expected: `dev.sqlite` exists in `desktop-node/` with the `admin`/`password` use
 
 - [ ] **Step 8: Manual end-to-end verification**
 
+`better-sqlite3` must be built for Electron's ABI before running the real app (see "Environment Notes" near the top of this plan — it's currently built for plain Node, which Tasks 3-6 needed for Vitest):
+
 ```bash
 cd desktop-node
+npm run rebuild:electron
 npm run dev
 ```
 
