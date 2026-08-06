@@ -12,6 +12,7 @@ import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
 import { addLine, applyQty, changeUnit, lineKey, unitPrice, type CartLine, type Product } from './kasir/cart-logic'
+import { Receipt, type ReceiptSale, type StoreSettingsDto } from './kasir/Receipt'
 
 interface SaleDto {
   id: number
@@ -36,6 +37,8 @@ export function Kasir() {
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [receiptSale, setReceiptSale] = useState<ReceiptSale | null>(null)
+  const [storeSettings, setStoreSettings] = useState<StoreSettingsDto | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
@@ -63,6 +66,7 @@ export function Kasir() {
     }
     refreshProducts()
     refreshSalesToday()
+    window.api.kasir.getStoreSettings().then(setStoreSettings)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
@@ -260,13 +264,13 @@ export function Kasir() {
     setDibayar('')
   }
 
-  async function handleCheckout() {
+  async function handleCheckout(shouldPrint: boolean) {
     setProcessing(true)
     setCheckoutError(null)
     setMessage(null)
 
     try {
-      await window.api.kasir.checkout({
+      const sale = await window.api.kasir.checkout({
         metodePembayaran: metode,
         namaPelanggan: metode === 'bon' ? namaPelanggan : null,
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
@@ -276,6 +280,15 @@ export function Kasir() {
           qty: line.qty,
         })),
       })
+
+      if (shouldPrint) {
+        // Keep the dialog open (showing this sale's totals) until printing
+        // actually finishes - it resets and closes from the print effect
+        // below instead.
+        setReceiptSale(sale)
+        return
+      }
+
       setMessage('Transaksi disimpan.')
       setCheckoutError(null)
       resetAfterCheckout()
@@ -287,6 +300,40 @@ export function Kasir() {
       setProcessing(false)
     }
   }
+
+  // The Receipt component (rendered hidden below, shown via .receipt-print
+  // in assets/main.css) needs to actually be in the DOM before printReceipt
+  // captures the window's content - this effect runs after React commits
+  // the render triggered by setReceiptSale, so it's already there by now.
+  useEffect(() => {
+    if (!receiptSale) {
+      return
+    }
+
+    let cancelled = false
+
+    window.api.kasir
+      .printReceipt()
+      .catch((err) => {
+        setCheckoutError(err instanceof Error ? err.message : 'Gagal mencetak struk')
+      })
+      .finally(() => {
+        if (cancelled) {
+          return
+        }
+
+        setReceiptSale(null)
+        setMessage('Transaksi disimpan.')
+        resetAfterCheckout()
+        refreshProducts()
+        refreshSalesToday()
+      })
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receiptSale])
 
   async function handleCancel(saleId: number) {
     setError(null)
@@ -306,7 +353,8 @@ export function Kasir() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 sm:p-6">
+    <>
+      <div className="flex-1 space-y-4 p-4 sm:p-6">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{user.name}</p>
         <Button
@@ -437,6 +485,7 @@ export function Kasir() {
         dibayar={dibayar}
         setDibayar={setDibayar}
         processing={processing}
+        printing={receiptSale !== null}
         error={checkoutError}
         onSubmit={handleCheckout}
       />
@@ -484,6 +533,9 @@ export function Kasir() {
           </table>
         </div>
       </section>
-    </div>
+      </div>
+
+      {receiptSale && storeSettings && <Receipt sale={receiptSale} storeSettings={storeSettings} />}
+    </>
   )
 }
