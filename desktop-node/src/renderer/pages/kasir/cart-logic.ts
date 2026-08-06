@@ -31,6 +31,9 @@ export interface CartLine {
   qty: number
 }
 
+// Mirrors main/kasir.ts's priceForQty — duplicated (not imported) because
+// main/kasir.ts also pulls in drizzle-orm/better-sqlite3, which must not
+// end up in the renderer bundle.
 export function priceForQty(priceTiers: PriceTier[], hargaJualDasar: number, qty: number): number {
   const applicable = priceTiers.filter((tier) => qty >= tier.minQty).sort((a, b) => b.minQty - a.minQty)
   return applicable[0]?.hargaJual ?? hargaJualDasar
@@ -98,4 +101,63 @@ export function pickUnitForBaseQty(
 export function resolveLineQty(line: CartLine, typedQty: number) {
   const baseQty = typedQty * unitKonversi(line)
   return pickUnitForBaseQty(line.product, baseQty)
+}
+
+/** adds one base-unit qty for product, merging into the existing base-unit line if present */
+export function addLine(cart: CartLine[], product: Product): CartLine[] {
+  const key = lineKey(product.id, null)
+  const existing = cart.find((i) => i.key === key)
+
+  if (existing) {
+    return cart.map((i) => (i.key === key ? { ...i, qty: i.qty + 1 } : i))
+  }
+
+  return [...cart, { key, product, productUnitId: null, satuan: product.satuan, qty: 1 }]
+}
+
+/** moves line onto productUnitId, merging into an existing line for that unit if one exists */
+export function changeUnit(cart: CartLine[], line: CartLine, productUnitId: number | null): CartLine[] {
+  const newKey = lineKey(line.product.id, productUnitId)
+
+  if (newKey === line.key) {
+    return cart
+  }
+
+  if (cart.some((i) => i.key === newKey)) {
+    return cart
+      .filter((i) => i.key !== line.key)
+      .map((i) => (i.key === newKey ? { ...i, qty: i.qty + line.qty } : i))
+  }
+
+  const unit = line.product.productUnits.find((u) => u.id === productUnitId)
+
+  return cart.map((i) =>
+    i.key === line.key
+      ? { ...i, key: newKey, productUnitId, satuan: unit?.satuan ?? line.product.satuan }
+      : i,
+  )
+}
+
+/** resolves rawQty to the cleanest satuan and merges into an existing line for that satuan if one exists */
+export function applyQty(cart: CartLine[], key: string, rawQty: number): CartLine[] {
+  const line = cart.find((i) => i.key === key)
+
+  if (!line) {
+    return cart
+  }
+
+  const resolved = resolveLineQty(line, rawQty > 0 ? rawQty : 1)
+  const newKey = lineKey(line.product.id, resolved.productUnitId)
+
+  if (cart.some((i) => i.key === newKey && i.key !== line.key)) {
+    return cart
+      .filter((i) => i.key !== line.key)
+      .map((i) => (i.key === newKey ? { ...i, qty: i.qty + resolved.qty } : i))
+  }
+
+  return cart.map((i) =>
+    i.key === line.key
+      ? { ...i, key: newKey, productUnitId: resolved.productUnitId, satuan: resolved.satuan, qty: resolved.qty }
+      : i,
+  )
 }

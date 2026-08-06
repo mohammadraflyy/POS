@@ -15,6 +15,7 @@ export interface CommandPaletteProps {
   query: string
   onQueryChange: (query: string) => void
   results: Product[]
+  products: Product[]
   onSelect: (product: Product) => void
   onCloseAutoFocus: (event: Event) => void
 }
@@ -25,6 +26,7 @@ export function CommandPalette({
   query,
   onQueryChange,
   results,
+  products,
   onSelect,
   onCloseAutoFocus,
 }: CommandPaletteProps) {
@@ -58,7 +60,7 @@ export function CommandPalette({
           }
 
           const code = query.trim()
-          const product = results.find((p) => p.barcode === code)
+          const product = products.find((p) => p.barcode === code)
 
           if (!product) {
             return

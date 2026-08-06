@@ -11,7 +11,7 @@ import type { AuthUser } from '../types'
 import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
-import { lineKey, resolveLineQty, unitPrice, type CartLine, type Product } from './kasir/cart-logic'
+import { addLine, applyQty, changeUnit, lineKey, unitPrice, type CartLine, type Product } from './kasir/cart-logic'
 
 interface SaleDto {
   id: number
@@ -34,6 +34,7 @@ export function Kasir() {
   const [dibayar, setDibayar] = useState('')
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -95,42 +96,12 @@ export function Kasir() {
   }, [products, paletteQuery])
 
   function addProductToCart(product: Product) {
-    const key = lineKey(product.id, null)
-    lastTouchedKeyRef.current = key
-
-    setCart((prev) => {
-      const existing = prev.find((i) => i.key === key)
-
-      if (existing) {
-        return prev.map((i) => (i.key === key ? { ...i, qty: i.qty + 1 } : i))
-      }
-
-      return [...prev, { key, product, productUnitId: null, satuan: product.satuan, qty: 1 }]
-    })
+    lastTouchedKeyRef.current = lineKey(product.id, null)
+    setCart((prev) => addLine(prev, product))
   }
 
   function changeLineUnit(line: CartLine, productUnitId: number | null) {
-    const newKey = lineKey(line.product.id, productUnitId)
-
-    if (newKey === line.key) {
-      return
-    }
-
-    setCart((prev) => {
-      if (prev.some((i) => i.key === newKey)) {
-        return prev
-          .filter((i) => i.key !== line.key)
-          .map((i) => (i.key === newKey ? { ...i, qty: i.qty + line.qty } : i))
-      }
-
-      const unit = line.product.productUnits.find((u) => u.id === productUnitId)
-
-      return prev.map((i) =>
-        i.key === line.key
-          ? { ...i, key: newKey, productUnitId, satuan: unit?.satuan ?? line.product.satuan }
-          : i,
-      )
-    })
+    setCart((prev) => changeUnit(prev, line, productUnitId))
   }
 
   // Hardware scanners type a barcode + Enter almost instantly (unlike a
@@ -220,30 +191,8 @@ export function Kasir() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, cart.length, paymentOpen])
 
-  /** resolves rawQty to the cleanest satuan and merges into an existing line for that satuan if one exists */
   function applyResolvedQty(key: string, rawQty: number) {
-    setCart((prev) => {
-      const line = prev.find((i) => i.key === key)
-
-      if (!line) {
-        return prev
-      }
-
-      const resolved = resolveLineQty(line, rawQty > 0 ? rawQty : 1)
-      const newKey = lineKey(line.product.id, resolved.productUnitId)
-
-      if (prev.some((i) => i.key === newKey && i.key !== line.key)) {
-        return prev
-          .filter((i) => i.key !== line.key)
-          .map((i) => (i.key === newKey ? { ...i, qty: i.qty + resolved.qty } : i))
-      }
-
-      return prev.map((i) =>
-        i.key === line.key
-          ? { ...i, key: newKey, productUnitId: resolved.productUnitId, satuan: resolved.satuan, qty: resolved.qty }
-          : i,
-      )
-    })
+    setCart((prev) => applyQty(prev, key, rawQty))
   }
 
   function removeFromCart(key: string) {
@@ -313,7 +262,7 @@ export function Kasir() {
 
   async function handleCheckout() {
     setProcessing(true)
-    setError(null)
+    setCheckoutError(null)
     setMessage(null)
 
     try {
@@ -328,11 +277,12 @@ export function Kasir() {
         })),
       })
       setMessage('Transaksi disimpan.')
+      setCheckoutError(null)
       resetAfterCheckout()
       refreshProducts()
       refreshSalesToday()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal checkout')
+      setCheckoutError(err instanceof Error ? err.message : 'Gagal checkout')
     } finally {
       setProcessing(false)
     }
@@ -431,6 +381,10 @@ export function Kasir() {
           <kbd className="rounded border bg-muted px-1.5 py-0.5">Alt+K</kbd>
           Kosongkan
         </span>
+        <span className="flex items-center gap-1">
+          <kbd className="rounded border bg-muted px-1.5 py-0.5">F2</kbd>
+          Edit Qty
+        </span>
         <span>Klik pill satuan untuk ganti satuan</span>
       </div>
 
@@ -483,7 +437,7 @@ export function Kasir() {
         dibayar={dibayar}
         setDibayar={setDibayar}
         processing={processing}
-        error={error}
+        error={checkoutError}
         onSubmit={handleCheckout}
       />
 
@@ -493,6 +447,7 @@ export function Kasir() {
         query={paletteQuery}
         onQueryChange={setPaletteQuery}
         results={paletteResults}
+        products={products}
         onSelect={(product) => {
           addProductToCart(product)
           setPaletteQuery('')

@@ -100,6 +100,10 @@ export function PaymentDialog({
         e.preventDefault()
         setMetode('bon')
         break
+      case 's':
+        e.preventDefault()
+        onSubmit()
+        break
     }
   }
 

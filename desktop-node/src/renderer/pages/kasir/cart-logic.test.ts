@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { lineKey, pickUnitForBaseQty, resolveLineQty, unitKonversi, unitPrice, type CartLine, type Product } from './cart-logic'
+import {
+  addLine,
+  applyQty,
+  changeUnit,
+  lineKey,
+  pickUnitForBaseQty,
+  resolveLineQty,
+  unitKonversi,
+  unitPrice,
+  type CartLine,
+  type Product,
+} from './cart-logic'
 
 const product: Product = {
   id: 1,
@@ -65,5 +76,48 @@ describe('resolveLineQty', () => {
   it('resolves a typed qty while already on a derived unit', () => {
     const line: CartLine = { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1 }
     expect(resolveLineQty(line, 0.5)).toEqual({ productUnitId: null, qty: 6, satuan: 'PCS' })
+  })
+})
+
+describe('addLine', () => {
+  it('adds a new base-unit line for a product not yet in the cart', () => {
+    const result = addLine([], product)
+    expect(result).toEqual([{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }])
+  })
+
+  it('increments qty when the product is already in the cart at the base unit', () => {
+    const cart: CartLine[] = [{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2 }]
+    const result = addLine(cart, product)
+    expect(result).toEqual([{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 3 }])
+  })
+})
+
+describe('changeUnit', () => {
+  it('moves a line onto a unit not yet in the cart', () => {
+    const line: CartLine = { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2 }
+    const result = changeUnit([line], line, 9)
+    expect(result).toEqual([{ key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2 }])
+  })
+
+  it('merges into an existing line at the target unit, combining qty', () => {
+    const baseLine: CartLine = { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 3 }
+    const dusLine: CartLine = { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2 }
+    const result = changeUnit([baseLine, dusLine], baseLine, 9)
+    expect(result).toEqual([{ key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 5 }])
+  })
+})
+
+describe('applyQty', () => {
+  it('moves a line onto the resolved unit when no existing line occupies it', () => {
+    const cart: CartLine[] = [{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }]
+    const result = applyQty(cart, lineKey(1, null), 24)
+    expect(result).toEqual([{ key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2 }])
+  })
+
+  it('merges into an existing line at the resolved unit, combining qty', () => {
+    const baseLine: CartLine = { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }
+    const dusLine: CartLine = { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1 }
+    const result = applyQty([baseLine, dusLine], baseLine.key, 24)
+    expect(result).toEqual([{ key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 3 }])
   })
 })
