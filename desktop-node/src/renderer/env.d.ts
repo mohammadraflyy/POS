@@ -40,7 +40,16 @@ declare global {
           namaPelanggan: string | null
           dibayar: number | null
           items: { productId: number; productUnitId: number | null; qty: number }[]
-        }) => Promise<{ saleId: number; total: number }>
+        }) => Promise<{
+          saleId: number
+          total: number
+          dibayar: number
+          metodePembayaran: 'tunai' | 'bon'
+          namaPelanggan: string | null
+          createdAt: string
+          kasirName: string | null
+          items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
+        }>
         cancelSale: (saleId: number) => Promise<void>
         getStoreSettings: () => Promise<{
           namaToko: string

@@ -102,7 +102,29 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     const result = checkout(db, checkoutInput)
-    return { saleId: result.saleId, total: toRupiah(result.total) }
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()!
+    const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    const productIds = itemRows.map((item) => item.productId)
+    const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
+    const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
+
+    return {
+      saleId: result.saleId,
+      total: toRupiah(result.total),
+      dibayar: toRupiah(sale.dibayar),
+      metodePembayaran: sale.metodePembayaran,
+      namaPelanggan: sale.namaPelanggan,
+      createdAt: sale.createdAt.toISOString(),
+      kasirName: user.name,
+      items: itemRows.map((item) => ({
+        namaItem: productNameById.get(item.productId) ?? '',
+        qty: item.qty,
+        satuan: item.satuan,
+        hargaJual: toRupiah(item.hargaJual),
+        subtotal: toRupiah(item.subtotal),
+      })),
+    }
   })
 
   ipcMain.handle('kasir:cancelSale', (_event, saleId: number) => {
