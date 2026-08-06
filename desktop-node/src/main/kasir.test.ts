@@ -3,8 +3,8 @@ import { priceForQty, resolveCartItem, type ProductRow, type ProductUnitRow } fr
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { users, products, productUnits, productPriceTiers, sales, saleItems } from './db/schema'
-import { checkout, type CheckoutInput } from './kasir'
+import { users, products, productUnits, productPriceTiers, sales, saleItems, bonPayments } from './db/schema'
+import { checkout, type CheckoutInput, cancelSale } from './kasir'
 
 describe('priceForQty', () => {
   it('falls back to the base price when there are no tiers', () => {
@@ -281,5 +281,84 @@ describe('checkout', () => {
     }
 
     expect(() => checkout(db, input)).toThrow('Satuan tidak valid untuk Beras 5kg.')
+  })
+})
+
+describe('cancelSale', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedDbWithOneSale() {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({
+        id: 1,
+        username: 'kasir1',
+        passwordHash: 'hash',
+        name: 'Kasir Satu',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        satuan: 'PCS',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 5,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 400000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 5 }],
+    })
+
+    return { db, saleId: result.saleId }
+  }
+
+  it('restores stock and marks the sale as dibatalkan', () => {
+    const { db, saleId } = seedDbWithOneSale()
+
+    cancelSale(db, saleId)
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(5)
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.status).toBe('dibatalkan')
+  })
+
+  it('throws when the sale is already cancelled', () => {
+    const { db, saleId } = seedDbWithOneSale()
+    cancelSale(db, saleId)
+
+    expect(() => cancelSale(db, saleId)).toThrow('Transaksi sudah dibatalkan.')
+  })
+
+  it('throws when the sale has bon payments recorded', () => {
+    const { db, saleId } = seedDbWithOneSale()
+    const now = new Date()
+
+    db.insert(bonPayments)
+      .values({ saleId, jumlah: 10000_00, tanggal: '2026-08-06', createdAt: now, updatedAt: now })
+      .run()
+
+    expect(() => cancelSale(db, saleId)).toThrow('Tidak bisa membatalkan, bon sudah ada pembayaran.')
+  })
+
+  it('throws when the sale does not exist', () => {
+    const { db } = seedDbWithOneSale()
+    expect(() => cancelSale(db, 999)).toThrow('Transaksi tidak ditemukan.')
   })
 })

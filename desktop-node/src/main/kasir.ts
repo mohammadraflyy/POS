@@ -82,7 +82,7 @@ export function resolveCartItem(
 import { eq, inArray, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems } from './db/schema'
+import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments } from './db/schema'
 
 export interface CartItemInput {
   productId: number
@@ -194,5 +194,36 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     }
 
     return { saleId: sale.id, total }
+  })
+}
+
+export function cancelSale(db: BetterSQLite3Database<typeof schema>, saleId: number): void {
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  if (sale.status === 'dibatalkan') {
+    throw new Error('Transaksi sudah dibatalkan.')
+  }
+
+  const hasBonPayment = db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).get()
+
+  if (hasBonPayment) {
+    throw new Error('Tidak bisa membatalkan, bon sudah ada pembayaran.')
+  }
+
+  const items = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+
+  db.transaction((tx) => {
+    for (const item of items) {
+      tx.update(products)
+        .set({ stok: sql`${products.stok} + ${item.qty * item.konversi}` })
+        .where(eq(products.id, item.productId))
+        .run()
+    }
+
+    tx.update(sales).set({ status: 'dibatalkan' }).where(eq(sales.id, saleId)).run()
   })
 }
