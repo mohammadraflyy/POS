@@ -7,6 +7,10 @@ import { registerKasirIpc } from './ipc/kasir'
 let mainWindow: BrowserWindow | null
 let db: ReturnType<typeof createDb> | null = null
 
+export function getMainWindow(): BrowserWindow | null {
+  return mainWindow
+}
+
 function getDbPath(): string {
   if (app.isPackaged) {
     return join(app.getPath('userData'), 'pos.sqlite')

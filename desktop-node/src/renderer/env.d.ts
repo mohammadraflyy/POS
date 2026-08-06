@@ -42,6 +42,13 @@ declare global {
           items: { productId: number; productUnitId: number | null; qty: number }[]
         }) => Promise<{ saleId: number; total: number }>
         cancelSale: (saleId: number) => Promise<void>
+        getStoreSettings: () => Promise<{
+          namaToko: string
+          alamat: string | null
+          telepon: string | null
+          pesanFooter: string | null
+        }>
+        printReceipt: () => Promise<void>
       }
     }
   }

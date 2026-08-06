@@ -2,9 +2,10 @@ import { ipcMain } from 'electron'
 import { eq, gte, inArray } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems } from '../db/schema'
+import { products, productUnits, productPriceTiers, sales, saleItems, storeSettings } from '../db/schema'
 import { checkout, cancelSale, type CheckoutInput } from '../kasir'
 import { getCurrentUser } from './auth'
+import { getMainWindow } from '../index'
 
 function toRupiah(cents: number): number {
   return cents / 100
@@ -110,5 +111,42 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       throw new Error('Silakan login terlebih dahulu.')
     }
     cancelSale(db, saleId)
+  })
+
+  ipcMain.handle('kasir:getStoreSettings', () => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const setting = db.select().from(storeSettings).get()
+
+    return {
+      namaToko: setting?.namaToko ?? 'Toko',
+      alamat: setting?.alamat ?? null,
+      telepon: setting?.telepon ?? null,
+      pesanFooter: setting?.pesanFooter ?? null,
+    }
+  })
+
+  ipcMain.handle('kasir:printReceipt', () => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const window = getMainWindow()
+
+    if (!window) {
+      throw new Error('Jendela aplikasi tidak ditemukan.')
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      window.webContents.print({ silent: true }, (success, errorType) => {
+        if (success) {
+          resolve()
+        } else {
+          reject(new Error(errorType || 'Gagal mencetak struk.'))
+        }
+      })
+    })
   })
 }

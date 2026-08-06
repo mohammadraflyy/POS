@@ -23,6 +23,8 @@ const api = {
       items: { productId: number; productUnitId: number | null; qty: number }[]
     }) => invoke('kasir:checkout', input),
     cancelSale: (saleId: number) => invoke('kasir:cancelSale', saleId),
+    getStoreSettings: () => invoke('kasir:getStoreSettings'),
+    printReceipt: () => invoke('kasir:printReceipt'),
   },
 }
 
