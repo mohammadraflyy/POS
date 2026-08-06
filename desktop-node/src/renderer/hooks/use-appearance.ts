@@ -59,7 +59,10 @@ const mediaQuery = (): MediaQueryList | null => {
   return window.matchMedia('(prefers-color-scheme: dark)')
 }
 
-const handleSystemThemeChange = (): void => applyTheme(currentAppearance)
+const handleSystemThemeChange = (): void => {
+  applyTheme(currentAppearance)
+  notify()
+}
 
 export function initializeTheme(): void {
   if (typeof window === 'undefined') {

@@ -48,7 +48,7 @@ export interface CartGridProps {
   cart: CartLine[]
   width: number
   resolvedAppearance: 'light' | 'dark'
-  gridRef: RefObject<DataGridHandle>
+  gridRef: RefObject<DataGridHandle | null>
   onRowsChange: (rows: CartLine[], data: RowsChangeData<CartLine>) => void
   onCellKeyDown: (args: CellKeyDownArgs<CartLine>, event: CellKeyboardEvent) => void
   onChangeUnit: (line: CartLine, productUnitId: number | null) => void
