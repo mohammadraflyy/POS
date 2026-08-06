@@ -13,6 +13,17 @@ const api = {
     logout: () => invoke('auth:logout'),
     me: () => invoke('auth:me'),
   },
+  kasir: {
+    listProducts: () => invoke('kasir:listProducts'),
+    listSalesToday: () => invoke('kasir:listSalesToday'),
+    checkout: (input: {
+      metodePembayaran: 'tunai' | 'bon'
+      namaPelanggan: string | null
+      dibayar: number | null
+      items: { productId: number; productUnitId: number | null; qty: number }[]
+    }) => invoke('kasir:checkout', input),
+    cancelSale: (saleId: number) => invoke('kasir:cancelSale', saleId),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

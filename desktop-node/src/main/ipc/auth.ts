@@ -19,3 +19,7 @@ export function registerAuthIpc(db: BetterSQLite3Database<typeof schema>) {
     return currentUser
   })
 }
+
+export function getCurrentUser(): AuthUser | null {
+  return currentUser
+}

@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { createDb } from './db/migrate'
 import { registerAuthIpc } from './ipc/auth'
+import { registerKasirIpc } from './ipc/kasir'
 
 let mainWindow: BrowserWindow | null
 let db: ReturnType<typeof createDb> | null = null
@@ -55,6 +56,7 @@ app.on('activate', () => {
 app.whenReady().then(() => {
   db = createDb(getDbPath(), getMigrationsFolder())
   registerAuthIpc(db)
+  registerKasirIpc(db)
   createWindow()
 })
 
