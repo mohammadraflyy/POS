@@ -7,13 +7,18 @@ export function Home() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    window.api.auth.me().then((result) => {
-      if (!result) {
+    window.api.auth
+      .me()
+      .then((result) => {
+        if (!result) {
+          navigate('/login')
+          return
+        }
+        setUser(result)
+      })
+      .catch(() => {
         navigate('/login')
-        return
-      }
-      setUser(result)
-    })
+      })
   }, [navigate])
 
   if (!user) {

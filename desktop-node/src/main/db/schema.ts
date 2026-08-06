@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 function timestamps() {
   return {
@@ -28,8 +28,8 @@ export const products = sqliteTable('products', {
   namaItem: text('nama_item').notNull(),
   categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
   satuan: text('satuan').notNull(),
-  hargaPokok: real('harga_pokok').notNull().default(0),
-  hargaJual: real('harga_jual').notNull().default(0),
+  hargaPokok: integer('harga_pokok').notNull().default(0),
+  hargaJual: integer('harga_jual').notNull().default(0),
   stok: integer('stok').notNull().default(0),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   ...timestamps(),
@@ -40,7 +40,7 @@ export const productUnits = sqliteTable('product_units', {
   productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
   satuan: text('satuan').notNull(),
   konversi: integer('konversi').notNull(),
-  hargaJual: real('harga_jual').notNull(),
+  hargaJual: integer('harga_jual').notNull(),
   ...timestamps(),
 }, (table) => ({
   productSatuanUnique: uniqueIndex('product_units_product_id_satuan_unique').on(table.productId, table.satuan),
@@ -50,7 +50,7 @@ export const productPriceTiers = sqliteTable('product_price_tiers', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
   minQty: integer('min_qty').notNull(),
-  hargaJual: real('harga_jual').notNull(),
+  hargaJual: integer('harga_jual').notNull(),
   ...timestamps(),
 }, (table) => ({
   productMinQtyUnique: uniqueIndex('product_price_tiers_product_id_min_qty_unique').on(table.productId, table.minQty),
@@ -60,10 +60,10 @@ export const productPriceHistories = sqliteTable('product_price_histories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
-  hargaPokokLama: real('harga_pokok_lama').notNull(),
-  hargaPokokBaru: real('harga_pokok_baru').notNull(),
-  hargaJualLama: real('harga_jual_lama').notNull(),
-  hargaJualBaru: real('harga_jual_baru').notNull(),
+  hargaPokokLama: integer('harga_pokok_lama').notNull(),
+  hargaPokokBaru: integer('harga_pokok_baru').notNull(),
+  hargaJualLama: integer('harga_jual_lama').notNull(),
+  hargaJualBaru: integer('harga_jual_baru').notNull(),
   ...timestamps(),
 })
 
@@ -80,8 +80,8 @@ export const purchases = sqliteTable('purchases', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   supplierId: integer('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
-  tanggal: integer('tanggal', { mode: 'timestamp' }).notNull(),
-  total: real('total').notNull().default(0),
+  tanggal: text('tanggal').notNull(),
+  total: integer('total').notNull().default(0),
   catatan: text('catatan'),
   ...timestamps(),
 })
@@ -91,8 +91,8 @@ export const purchaseItems = sqliteTable('purchase_items', {
   purchaseId: integer('purchase_id').notNull().references(() => purchases.id, { onDelete: 'cascade' }),
   productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'restrict' }),
   qty: integer('qty').notNull(),
-  hargaBeli: real('harga_beli').notNull(),
-  subtotal: real('subtotal').notNull(),
+  hargaBeli: integer('harga_beli').notNull(),
+  subtotal: integer('subtotal').notNull(),
   ...timestamps(),
 })
 
@@ -102,8 +102,8 @@ export const sales = sqliteTable('sales', {
   namaPelanggan: text('nama_pelanggan'),
   metodePembayaran: text('metode_pembayaran', { enum: ['tunai', 'bon'] }).notNull(),
   status: text('status', { enum: ['selesai', 'dibatalkan'] }).notNull().default('selesai'),
-  total: real('total').notNull().default(0),
-  dibayar: real('dibayar').notNull().default(0),
+  total: integer('total').notNull().default(0),
+  dibayar: integer('dibayar').notNull().default(0),
   ...timestamps(),
 })
 
@@ -115,17 +115,17 @@ export const saleItems = sqliteTable('sale_items', {
   qty: integer('qty').notNull(),
   konversi: integer('konversi').notNull().default(1),
   satuan: text('satuan'),
-  hargaJual: real('harga_jual').notNull(),
-  hargaPokok: real('harga_pokok').notNull(),
-  subtotal: real('subtotal').notNull(),
+  hargaJual: integer('harga_jual').notNull(),
+  hargaPokok: integer('harga_pokok').notNull(),
+  subtotal: integer('subtotal').notNull(),
   ...timestamps(),
 })
 
 export const bonPayments = sqliteTable('bon_payments', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   saleId: integer('sale_id').notNull().references(() => sales.id, { onDelete: 'cascade' }),
-  jumlah: real('jumlah').notNull(),
-  tanggal: integer('tanggal', { mode: 'timestamp' }).notNull(),
+  jumlah: integer('jumlah').notNull(),
+  tanggal: text('tanggal').notNull(),
   keterangan: text('keterangan'),
   ...timestamps(),
 })
@@ -138,7 +138,7 @@ export const stockAdjustments = sqliteTable('stock_adjustments', {
   stokSesudah: integer('stok_sesudah').notNull(),
   selisih: integer('selisih').notNull(),
   alasan: text('alasan'),
-  tanggal: integer('tanggal', { mode: 'timestamp' }).notNull(),
+  tanggal: text('tanggal').notNull(),
   ...timestamps(),
 })
 

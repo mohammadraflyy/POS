@@ -18,6 +18,7 @@ db.insert(users)
     createdAt: now,
     updatedAt: now,
   })
+  .onConflictDoNothing()
   .run()
 
 console.log('Seeded user "admin" with password "password" into dev.sqlite')

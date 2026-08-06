@@ -3,3 +3,4 @@ out
 dist
 dev.sqlite
 *.sqlite-journal
+*.tsbuildinfo

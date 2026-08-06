@@ -13,6 +13,7 @@
     "pack": "electron-builder --publish never",
     "dist": "electron-builder",
     "rebuild:electron": "electron-builder install-app-deps",
+    "rebuild:node": "npm rebuild better-sqlite3",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx src/main/db/seed.ts",
     "test": "vitest run"

@@ -4,6 +4,7 @@ import { createDb } from './db/migrate'
 import { registerAuthIpc } from './ipc/auth'
 
 let mainWindow: BrowserWindow | null
+let db: ReturnType<typeof createDb> | null = null
 
 function getDbPath(): string {
   if (app.isPackaged) {
@@ -52,7 +53,11 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
-  const db = createDb(getDbPath(), getMigrationsFolder())
+  db = createDb(getDbPath(), getMigrationsFolder())
   registerAuthIpc(db)
   createWindow()
+})
+
+app.on('before-quit', () => {
+  db?.$client?.close()
 })

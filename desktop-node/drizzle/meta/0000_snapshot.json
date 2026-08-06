@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5a7bce76-2f65-4dc4-afb3-ca77bd27fb03",
+  "id": "62fc3af1-3252-4486-b149-44f32994531f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "bon_payments": {
@@ -23,14 +23,14 @@
         },
         "jumlah": {
           "name": "jumlah",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "tanggal": {
           "name": "tanggal",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -147,28 +147,28 @@
         },
         "harga_pokok_lama": {
           "name": "harga_pokok_lama",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "harga_pokok_baru": {
           "name": "harga_pokok_baru",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "harga_jual_lama": {
           "name": "harga_jual_lama",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "harga_jual_baru": {
           "name": "harga_jual_baru",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -246,7 +246,7 @@
         },
         "harga_jual": {
           "name": "harga_jual",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -327,7 +327,7 @@
         },
         "harga_jual": {
           "name": "harga_jual",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -422,7 +422,7 @@
         },
         "harga_pokok": {
           "name": "harga_pokok",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
@@ -430,7 +430,7 @@
         },
         "harga_jual": {
           "name": "harga_jual",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
@@ -534,14 +534,14 @@
         },
         "harga_beli": {
           "name": "harga_beli",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "subtotal": {
           "name": "subtotal",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -619,14 +619,14 @@
         },
         "tanggal": {
           "name": "tanggal",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "total": {
           "name": "total",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
@@ -741,21 +741,21 @@
         },
         "harga_jual": {
           "name": "harga_jual",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "harga_pokok": {
           "name": "harga_pokok",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "subtotal": {
           "name": "subtotal",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -861,7 +861,7 @@
         },
         "total": {
           "name": "total",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
@@ -869,7 +869,7 @@
         },
         "dibayar": {
           "name": "dibayar",
-          "type": "real",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
@@ -963,7 +963,7 @@
         },
         "tanggal": {
           "name": "tanggal",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
