@@ -167,13 +167,28 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     return new Promise<void>((resolve, reject) => {
-      window.webContents.print({ silent: true }, (success, errorType) => {
-        if (success) {
-          resolve()
-        } else {
-          reject(new Error(errorType || 'Gagal mencetak struk.'))
-        }
-      })
+      window.webContents.print(
+        {
+          // ponytail: silent:true produced blank/tiny output on this printer
+          // driver even with explicit pageSize/dpi (Electron's silent print
+          // pipeline doesn't reliably apply @media print the way a real
+          // print dialog does). A real dialog - matching what the web app's
+          // window.print() already shows and which prints correctly on the
+          // same printer - is the reliable path; upgrade path if silent
+          // printing is needed later: revisit once the specific driver/CSS
+          // interaction is understood, or send raw ESC/POS instead of HTML.
+          silent: false,
+          pageSize: { width: 80_000, height: 297_000 },
+          dpi: { horizontal: 203, vertical: 203 },
+        },
+        (success, errorType) => {
+          if (success) {
+            resolve()
+          } else {
+            reject(new Error(errorType || 'Gagal mencetak struk.'))
+          }
+        },
+      )
     })
   })
 
