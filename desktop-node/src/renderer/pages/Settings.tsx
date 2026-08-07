@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { ScanLine } from 'lucide-react'
+import { Printer, ScanLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Heading } from '@/components/heading'
 import { useConfirm } from '@/hooks/use-confirm'
 import { AppShell } from '../layouts/AppShell'
@@ -71,6 +72,48 @@ function TestScan() {
         )}
       </div>
       <ScanLine className="size-5 shrink-0 text-muted-foreground" />
+    </div>
+  )
+}
+
+function TestPrint() {
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  async function runTestPrint() {
+    setProcessing(true)
+    setError(null)
+    setMessage(null)
+
+    try {
+      await window.api.kasir.testPrint()
+      setMessage('Struk uji dicetak.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal mencetak')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Test Print</p>
+        <p className="text-sm text-muted-foreground">
+          Cetak struk contoh menggunakan printer dan lebar kertas yang sudah disimpan, untuk memastikan pengaturan sudah benar.
+        </p>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        {message && <p className="text-sm text-muted-foreground">{message}</p>}
+      </div>
+      <Button type="button" variant="outline" onClick={runTestPrint} disabled={processing}>
+        <Printer className="size-4" />
+        Test Print
+      </Button>
     </div>
   )
 }
@@ -156,6 +199,9 @@ export function Settings() {
   const [alamat, setAlamat] = useState('')
   const [telepon, setTelepon] = useState('')
   const [pesanFooter, setPesanFooter] = useState('')
+  const [printerName, setPrinterName] = useState<string | null>(null)
+  const [receiptWidth, setReceiptWidth] = useState<'58mm' | '80mm'>('58mm')
+  const [printers, setPrinters] = useState<{ name: string; displayName: string; isDefault: boolean }[]>([])
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -168,8 +214,15 @@ export function Settings() {
         setAlamat(settings.alamat ?? '')
         setTelepon(settings.telepon ?? '')
         setPesanFooter(settings.pesanFooter ?? '')
+        setPrinterName(settings.printerName)
+        setReceiptWidth(settings.receiptWidth)
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat pengaturan toko.'))
+
+    window.api.kasir
+      .listPrinters()
+      .then(setPrinters)
+      .catch(() => setPrinters([]))
   }, [])
 
   function submit(e: FormEvent) {
@@ -184,6 +237,8 @@ export function Settings() {
         alamat: alamat || null,
         telepon: telepon || null,
         pesanFooter: pesanFooter || null,
+        printerName,
+        receiptWidth,
       })
       .then(() => setMessage('Pengaturan toko diperbarui.'))
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal menyimpan'))
@@ -222,6 +277,35 @@ export function Settings() {
               <Label htmlFor="pesan_footer">Pesan Footer Struk</Label>
               <Input id="pesan_footer" value={pesanFooter} onChange={(e) => setPesanFooter(e.target.value)} />
             </div>
+            <div className="grid gap-2">
+              <Label htmlFor="printer_name">Printer</Label>
+              <Select value={printerName ?? '__default__'} onValueChange={(v) => setPrinterName(v === '__default__' ? null : v)}>
+                <SelectTrigger id="printer_name" className="w-full">
+                  <SelectValue placeholder="Printer default sistem" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Printer default sistem</SelectItem>
+                  {printers.map((printer) => (
+                    <SelectItem key={printer.name} value={printer.name}>
+                      {printer.displayName}
+                      {printer.isDefault ? ' (default)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="receipt_width">Lebar Kertas Struk</Label>
+              <Select value={receiptWidth} onValueChange={(v) => setReceiptWidth(v as '58mm' | '80mm')}>
+                <SelectTrigger id="receipt_width" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="58mm">58mm</SelectItem>
+                  <SelectItem value="80mm">80mm</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             <Button type="submit" disabled={processing}>
               Simpan
@@ -230,8 +314,9 @@ export function Settings() {
         </div>
 
         <div className="space-y-6">
-          <Heading variant="small" title="Perangkat" description="Uji scanner barcode yang terhubung" />
+          <Heading variant="small" title="Perangkat" description="Uji scanner barcode dan printer struk yang terhubung" />
           <TestScan />
+          <TestPrint />
         </div>
 
         <div className="space-y-6">
