@@ -3,8 +3,8 @@ import { priceForQty, resolveCartItem, type ProductRow, type ProductUnitRow } fr
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { users, products, productUnits, productPriceTiers, sales, saleItems, bonPayments } from './db/schema'
-import { checkout, type CheckoutInput, cancelSale, recordBonPayment } from './kasir'
+import { users, products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings } from './db/schema'
+import { checkout, type CheckoutInput, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore } from './kasir'
 
 describe('priceForQty', () => {
   it('falls back to the base price when there are no tiers', () => {
@@ -730,5 +730,207 @@ describe('recordBonPayment', () => {
     const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
     expect(sale?.dibayar).toBe(0)
     expect(db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).all()).toHaveLength(0)
+  })
+})
+
+describe('updateStoreSettings', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  it('inserts a new row when none exists yet', () => {
+    const db = createDb(':memory:', migrationsFolder)
+
+    updateStoreSettings(db, { namaToko: 'Toko Baru', alamat: 'Jl. Baru', telepon: '021', pesanFooter: 'Terima kasih' })
+
+    const setting = db.select().from(storeSettings).get()
+    expect(setting).toMatchObject({
+      namaToko: 'Toko Baru',
+      alamat: 'Jl. Baru',
+      telepon: '021',
+      pesanFooter: 'Terima kasih',
+    })
+  })
+
+  it('updates the existing row instead of inserting a second one', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    updateStoreSettings(db, { namaToko: 'Toko A', alamat: null, telepon: null, pesanFooter: null })
+
+    updateStoreSettings(db, { namaToko: 'Toko B', alamat: 'Jl. B', telepon: '022', pesanFooter: 'Footer B' })
+
+    const rows = db.select().from(storeSettings).all()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ namaToko: 'Toko B', alamat: 'Jl. B', telepon: '022', pesanFooter: 'Footer B' })
+  })
+
+  it('allows null alamat/telepon/pesanFooter', () => {
+    const db = createDb(':memory:', migrationsFolder)
+
+    updateStoreSettings(db, { namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null })
+
+    const setting = db.select().from(storeSettings).get()
+    expect(setting).toMatchObject({ namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null })
+  })
+
+  it('throws when namaToko is empty', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    expect(() => updateStoreSettings(db, { namaToko: '', alamat: null, telepon: null, pesanFooter: null })).toThrow(
+      'Nama toko wajib diisi.',
+    )
+  })
+
+  it('throws when namaToko is only whitespace', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    expect(() => updateStoreSettings(db, { namaToko: '   ', alamat: null, telepon: null, pesanFooter: null })).toThrow(
+      'Nama toko wajib diisi.',
+    )
+  })
+
+  it('throws when namaToko exceeds 255 characters', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const tooLong = 'a'.repeat(256)
+    expect(() => updateStoreSettings(db, { namaToko: tooLong, alamat: null, telepon: null, pesanFooter: null })).toThrow(
+      'Nama toko maksimal 255 karakter.',
+    )
+  })
+
+  it('allows namaToko of exactly 255 characters', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const exactly255 = 'a'.repeat(255)
+    expect(() =>
+      updateStoreSettings(db, { namaToko: exactly255, alamat: null, telepon: null, pesanFooter: null }),
+    ).not.toThrow()
+  })
+
+  it('throws when alamat exceeds 255 characters', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const tooLong = 'a'.repeat(256)
+    expect(() => updateStoreSettings(db, { namaToko: 'Toko', alamat: tooLong, telepon: null, pesanFooter: null })).toThrow(
+      'Alamat maksimal 255 karakter.',
+    )
+  })
+
+  it('throws when telepon exceeds 50 characters', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const tooLong = '1'.repeat(51)
+    expect(() => updateStoreSettings(db, { namaToko: 'Toko', alamat: null, telepon: tooLong, pesanFooter: null })).toThrow(
+      'Telepon maksimal 50 karakter.',
+    )
+  })
+
+  it('throws when pesanFooter exceeds 255 characters', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const tooLong = 'a'.repeat(256)
+    expect(() =>
+      updateStoreSettings(db, { namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: tooLong }),
+    ).toThrow('Pesan footer maksimal 255 karakter.')
+  })
+})
+
+describe('purgeSalesBefore', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedThreeSales() {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({ id: 1, username: 'kasir1', passwordHash: 'hash', name: 'Kasir Satu', createdAt: now, updatedAt: now })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        satuan: 'PCS',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 100,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const oldSale = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+    db.update(sales).set({ createdAt: new Date('2020-01-01T10:00:00') }).where(eq(sales.id, oldSale.saleId)).run()
+
+    const bonSale = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Siti',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+    db.update(sales).set({ createdAt: new Date('2020-01-02T10:00:00') }).where(eq(sales.id, bonSale.saleId)).run()
+
+    const recentSale = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    return { db, oldSaleId: oldSale.saleId, bonSaleId: bonSale.saleId, recentSaleId: recentSale.saleId }
+  }
+
+  it('deletes only sales created before the given date, returns the count deleted', () => {
+    const { db, oldSaleId, bonSaleId, recentSaleId } = seedThreeSales()
+
+    const deleted = purgeSalesBefore(db, new Date('2020-01-03T00:00:00'))
+
+    expect(deleted).toBe(2)
+    expect(db.select().from(sales).where(eq(sales.id, oldSaleId)).get()).toBeUndefined()
+    expect(db.select().from(sales).where(eq(sales.id, bonSaleId)).get()).toBeUndefined()
+    expect(db.select().from(sales).where(eq(sales.id, recentSaleId)).get()).toBeDefined()
+  })
+
+  it('cascades to sale_items and bon_payments', () => {
+    const { db, bonSaleId } = seedThreeSales()
+    const now = new Date()
+    db.insert(bonPayments)
+      .values({ saleId: bonSaleId, jumlah: 10000_00, tanggal: '2020-01-02', createdAt: now, updatedAt: now })
+      .run()
+
+    purgeSalesBefore(db, new Date('2020-01-03T00:00:00'))
+
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, bonSaleId)).all()).toHaveLength(0)
+    expect(db.select().from(bonPayments).where(eq(bonPayments.saleId, bonSaleId)).all()).toHaveLength(0)
+  })
+
+  it('returns 0 and deletes nothing when no sales are before the cutoff', () => {
+    const { db, oldSaleId, bonSaleId, recentSaleId } = seedThreeSales()
+
+    const deleted = purgeSalesBefore(db, new Date('2019-01-01T00:00:00'))
+
+    expect(deleted).toBe(0)
+    expect(db.select().from(sales).where(eq(sales.id, oldSaleId)).get()).toBeDefined()
+    expect(db.select().from(sales).where(eq(sales.id, bonSaleId)).get()).toBeDefined()
+    expect(db.select().from(sales).where(eq(sales.id, recentSaleId)).get()).toBeDefined()
+  })
+
+  it('throws when the cutoff date is in the future', () => {
+    const { db } = seedThreeSales()
+    expect(() => purgeSalesBefore(db, new Date('2099-01-01T00:00:00'))).toThrow('Tanggal tidak boleh di masa depan.')
+  })
+
+  it('allows a cutoff of exactly today (does not throw)', () => {
+    const { db } = seedThreeSales()
+    const todayMidnight = new Date()
+    todayMidnight.setHours(0, 0, 0, 0)
+    expect(() => purgeSalesBefore(db, todayMidnight)).not.toThrow()
+  })
+
+  it('does not delete anything when a future date is rejected', () => {
+    const { db, oldSaleId } = seedThreeSales()
+
+    expect(() => purgeSalesBefore(db, new Date('2099-01-01T00:00:00'))).toThrow()
+
+    expect(db.select().from(sales).where(eq(sales.id, oldSaleId)).get()).toBeDefined()
   })
 })

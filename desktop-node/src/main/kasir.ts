@@ -1,7 +1,7 @@
-import { eq, inArray, sql } from 'drizzle-orm'
+import { eq, inArray, lt, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments } from './db/schema'
+import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings } from './db/schema'
 
 export interface PriceTier {
   minQty: number
@@ -302,4 +302,67 @@ export function recordBonPayment(
       .where(eq(sales.id, saleId))
       .run()
   })
+}
+
+export function updateStoreSettings(
+  db: BetterSQLite3Database<typeof schema>,
+  input: { namaToko: string; alamat: string | null; telepon: string | null; pesanFooter: string | null },
+): void {
+  if (!input.namaToko.trim()) {
+    throw new Error('Nama toko wajib diisi.')
+  }
+
+  if (input.namaToko.length > 255) {
+    throw new Error('Nama toko maksimal 255 karakter.')
+  }
+
+  if (input.alamat && input.alamat.length > 255) {
+    throw new Error('Alamat maksimal 255 karakter.')
+  }
+
+  if (input.telepon && input.telepon.length > 50) {
+    throw new Error('Telepon maksimal 50 karakter.')
+  }
+
+  if (input.pesanFooter && input.pesanFooter.length > 255) {
+    throw new Error('Pesan footer maksimal 255 karakter.')
+  }
+
+  const now = new Date()
+  const existing = db.select().from(storeSettings).get()
+
+  if (existing) {
+    db.update(storeSettings)
+      .set({
+        namaToko: input.namaToko,
+        alamat: input.alamat,
+        telepon: input.telepon,
+        pesanFooter: input.pesanFooter,
+      })
+      .where(eq(storeSettings.id, existing.id))
+      .run()
+  } else {
+    db.insert(storeSettings)
+      .values({
+        namaToko: input.namaToko,
+        alamat: input.alamat,
+        telepon: input.telepon,
+        pesanFooter: input.pesanFooter,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+  }
+}
+
+export function purgeSalesBefore(db: BetterSQLite3Database<typeof schema>, beforeDate: Date): number {
+  const endOfToday = new Date()
+  endOfToday.setHours(23, 59, 59, 999)
+
+  if (beforeDate > endOfToday) {
+    throw new Error('Tanggal tidak boleh di masa depan.')
+  }
+
+  const result = db.delete(sales).where(lt(sales.createdAt, beforeDate)).run()
+  return result.changes
 }
