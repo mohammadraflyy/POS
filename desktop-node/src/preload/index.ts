@@ -24,8 +24,9 @@ const api = {
     }) => invoke('kasir:checkout', input),
     cancelSale: (saleId: number) => invoke('kasir:cancelSale', saleId),
     getStoreSettings: () => invoke('kasir:getStoreSettings'),
-    printReceipt: () => invoke('kasir:printReceipt'),
-    getReceiptForSale: (saleId: number) => invoke('kasir:getReceiptForSale', saleId),
+    printReceipt: (saleId: number) => invoke('kasir:printReceipt', saleId),
+    listPrinters: () => invoke('kasir:listPrinters'),
+    testPrint: () => invoke('kasir:testPrint'),
     listSalesHistory: (filters: {
       dari?: string
       sampai?: string
@@ -42,6 +43,8 @@ const api = {
       alamat: string | null
       telepon: string | null
       pesanFooter: string | null
+      printerName: string | null
+      receiptWidth: '58mm' | '80mm'
     }) => invoke('kasir:updateStoreSettings', input),
     purgeSalesBefore: (before: string) => invoke('kasir:purgeSalesBefore', before),
   },

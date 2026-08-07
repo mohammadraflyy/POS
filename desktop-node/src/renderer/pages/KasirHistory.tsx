@@ -14,7 +14,6 @@ import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
-import { Receipt, type ReceiptSale, type StoreSettingsDto } from './kasir/Receipt'
 
 interface SaleHistoryItem {
   namaItem: string
@@ -56,16 +55,6 @@ export function KasirHistory() {
   const [currentPage, setCurrentPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
-
-  const [receiptSale, setReceiptSale] = useState<ReceiptSale | null>(null)
-  const [storeSettings, setStoreSettings] = useState<StoreSettingsDto | null>(null)
-
-  useEffect(() => {
-    window.api.kasir
-      .getStoreSettings()
-      .then(setStoreSettings)
-      .catch(() => setStoreSettings({ namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null }))
-  }, [])
 
   function loadPage(page: number) {
     window.api.kasir
@@ -114,39 +103,11 @@ export function KasirHistory() {
     setError(null)
 
     try {
-      const sale = await window.api.kasir.getReceiptForSale(saleId)
-      setReceiptSale(sale)
+      await window.api.kasir.printReceipt(saleId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal memuat struk')
+      setError(err instanceof Error ? err.message : 'Gagal mencetak struk')
     }
   }
-
-  useEffect(() => {
-    if (!receiptSale) {
-      return
-    }
-
-    let cancelled = false
-
-    window.api.kasir
-      .printReceipt()
-      .catch((err) => {
-        if (cancelled) {
-          return
-        }
-        setError(err instanceof Error ? err.message : 'Gagal mencetak struk')
-      })
-      .finally(() => {
-        if (cancelled) {
-          return
-        }
-        setReceiptSale(null)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [receiptSale])
 
   const itemWidth = Math.max(MIN_ITEM_WIDTH, gridWidth - OTHER_COLUMNS_WIDTH - 2)
 
@@ -320,8 +281,6 @@ export function KasirHistory() {
         </div>
       </div>
       </AppShell>
-
-      {receiptSale && storeSettings && <Receipt sale={receiptSale} storeSettings={storeSettings} />}
     </>
   )
 }

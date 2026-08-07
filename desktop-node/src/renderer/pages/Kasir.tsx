@@ -12,7 +12,6 @@ import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
 import { addLine, applyQty, changeUnit, lineKey, unitPrice, type CartLine, type Product } from './kasir/cart-logic'
-import { Receipt, type ReceiptSale, type StoreSettingsDto } from './kasir/Receipt'
 
 interface SaleDto {
   id: number
@@ -37,8 +36,7 @@ export function Kasir() {
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [receiptSale, setReceiptSale] = useState<ReceiptSale | null>(null)
-  const [storeSettings, setStoreSettings] = useState<StoreSettingsDto | null>(null)
+  const [printingSaleId, setPrintingSaleId] = useState<number | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
@@ -50,10 +48,6 @@ export function Kasir() {
   useEffect(() => {
     refreshProducts()
     refreshSalesToday()
-    window.api.kasir
-      .getStoreSettings()
-      .then(setStoreSettings)
-      .catch(() => setStoreSettings({ namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -272,7 +266,7 @@ export function Kasir() {
         // Keep the dialog open (showing this sale's totals) until printing
         // actually finishes - it resets and closes from the print effect
         // below instead.
-        setReceiptSale(sale)
+        setPrintingSaleId(sale.saleId)
         return
       }
 
@@ -288,19 +282,15 @@ export function Kasir() {
     }
   }
 
-  // The Receipt component (rendered hidden below, shown via .receipt-print
-  // in assets/main.css) needs to actually be in the DOM before printReceipt
-  // captures the window's content - this effect runs after React commits
-  // the render triggered by setReceiptSale, so it's already there by now.
   useEffect(() => {
-    if (!receiptSale) {
+    if (!printingSaleId) {
       return
     }
 
     let cancelled = false
 
     window.api.kasir
-      .printReceipt()
+      .printReceipt(printingSaleId)
       .then(() => {
         if (cancelled) {
           return
@@ -320,7 +310,7 @@ export function Kasir() {
           return
         }
 
-        setReceiptSale(null)
+        setPrintingSaleId(null)
         resetAfterCheckout()
         refreshProducts()
         refreshSalesToday()
@@ -330,7 +320,7 @@ export function Kasir() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receiptSale])
+  }, [printingSaleId])
 
   async function handleCancel(saleId: number) {
     setError(null)
@@ -464,7 +454,7 @@ export function Kasir() {
         dibayar={dibayar}
         setDibayar={setDibayar}
         processing={processing}
-        printing={receiptSale !== null}
+        printing={printingSaleId !== null}
         error={checkoutError}
         onSubmit={handleCheckout}
       />
@@ -514,8 +504,6 @@ export function Kasir() {
       </section>
       </div>
       </AppShell>
-
-      {receiptSale && storeSettings && <Receipt sale={receiptSale} storeSettings={storeSettings} />}
     </>
   )
 }

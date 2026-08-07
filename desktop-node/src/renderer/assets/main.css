@@ -122,32 +122,3 @@
     @apply bg-background text-foreground;
   }
 }
-
-/* Struk Kasir: hidden on screen, only the receipt shows when printing. */
-/* Sized for an 80mm thermal receipt printer - "auto" height lets the
-   printer's continuous roll driver cut wherever the content ends
-   instead of forcing a fixed page length. */
-@page {
-  size: 80mm auto;
-  margin: 0;
-}
-
-@media print {
-  body * {
-    visibility: hidden;
-  }
-
-  .receipt-print,
-  .receipt-print * {
-    visibility: visible;
-  }
-
-  .receipt-print {
-    display: block !important;
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 80mm;
-    padding: 2mm;
-  }
-}

@@ -56,18 +56,12 @@ declare global {
           alamat: string | null
           telepon: string | null
           pesanFooter: string | null
+          printerName: string | null
+          receiptWidth: '58mm' | '80mm'
         }>
-        printReceipt: () => Promise<void>
-        getReceiptForSale: (saleId: number) => Promise<{
-          saleId: number
-          total: number
-          dibayar: number
-          metodePembayaran: 'tunai' | 'bon'
-          namaPelanggan: string | null
-          createdAt: string
-          kasirName: string | null
-          items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
-        }>
+        printReceipt: (saleId: number) => Promise<void>
+        listPrinters: () => Promise<{ name: string; displayName: string; isDefault: boolean }[]>
+        testPrint: () => Promise<void>
         listSalesHistory: (filters: {
           dari?: string
           sampai?: string
@@ -107,6 +101,8 @@ declare global {
           alamat: string | null
           telepon: string | null
           pesanFooter: string | null
+          printerName: string | null
+          receiptWidth: '58mm' | '80mm'
         }) => Promise<void>
         purgeSalesBefore: (before: string) => Promise<{ deleted: number }>
       }

@@ -4,6 +4,8 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings, users } from '../db/schema'
 import { checkout, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, type CheckoutInput } from '../kasir'
+import { buildReceiptEscPos, SAMPLE_RECEIPT, type PaperWidth } from '../escpos'
+import { printRaw } from '../print-windows'
 import { getCurrentUser } from './auth'
 import { getMainWindow } from '../index'
 
@@ -50,6 +52,27 @@ function getReceipt(db: BetterSQLite3Database<typeof schema>, saleId: number, ka
       subtotal: toRupiah(item.subtotal),
     })),
   }
+}
+
+async function resolvePrinterName(savedName: string | null): Promise<string> {
+  if (savedName) {
+    return savedName
+  }
+
+  const window = getMainWindow()
+
+  if (!window) {
+    throw new Error('Jendela aplikasi tidak ditemukan.')
+  }
+
+  const printers = await window.webContents.getPrintersAsync()
+  const defaultPrinter = printers.find((printer) => printer.isDefault)
+
+  if (!defaultPrinter) {
+    throw new Error('Tidak ada printer default. Pilih printer di Pengaturan.')
+  }
+
+  return defaultPrinter.name
 }
 
 export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
@@ -157,41 +180,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     }
   })
 
-  ipcMain.handle('kasir:printReceipt', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
-
-    const window = getMainWindow()
-
-    if (!window) {
-      throw new Error('Jendela aplikasi tidak ditemukan.')
-    }
-
-    return new Promise<void>((resolve, reject) => {
-      window.webContents.print(
-        {
-          // ponytail: silent:true produces blank output on this printer driver
-          // (tried pageSize/dpi/scaleFactor/margins, none fixed it - Electron's
-          // silent print pipeline doesn't reliably apply @media print here).
-          // Upgrade path: ESC/POS raw printing (see docs/superpowers), which
-          // bypasses this rendering path entirely.
-          silent: false,
-          pageSize: { width: 80_000, height: 297_000 },
-          dpi: { horizontal: 203, vertical: 203 },
-        },
-        (success, errorType) => {
-          if (success) {
-            resolve()
-          } else {
-            reject(new Error(errorType || 'Gagal mencetak struk.'))
-          }
-        },
-      )
-    })
-  })
-
-  ipcMain.handle('kasir:getReceiptForSale', (_event, saleId: number) => {
+  ipcMain.handle('kasir:printReceipt', async (_event, saleId: number) => {
     if (!getCurrentUser()) {
       throw new Error('Silakan login terlebih dahulu.')
     }
@@ -203,8 +192,54 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     const kasir = sale.userId ? db.select().from(users).where(eq(users.id, sale.userId)).get() : null
+    const receipt = getReceipt(db, saleId, kasir?.name ?? null)
 
-    return getReceipt(db, saleId, kasir?.name ?? null)
+    const setting = db.select().from(storeSettings).get()
+    const storeInfo = {
+      namaToko: setting?.namaToko ?? 'Toko',
+      alamat: setting?.alamat ?? null,
+      telepon: setting?.telepon ?? null,
+      pesanFooter: setting?.pesanFooter ?? null,
+    }
+    const paperWidth: PaperWidth = setting?.receiptWidth ?? '58mm'
+
+    const bytes = buildReceiptEscPos(receipt, storeInfo, paperWidth)
+    const printerName = await resolvePrinterName(setting?.printerName ?? null)
+    await printRaw(printerName, bytes)
+  })
+
+  ipcMain.handle('kasir:listPrinters', async () => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const window = getMainWindow()
+
+    if (!window) {
+      throw new Error('Jendela aplikasi tidak ditemukan.')
+    }
+
+    const printers = await window.webContents.getPrintersAsync()
+    return printers.map((printer) => ({ name: printer.name, displayName: printer.displayName, isDefault: printer.isDefault }))
+  })
+
+  ipcMain.handle('kasir:testPrint', async () => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const setting = db.select().from(storeSettings).get()
+    const storeInfo = {
+      namaToko: setting?.namaToko ?? 'Toko',
+      alamat: setting?.alamat ?? null,
+      telepon: setting?.telepon ?? null,
+      pesanFooter: setting?.pesanFooter ?? null,
+    }
+    const paperWidth: PaperWidth = setting?.receiptWidth ?? '58mm'
+
+    const bytes = buildReceiptEscPos(SAMPLE_RECEIPT, storeInfo, paperWidth)
+    const printerName = await resolvePrinterName(setting?.printerName ?? null)
+    await printRaw(printerName, bytes)
   })
 
   ipcMain.handle(
