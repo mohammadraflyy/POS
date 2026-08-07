@@ -58,6 +58,16 @@ declare global {
           pesanFooter: string | null
         }>
         printReceipt: () => Promise<void>
+        getReceiptForSale: (saleId: number) => Promise<{
+          saleId: number
+          total: number
+          dibayar: number
+          metodePembayaran: 'tunai' | 'bon'
+          namaPelanggan: string | null
+          createdAt: string
+          kasirName: string | null
+          items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
+        }>
       }
     }
   }

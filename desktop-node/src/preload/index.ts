@@ -25,6 +25,7 @@ const api = {
     cancelSale: (saleId: number) => invoke('kasir:cancelSale', saleId),
     getStoreSettings: () => invoke('kasir:getStoreSettings'),
     printReceipt: () => invoke('kasir:printReceipt'),
+    getReceiptForSale: (saleId: number) => invoke('kasir:getReceiptForSale', saleId),
   },
 }
 

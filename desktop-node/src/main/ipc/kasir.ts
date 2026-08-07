@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { eq, gte, inArray } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems, storeSettings } from '../db/schema'
+import { products, productUnits, productPriceTiers, sales, saleItems, storeSettings, users } from '../db/schema'
 import { checkout, cancelSale, type CheckoutInput } from '../kasir'
 import { getCurrentUser } from './auth'
 import { getMainWindow } from '../index'
@@ -20,6 +20,36 @@ interface CheckoutRendererInput {
   namaPelanggan: string | null
   dibayar: number | null
   items: { productId: number; productUnitId: number | null; qty: number }[]
+}
+
+function getReceipt(db: BetterSQLite3Database<typeof schema>, saleId: number, kasirName: string | null) {
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+  const productIds = itemRows.map((item) => item.productId)
+  const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
+  const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
+
+  return {
+    saleId: sale.id,
+    total: toRupiah(sale.total),
+    dibayar: toRupiah(sale.dibayar),
+    metodePembayaran: sale.metodePembayaran,
+    namaPelanggan: sale.namaPelanggan,
+    createdAt: sale.createdAt.toISOString(),
+    kasirName,
+    items: itemRows.map((item) => ({
+      namaItem: productNameById.get(item.productId) ?? '',
+      qty: item.qty,
+      satuan: item.satuan,
+      hargaJual: toRupiah(item.hargaJual),
+      subtotal: toRupiah(item.subtotal),
+    })),
+  }
 }
 
 export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
@@ -103,28 +133,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
 
     const result = checkout(db, checkoutInput)
 
-    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()!
-    const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
-    const productIds = itemRows.map((item) => item.productId)
-    const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
-    const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
-
-    return {
-      saleId: result.saleId,
-      total: toRupiah(result.total),
-      dibayar: toRupiah(sale.dibayar),
-      metodePembayaran: sale.metodePembayaran,
-      namaPelanggan: sale.namaPelanggan,
-      createdAt: sale.createdAt.toISOString(),
-      kasirName: user.name,
-      items: itemRows.map((item) => ({
-        namaItem: productNameById.get(item.productId) ?? '',
-        qty: item.qty,
-        satuan: item.satuan,
-        hargaJual: toRupiah(item.hargaJual),
-        subtotal: toRupiah(item.subtotal),
-      })),
-    }
+    return getReceipt(db, result.saleId, user.name)
   })
 
   ipcMain.handle('kasir:cancelSale', (_event, saleId: number) => {
@@ -170,5 +179,21 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         }
       })
     })
+  })
+
+  ipcMain.handle('kasir:getReceiptForSale', (_event, saleId: number) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+    if (!sale) {
+      throw new Error('Transaksi tidak ditemukan.')
+    }
+
+    const kasir = sale.userId ? db.select().from(users).where(eq(users.id, sale.userId)).get() : null
+
+    return getReceipt(db, saleId, kasir?.name ?? null)
   })
 }
