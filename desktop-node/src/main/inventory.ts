@@ -19,6 +19,24 @@ export interface ProductListItem {
 const DEFAULT_PAGE_SIZE = 25
 const VALID_PAGE_SIZES = [10, 25, 50, 100]
 
+function productListSelect(db: BetterSQLite3Database<typeof schema>) {
+  return db
+    .select({
+      id: products.id,
+      kodeItem: products.kodeItem,
+      barcode: products.barcode,
+      namaItem: products.namaItem,
+      categoryName: categories.nama,
+      satuan: products.satuan,
+      hargaPokok: products.hargaPokok,
+      hargaJual: products.hargaJual,
+      stok: products.stok,
+      isActive: products.isActive,
+    })
+    .from(products)
+    .leftJoin(categories, eq(products.categoryId, categories.id))
+}
+
 function toListItem(row: {
   id: number
   kodeItem: string
@@ -53,21 +71,7 @@ export function listProducts(
   const total = totalRow?.count ?? 0
   const lastPage = Math.max(1, Math.ceil(total / pageSize))
 
-  const rows = db
-    .select({
-      id: products.id,
-      kodeItem: products.kodeItem,
-      barcode: products.barcode,
-      namaItem: products.namaItem,
-      categoryName: categories.nama,
-      satuan: products.satuan,
-      hargaPokok: products.hargaPokok,
-      hargaJual: products.hargaJual,
-      stok: products.stok,
-      isActive: products.isActive,
-    })
-    .from(products)
-    .leftJoin(categories, eq(products.categoryId, categories.id))
+  const rows = productListSelect(db)
     .where(whereClause)
     .orderBy(products.namaItem)
     .limit(pageSize)
@@ -149,6 +153,10 @@ export function updateProduct(db: BetterSQLite3Database<typeof schema>, id: numb
 
   let categoryId: number | null = null
   const kategori = input.kategori?.trim()
+
+  if (kategori && kategori.length > 255) {
+    throw new Error('Kategori maksimal 255 karakter.')
+  }
 
   if (kategori) {
     const existing = db.select().from(categories).where(eq(categories.nama, kategori)).get()
@@ -236,21 +244,7 @@ export function searchProductsQuick(db: BetterSQLite3Database<typeof schema>, q:
     ? or(like(products.kodeItem, `%${q}%`), like(products.namaItem, `%${q}%`), like(products.barcode, `%${q}%`))
     : undefined
 
-  const rows = db
-    .select({
-      id: products.id,
-      kodeItem: products.kodeItem,
-      barcode: products.barcode,
-      namaItem: products.namaItem,
-      categoryName: categories.nama,
-      satuan: products.satuan,
-      hargaPokok: products.hargaPokok,
-      hargaJual: products.hargaJual,
-      stok: products.stok,
-      isActive: products.isActive,
-    })
-    .from(products)
-    .leftJoin(categories, eq(products.categoryId, categories.id))
+  const rows = productListSelect(db)
     .where(whereClause)
     .orderBy(products.namaItem)
     .limit(20)

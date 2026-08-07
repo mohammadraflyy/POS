@@ -282,6 +282,13 @@ describe('updateProduct', () => {
     expect(() => updateProduct(db, 1, { ...validInput, hargaJual: -1 })).toThrow('Harga jual tidak boleh negatif.')
   })
 
+  it('throws when kategori exceeds 255 characters', () => {
+    const db = seedProducts()
+    expect(() => updateProduct(db, 1, { ...validInput, kategori: 'a'.repeat(256) })).toThrow(
+      'Kategori maksimal 255 karakter.',
+    )
+  })
+
   it('records a price history row when hargaPokok or hargaJual changes', () => {
     const db = seedProducts()
 
