@@ -17,6 +17,7 @@ export interface ProductListItem {
 }
 
 const DEFAULT_PAGE_SIZE = 25
+const VALID_PAGE_SIZES = [10, 25, 50, 100]
 
 function toListItem(row: {
   id: number
@@ -37,7 +38,7 @@ export function listProducts(
   db: BetterSQLite3Database<typeof schema>,
   input: { search?: string; page: number; pageSize?: number },
 ): { data: ProductListItem[]; currentPage: number; lastPage: number; total: number } {
-  const pageSize = input.pageSize ?? DEFAULT_PAGE_SIZE
+  const pageSize = input.pageSize && VALID_PAGE_SIZES.includes(input.pageSize) ? input.pageSize : DEFAULT_PAGE_SIZE
   const page = Math.max(1, input.page)
 
   const whereClause = input.search

@@ -90,15 +90,55 @@ describe('listProducts', () => {
 
   it('paginates with the given pageSize, computing lastPage and total', () => {
     const db = seedProducts()
+    const now = new Date()
+    const extra = Array.from({ length: 9 }, (_, i) => ({
+      kodeItem: `EX${i}`,
+      barcode: null,
+      namaItem: `Extra Produk ${i}`,
+      categoryId: null,
+      satuan: 'PCS',
+      hargaPokok: 1000_00,
+      hargaJual: 1200_00,
+      stok: 5,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    }))
+    db.insert(products).values(extra).run()
+    // total = 3 seeded + 9 extra = 12
 
-    const page1 = listProducts(db, { page: 1, pageSize: 2 })
-    expect(page1.data).toHaveLength(2)
+    const page1 = listProducts(db, { page: 1, pageSize: 10 })
+    expect(page1.data).toHaveLength(10)
     expect(page1.currentPage).toBe(1)
     expect(page1.lastPage).toBe(2)
-    expect(page1.total).toBe(3)
+    expect(page1.total).toBe(12)
 
-    const page2 = listProducts(db, { page: 2, pageSize: 2 })
-    expect(page2.data).toHaveLength(1)
+    const page2 = listProducts(db, { page: 2, pageSize: 10 })
+    expect(page2.data).toHaveLength(2)
+  })
+
+  it('falls back to pageSize 25 when given an invalid pageSize', () => {
+    const db = seedProducts()
+    const now = new Date()
+    const extra = Array.from({ length: 27 }, (_, i) => ({
+      kodeItem: `IX${i}`,
+      barcode: null,
+      namaItem: `Invalid Pagesize Produk ${i}`,
+      categoryId: null,
+      satuan: 'PCS',
+      hargaPokok: 1000_00,
+      hargaJual: 1200_00,
+      stok: 5,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    }))
+    db.insert(products).values(extra).run()
+    // total = 3 seeded + 27 extra = 30
+
+    const result = listProducts(db, { page: 1, pageSize: 999 })
+    expect(result.data).toHaveLength(25)
+    expect(result.lastPage).toBe(2)
   })
 
   it('defaults to pageSize 25 when none is given', () => {
