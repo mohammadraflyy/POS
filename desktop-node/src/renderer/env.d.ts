@@ -181,6 +181,38 @@ declare global {
         deleteProductUnit: (productId: number, level: 2 | 3) => Promise<void>
         addPriceTier: (productId: number, input: { minQty: number; hargaJual: number }) => Promise<void>
         deletePriceTier: (productId: number, tierId: number) => Promise<void>
+        getProductsByIds: (ids: number[]) => Promise<
+          {
+            id: number
+            kodeItem: string
+            barcode: string | null
+            namaItem: string
+            categoryName: string | null
+            satuan: string
+            hargaPokok: number
+            hargaJual: number
+            stok: number
+            unitsCount: number
+            priceTiersCount: number
+          }[]
+        >
+        bulkSaveProducts: (
+          rows: {
+            key: string
+            id: number | null
+            kodeItem: string
+            barcode: string | null
+            namaItem: string
+            kategori: string | null
+            satuan: string
+            hargaPokok: number
+            hargaJual: number
+            stok: number
+          }[],
+        ) => Promise<
+          | { success: true; created: number; updated: number; unchanged: number }
+          | { success: false; rowErrors: Record<string, Record<string, string>> }
+        >
       }
     }
   }

@@ -10,6 +10,7 @@ import {
   deletePriceTier,
   type ProductUnitRow,
 } from '../inventory-units'
+import { getProductsByIds, bulkSaveProducts, type BulkSaveRow } from '../inventory-bulk'
 import { getCurrentUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -202,4 +203,63 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
 
     deletePriceTier(db, productId, tierId)
   })
+
+  ipcMain.handle('inventory:getProductsByIds', (_event, ids: number[]) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    return getProductsByIds(db, ids).map((p) => ({
+      id: p.id,
+      kodeItem: p.kodeItem,
+      barcode: p.barcode,
+      namaItem: p.namaItem,
+      categoryName: p.categoryName,
+      satuan: p.satuan,
+      hargaPokok: toRupiah(p.hargaPokok),
+      hargaJual: toRupiah(p.hargaJual),
+      stok: p.stok,
+      unitsCount: p.unitsCount,
+      priceTiersCount: p.priceTiersCount,
+    }))
+  })
+
+  ipcMain.handle(
+    'inventory:bulkSaveProducts',
+    (
+      _event,
+      rows: {
+        key: string
+        id: number | null
+        kodeItem: string
+        barcode: string | null
+        namaItem: string
+        kategori: string | null
+        satuan: string
+        hargaPokok: number
+        hargaJual: number
+        stok: number
+      }[],
+    ) => {
+      const user = getCurrentUser()
+      if (!user) {
+        throw new Error('Silakan login terlebih dahulu.')
+      }
+
+      const bulkRows: BulkSaveRow[] = rows.map((row) => ({
+        key: row.key,
+        id: row.id,
+        kodeItem: row.kodeItem,
+        barcode: row.barcode,
+        namaItem: row.namaItem,
+        kategori: row.kategori,
+        satuan: row.satuan,
+        hargaPokok: toCents(row.hargaPokok),
+        hargaJual: toCents(row.hargaJual),
+        stok: row.stok,
+      }))
+
+      return bulkSaveProducts(db, bulkRows, user.id)
+    },
+  )
 }

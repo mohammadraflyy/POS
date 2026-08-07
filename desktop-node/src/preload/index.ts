@@ -74,6 +74,21 @@ const api = {
     addPriceTier: (productId: number, input: { minQty: number; hargaJual: number }) =>
       invoke('inventory:addPriceTier', productId, input),
     deletePriceTier: (productId: number, tierId: number) => invoke('inventory:deletePriceTier', productId, tierId),
+    getProductsByIds: (ids: number[]) => invoke('inventory:getProductsByIds', ids),
+    bulkSaveProducts: (
+      rows: {
+        key: string
+        id: number | null
+        kodeItem: string
+        barcode: string | null
+        namaItem: string
+        kategori: string | null
+        satuan: string
+        hargaPokok: number
+        hargaJual: number
+        stok: number
+      }[],
+    ) => invoke('inventory:bulkSaveProducts', rows),
   },
 }
 
