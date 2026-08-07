@@ -277,9 +277,19 @@ describe('updateProduct', () => {
     expect(() => updateProduct(db, 1, { ...validInput, hargaPokok: -1 })).toThrow('Harga pokok tidak boleh negatif.')
   })
 
+  it('throws when hargaPokok is not a finite number', () => {
+    const db = seedProducts()
+    expect(() => updateProduct(db, 1, { ...validInput, hargaPokok: NaN })).toThrow('Harga pokok wajib diisi.')
+  })
+
   it('throws when hargaJual is negative', () => {
     const db = seedProducts()
     expect(() => updateProduct(db, 1, { ...validInput, hargaJual: -1 })).toThrow('Harga jual tidak boleh negatif.')
+  })
+
+  it('throws when hargaJual is not a finite number', () => {
+    const db = seedProducts()
+    expect(() => updateProduct(db, 1, { ...validInput, hargaJual: NaN })).toThrow('Harga jual wajib diisi.')
   })
 
   it('throws when kategori exceeds 255 characters', () => {

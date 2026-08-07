@@ -143,8 +143,16 @@ export function updateProduct(db: BetterSQLite3Database<typeof schema>, id: numb
     throw new Error('Satuan maksimal 20 karakter.')
   }
 
+  if (!Number.isFinite(input.hargaPokok)) {
+    throw new Error('Harga pokok wajib diisi.')
+  }
+
   if (input.hargaPokok < 0) {
     throw new Error('Harga pokok tidak boleh negatif.')
+  }
+
+  if (!Number.isFinite(input.hargaJual)) {
+    throw new Error('Harga jual wajib diisi.')
   }
 
   if (input.hargaJual < 0) {

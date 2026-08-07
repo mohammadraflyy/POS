@@ -83,9 +83,12 @@ export function Inventory() {
 
   const { confirm, ConfirmDialog } = useConfirm()
 
-  function loadPage(page: number) {
+  function loadPage(page: number, opts?: { search?: string; pageSize?: string }) {
+    const term = opts?.search ?? search
+    const size = opts?.pageSize ?? pageSize
+
     window.api.inventory
-      .listProducts({ search: search || undefined, page, pageSize: Number(pageSize) })
+      .listProducts({ search: term || undefined, page, pageSize: Number(size) })
       .then((result) => {
         setRawProducts(result.data)
         setRows(result.data.map(toDraftRow))
@@ -203,9 +206,15 @@ export function Inventory() {
     setDeleteError(null)
 
     try {
-      await window.api.inventory.bulkDeleteProducts([...selectedIds])
+      const result = await window.api.inventory.bulkDeleteProducts([...selectedIds])
       setSelectedIds(new Set())
       loadPage(currentPage)
+
+      if (result.blocked.length > 0) {
+        setDeleteError(
+          `${result.blocked.length} produk tidak bisa dihapus karena sudah punya riwayat transaksi: ${result.blocked.join(', ')}.`,
+        )
+      }
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Gagal menghapus produk')
     }
@@ -239,7 +248,7 @@ export function Inventory() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds])
+  }, [selectedIds, rawProducts, currentPage])
 
   useEffect(() => {
     if (!paletteOpen) {
@@ -262,13 +271,13 @@ export function Inventory() {
   function searchAll(term: string) {
     setSearch(term)
     setPaletteOpen(false)
-    loadPage(1)
+    loadPage(1, { search: term })
   }
 
   function jumpToProduct(product: ProductRow) {
     setSearch(product.kodeItem)
     setPaletteOpen(false)
-    loadPage(1)
+    loadPage(1, { search: product.kodeItem })
   }
 
   const namaWidth = Math.max(MIN_NAMA_WIDTH, gridWidth - OTHER_COLUMNS_WIDTH - 2)
