@@ -3,6 +3,7 @@ import { writeFileSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { randomUUID } from 'node:crypto'
 
 const execFileAsync = promisify(execFile)
 
@@ -90,7 +91,7 @@ $bytes = [System.IO.File]::ReadAllBytes($DataPath)
 `
 
 export async function printRaw(printerName: string, data: Buffer): Promise<void> {
-  const id = Date.now()
+  const id = randomUUID()
   const dataPath = join(tmpdir(), `pos-print-${id}.bin`)
   const scriptPath = join(tmpdir(), `pos-print-${id}.ps1`)
 
