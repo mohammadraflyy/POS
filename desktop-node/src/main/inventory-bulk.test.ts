@@ -1,9 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, afterEach } from 'vitest'
 import path from 'node:path'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import * as XLSX from 'xlsx'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
 import { categories, products, productPriceHistories, stockAdjustments, users } from './db/schema'
-import { getProductsByIds, saveProductRows, validateBulkRows, bulkSaveProducts, type BulkSaveRow } from './inventory-bulk'
+import {
+  getProductsByIds,
+  saveProductRows,
+  validateBulkRows,
+  bulkSaveProducts,
+  importProducts,
+  type BulkSaveRow,
+} from './inventory-bulk'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
 
@@ -236,5 +246,148 @@ describe('bulkSaveProducts', () => {
     }
     const created = db.select().from(products).where(eq(products.kodeItem, 'A1')).get()
     expect(created).toBeUndefined()
+  })
+})
+
+const importTempDirs: string[] = []
+
+afterEach(() => {
+  for (const dir of importTempDirs) {
+    rmSync(dir, { recursive: true, force: true })
+  }
+  importTempDirs.length = 0
+})
+
+function writeTestSheet(rows: unknown[][]): string {
+  const dir = mkdtempSync(path.join(tmpdir(), 'inventory-import-'))
+  importTempDirs.push(dir)
+  const filePath = path.join(dir, 'test.xlsx')
+  const sheet = XLSX.utils.aoa_to_sheet(rows)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Sheet1')
+  XLSX.writeFile(workbook, filePath)
+  return filePath
+}
+
+describe('importProducts', () => {
+  it('creates new products from a valid sheet', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual', 'Stok'],
+      ['IMP1', 'Produk Impor 1', 'PCS', 1000, 1500, 20],
+      ['IMP2', 'Produk Impor 2', 'PCS', 2000, 2500, 10],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 2, updated: 0, unchanged: 0, skipped: 0 })
+
+    const product = db.select().from(products).where(eq(products.kodeItem, 'IMP1')).get()
+    expect(product).toMatchObject({ namaItem: 'Produk Impor 1', hargaPokok: 1000_00, hargaJual: 1500_00, stok: 20 })
+  })
+
+  it('updates an existing product by kodeItem and overwrites stock', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual', 'Stok'],
+      ['BRS5', 'Beras 5kg', 'PCS', 61000, 66000, 999],
+    ])
+
+    const result = importProducts(db, filePath, 3)
+    expect(result).toEqual({ created: 0, updated: 1, unchanged: 0, skipped: 0 })
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(999)
+
+    const adjustments = db.select().from(stockAdjustments).where(eq(stockAdjustments.productId, 1)).all()
+    expect(adjustments).toHaveLength(1)
+    expect(adjustments[0]).toMatchObject({ stokSebelum: 10, stokSesudah: 999, alasan: 'Import Excel', userId: 3 })
+  })
+
+  it('locates the header row even when preceded by a title block', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Laporan Katalog Produk', '', '', ''],
+      ['Dicetak: 2026-01-01', '', '', ''],
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['IMP1', 'Produk Impor', 'PCS', 1000, 1500],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result.created).toBe(1)
+  })
+
+  it('finds headers regardless of column order', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Harga Jual', 'Satuan', 'Nama Item', 'Kode Item', 'Harga Pokok'],
+      [1500, 'PCS', 'Produk Impor', 'IMP1', 1000],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result.created).toBe(1)
+  })
+
+  it('skips rows missing namaItem or satuan and counts them', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['IMP1', '', 'PCS', 1000, 1500],
+      ['IMP2', 'Produk Impor', '', 1000, 1500],
+      ['IMP3', 'Produk Valid', 'PCS', 1000, 1500],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 1, updated: 0, unchanged: 0, skipped: 2 })
+  })
+
+  it('silently ignores rows with a blank kodeItem (not counted as skipped)', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['', 'Baris Kosong', 'PCS', 1000, 1500],
+      ['IMP1', 'Produk Valid', 'PCS', 1000, 1500],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 1, updated: 0, unchanged: 0, skipped: 0 })
+  })
+
+  it('deduplicates a kodeItem repeated within the file, keeping the first occurrence', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['DUP1', 'Pertama', 'PCS', 1000, 1500],
+      ['DUP1', 'Kedua', 'PCS', 2000, 2500],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 1, updated: 0, unchanged: 0, skipped: 1 })
+
+    const product = db.select().from(products).where(eq(products.kodeItem, 'DUP1')).get()
+    expect(product?.namaItem).toBe('Pertama')
+  })
+
+  it('parses numbers with thousands-separator commas', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['IMP1', 'Produk Impor', 'PCS', '15,000', '18,500'],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result.created).toBe(1)
+    const product = db.select().from(products).where(eq(products.kodeItem, 'IMP1')).get()
+    expect(product).toMatchObject({ hargaPokok: 15000_00, hargaJual: 18500_00 })
+  })
+
+  it('returns all-zero counts when no header row is found', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Ini', 'Bukan', 'Header', 'Yang', 'Valid'],
+      ['a', 'b', 'c', 'd', 'e'],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 0, updated: 0, unchanged: 0, skipped: 0 })
   })
 })

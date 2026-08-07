@@ -1,5 +1,6 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import * as XLSX from 'xlsx'
 import * as schema from './db/schema'
 import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments } from './db/schema'
 
@@ -302,4 +303,160 @@ export function bulkSaveProducts(db: Db, rows: BulkSaveRow[], userId: number | n
   const result = db.transaction((tx) => saveProductRows(tx, rows, { updateStok: false, userId }))
 
   return { success: true, ...result }
+}
+
+const IMPORT_COLUMN_LABELS: Record<string, string[]> = {
+  kodeItem: ['kode item'],
+  barcode: ['kode barcode', 'barcode'],
+  namaItem: ['nama item'],
+  kategori: ['jenis', 'kategori'],
+  satuan: ['satuan'],
+  hargaPokok: ['harga beli', 'harga pokok'],
+  hargaJual: ['harga jual'],
+  stok: ['stok'],
+}
+
+const IMPORT_REQUIRED_COLUMNS = ['kodeItem', 'namaItem', 'satuan', 'hargaPokok', 'hargaJual']
+
+function resolveImportColumns(sheetRow: unknown[]): Record<string, number> | null {
+  const found: Record<string, number> = {}
+
+  sheetRow.forEach((cell, index) => {
+    const text = String(cell ?? '').trim().toLowerCase()
+    if (!text) {
+      return
+    }
+
+    for (const [field, labels] of Object.entries(IMPORT_COLUMN_LABELS)) {
+      if (!(field in found) && labels.includes(text)) {
+        found[field] = index
+      }
+    }
+  })
+
+  const hasAllRequired = IMPORT_REQUIRED_COLUMNS.every((field) => field in found)
+  return hasAllRequired ? found : null
+}
+
+function parseImportNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  const clean = String(value ?? '').replace(/[, ]/g, '')
+  const parsed = Number(clean)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+export interface ImportResult {
+  created: number
+  updated: number
+  unchanged: number
+  skipped: number
+}
+
+export function importProducts(db: Db, filePath: string, userId: number | null): ImportResult {
+  const workbook = XLSX.readFile(filePath)
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return { created: 0, updated: 0, unchanged: 0, skipped: 0 }
+  }
+
+  const sheet = workbook.Sheets[sheetName]
+  const sheetRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+  let columns: Record<string, number> | null = null
+  let headerIndex = -1
+
+  for (let i = 0; i < sheetRows.length; i++) {
+    const resolved = resolveImportColumns(sheetRows[i])
+    if (resolved) {
+      columns = resolved
+      headerIndex = i
+      break
+    }
+  }
+
+  if (!columns) {
+    return { created: 0, updated: 0, unchanged: 0, skipped: 0 }
+  }
+
+  const resolvedColumns = columns
+  const dataRows = sheetRows.slice(headerIndex + 1)
+
+  const existingByKodeItem = new Map<string, number>()
+  for (const product of db.select({ id: products.id, kodeItem: products.kodeItem }).from(products).all()) {
+    existingByKodeItem.set(product.kodeItem, product.id)
+  }
+
+  const rows: BulkSaveRow[] = []
+  const seenInFile = new Set<string>()
+  let skipped = 0
+
+  for (const sheetRow of dataRows) {
+    const kodeItem = String(sheetRow[resolvedColumns.kodeItem] ?? '').trim()
+
+    if (!kodeItem) {
+      continue
+    }
+
+    if (seenInFile.has(kodeItem)) {
+      skipped++
+      continue
+    }
+
+    const namaItem = String(sheetRow[resolvedColumns.namaItem] ?? '').trim()
+    const satuan = String(sheetRow[resolvedColumns.satuan] ?? '').trim()
+
+    if (!namaItem || !satuan) {
+      skipped++
+      continue
+    }
+
+    const barcodeRaw = resolvedColumns.barcode !== undefined ? String(sheetRow[resolvedColumns.barcode] ?? '').trim() : ''
+    const kategoriRaw = resolvedColumns.kategori !== undefined ? String(sheetRow[resolvedColumns.kategori] ?? '').trim() : ''
+    const hargaPokok = parseImportNumber(sheetRow[resolvedColumns.hargaPokok])
+    const hargaJual = parseImportNumber(sheetRow[resolvedColumns.hargaJual])
+    const stok = resolvedColumns.stok !== undefined ? Math.trunc(parseImportNumber(sheetRow[resolvedColumns.stok])) : 0
+
+    if (hargaPokok < 0 || hargaJual < 0 || stok < 0 || namaItem.length > 255 || satuan.length > 20 || kodeItem.length > 50) {
+      skipped++
+      continue
+    }
+
+    seenInFile.add(kodeItem)
+
+    rows.push({
+      key: `import-${kodeItem}`,
+      id: existingByKodeItem.get(kodeItem) ?? null,
+      kodeItem,
+      barcode: barcodeRaw || null,
+      namaItem,
+      kategori: kategoriRaw || null,
+      satuan,
+      hargaPokok: Math.round(hargaPokok * 100),
+      hargaJual: Math.round(hargaJual * 100),
+      stok,
+    })
+  }
+
+  let created = 0
+  let updated = 0
+  let unchanged = 0
+
+  db.transaction((tx) => {
+    for (const row of rows) {
+      try {
+        const result = saveProductRows(tx, [row], { updateStok: true, userId })
+        created += result.created
+        updated += result.updated
+        unchanged += result.unchanged
+      } catch {
+        skipped++
+      }
+    }
+  })
+
+  return { created, updated, unchanged, skipped }
 }
