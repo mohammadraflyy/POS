@@ -380,6 +380,35 @@ describe('importProducts', () => {
     expect(product).toMatchObject({ hargaPokok: 15000_00, hargaJual: 18500_00 })
   })
 
+  it('skips rows with a non-numeric price cell instead of silently importing at Rp 0', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['IMP1', 'Harga Rusak', 'PCS', 'N/A', 1500],
+      ['IMP2', 'Produk Valid', 'PCS', 1000, 1500],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 1, updated: 0, unchanged: 0, skipped: 1 })
+
+    const broken = db.select().from(products).where(eq(products.kodeItem, 'IMP1')).get()
+    expect(broken).toBeUndefined()
+  })
+
+  it('still allows an explicitly blank price cell to default to 0 (not treated as garbage)', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['IMP1', 'Harga Nol', 'PCS', '', 1500],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 1, updated: 0, unchanged: 0, skipped: 0 })
+
+    const product = db.select().from(products).where(eq(products.kodeItem, 'IMP1')).get()
+    expect(product?.hargaPokok).toBe(0)
+  })
+
   it('returns all-zero counts when no header row is found', () => {
     const db = seedDb()
     const filePath = writeTestSheet([
