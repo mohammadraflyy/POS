@@ -599,7 +599,8 @@ describe('recordBonPayment', () => {
 
   it('records a payment, increments dibayar, and inserts a bon_payments row dated today', () => {
     const { db, saleId } = seedDbWithOneBonSale()
-    const todayIso = new Date().toISOString().slice(0, 10)
+    const now = new Date()
+    const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
     recordBonPayment(db, saleId, 50000_00, 'Cicilan pertama')
 
@@ -611,7 +612,7 @@ describe('recordBonPayment', () => {
     expect(payments[0]).toMatchObject({
       saleId,
       jumlah: 50000_00,
-      tanggal: todayIso,
+      tanggal: todayLocal,
       keterangan: 'Cicilan pertama',
     })
   })
@@ -713,6 +714,12 @@ describe('recordBonPayment', () => {
     const { db, saleId } = seedDbWithOneBonSale()
     const tooLong = 'a'.repeat(501)
     expect(() => recordBonPayment(db, saleId, 1000_00, tooLong)).toThrow('Keterangan maksimal 500 karakter.')
+  })
+
+  it('allows keterangan of exactly 500 characters', () => {
+    const { db, saleId } = seedDbWithOneBonSale()
+    const exactly500 = 'a'.repeat(500)
+    expect(() => recordBonPayment(db, saleId, 1000_00, exactly500)).not.toThrow()
   })
 
   it('does not mutate state when a validation error is thrown', () => {

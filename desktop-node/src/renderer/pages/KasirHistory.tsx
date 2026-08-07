@@ -31,7 +31,7 @@ interface SaleHistoryRow {
   items: SaleHistoryItem[]
 }
 
-const OTHER_COLUMNS_WIDTH = 60 + 180 + 120 + 140 + 120 + 140
+const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 300
 const MIN_ITEM_WIDTH = 200
 
 export function KasirHistory() {
@@ -187,7 +187,7 @@ export function KasirHistory() {
     {
       key: 'metodePembayaran',
       name: 'Metode',
-      width: 120,
+      width: 200,
       renderCell: ({ row }) => (row.metodePembayaran === 'bon' ? `Pending Payment (${row.namaPelanggan})` : 'Tunai'),
     },
     {
@@ -217,7 +217,7 @@ export function KasirHistory() {
     {
       key: 'aksi',
       name: '',
-      width: 140,
+      width: 300,
       renderCell: ({ row }) => (
         <div className="flex items-center gap-2">
           {row.metodePembayaran === 'bon' && row.status === 'selesai' && row.total - row.dibayar > 0 && (

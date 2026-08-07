@@ -270,7 +270,9 @@ export function recordBonPayment(
     throw new Error('Jumlah bayar harus lebih dari 0.')
   }
 
-  if (keterangan && keterangan.length > 500) {
+  const trimmedKeterangan = keterangan?.trim() || null
+
+  if (trimmedKeterangan && trimmedKeterangan.length > 500) {
     throw new Error('Keterangan maksimal 500 karakter.')
   }
 
@@ -281,7 +283,7 @@ export function recordBonPayment(
   }
 
   const now = new Date()
-  const tanggal = now.toISOString().slice(0, 10)
+  const tanggal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
   db.transaction((tx) => {
     tx.insert(bonPayments)
@@ -289,7 +291,7 @@ export function recordBonPayment(
         saleId,
         jumlah: jumlahCents,
         tanggal,
-        keterangan,
+        keterangan: trimmedKeterangan,
         createdAt: now,
         updatedAt: now,
       })

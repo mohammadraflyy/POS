@@ -57,7 +57,10 @@ export function BonPayment() {
   function loadSale() {
     window.api.kasir
       .getSaleDetail(Number(saleId))
-      .then(setSale)
+      .then((s) => {
+        setSale(s)
+        setLoadError(null)
+      })
       .catch(() => setLoadError('Gagal memuat transaksi.'))
   }
 
@@ -86,7 +89,18 @@ export function BonPayment() {
   }
 
   if (!user || !sale) {
-    return <p>{loadError ?? 'Memuat...'}</p>
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-4">
+        <div className="flex items-center justify-between">
+          <p>{loadError ?? 'Memuat...'}</p>
+          {loadError && (
+            <Button variant="outline" size="sm" onClick={() => navigate('/history')}>
+              Kembali
+            </Button>
+          )}
+        </div>
+      </div>
+    )
   }
 
   const sisaPiutang = sale.total - sale.dibayar
@@ -181,7 +195,7 @@ export function BonPayment() {
           <Button type="submit" disabled={processing}>
             Simpan Pembayaran
           </Button>
-          <InputError message={fieldError ?? undefined} />
+          <InputError role="alert" message={fieldError ?? undefined} />
         </form>
       )}
 
