@@ -161,12 +161,15 @@ export function Settings() {
   const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    window.api.kasir.getStoreSettings().then((settings) => {
-      setNamaToko(settings.namaToko)
-      setAlamat(settings.alamat ?? '')
-      setTelepon(settings.telepon ?? '')
-      setPesanFooter(settings.pesanFooter ?? '')
-    })
+    window.api.kasir
+      .getStoreSettings()
+      .then((settings) => {
+        setNamaToko(settings.namaToko)
+        setAlamat(settings.alamat ?? '')
+        setTelepon(settings.telepon ?? '')
+        setPesanFooter(settings.pesanFooter ?? '')
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat pengaturan toko.'))
   }, [])
 
   function submit(e: FormEvent) {
