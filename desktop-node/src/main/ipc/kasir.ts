@@ -145,10 +145,6 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('kasir:getStoreSettings', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
-
     const setting = db.select().from(storeSettings).get()
 
     return {
