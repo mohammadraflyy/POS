@@ -2,8 +2,8 @@ import { ipcMain } from 'electron'
 import { and, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems, storeSettings, users } from '../db/schema'
-import { checkout, cancelSale, type CheckoutInput } from '../kasir'
+import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings, users } from '../db/schema'
+import { checkout, cancelSale, recordBonPayment, type CheckoutInput } from '../kasir'
 import { getCurrentUser } from './auth'
 import { getMainWindow } from '../index'
 
@@ -286,6 +286,63 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         lastPage,
         total,
       }
+    },
+  )
+
+  ipcMain.handle('kasir:getSaleDetail', (_event, saleId: number) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+    if (!sale) {
+      throw new Error('Transaksi tidak ditemukan.')
+    }
+
+    const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+    const productIds = itemRows.map((item) => item.productId)
+    const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
+    const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
+
+    const paymentRows = db
+      .select()
+      .from(bonPayments)
+      .where(eq(bonPayments.saleId, saleId))
+      .orderBy(desc(bonPayments.tanggal), desc(bonPayments.id))
+      .all()
+
+    return {
+      id: sale.id,
+      namaPelanggan: sale.namaPelanggan,
+      metodePembayaran: sale.metodePembayaran,
+      status: sale.status,
+      total: toRupiah(sale.total),
+      dibayar: toRupiah(sale.dibayar),
+      createdAt: sale.createdAt.toISOString(),
+      items: itemRows.map((item) => ({
+        id: item.id,
+        qty: item.qty,
+        satuan: item.satuan,
+        namaItem: productNameById.get(item.productId) ?? '',
+      })),
+      bonPayments: paymentRows.map((payment) => ({
+        id: payment.id,
+        jumlah: toRupiah(payment.jumlah),
+        tanggal: payment.tanggal,
+        keterangan: payment.keterangan,
+      })),
+    }
+  })
+
+  ipcMain.handle(
+    'kasir:recordBonPayment',
+    (_event, input: { saleId: number; jumlah: number; keterangan: string | null }) => {
+      if (!getCurrentUser()) {
+        throw new Error('Silakan login terlebih dahulu.')
+      }
+
+      recordBonPayment(db, input.saleId, toCents(input.jumlah), input.keterangan)
     },
   )
 }

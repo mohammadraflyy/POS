@@ -34,6 +34,9 @@ const api = {
       search?: string
       page: number
     }) => invoke('kasir:listSalesHistory', filters),
+    getSaleDetail: (saleId: number) => invoke('kasir:getSaleDetail', saleId),
+    recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) =>
+      invoke('kasir:recordBonPayment', input),
   },
 }
 

@@ -90,6 +90,18 @@ declare global {
           lastPage: number
           total: number
         }>
+        getSaleDetail: (saleId: number) => Promise<{
+          id: number
+          namaPelanggan: string | null
+          metodePembayaran: 'tunai' | 'bon'
+          status: 'selesai' | 'dibatalkan'
+          total: number
+          dibayar: number
+          createdAt: string
+          items: { id: number; qty: number; satuan: string | null; namaItem: string }[]
+          bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
+        }>
+        recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) => Promise<void>
       }
     }
   }
