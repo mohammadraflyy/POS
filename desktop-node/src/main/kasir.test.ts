@@ -4,7 +4,7 @@ import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
 import { users, products, productUnits, productPriceTiers, sales, saleItems, bonPayments } from './db/schema'
-import { checkout, type CheckoutInput, cancelSale } from './kasir'
+import { checkout, type CheckoutInput, cancelSale, recordBonPayment } from './kasir'
 
 describe('priceForQty', () => {
   it('falls back to the base price when there are no tiers', () => {
@@ -551,5 +551,177 @@ describe('cancelSale', () => {
   it('throws when the sale does not exist', () => {
     const { db } = seedDbWithOneSale()
     expect(() => cancelSale(db, 999)).toThrow('Transaksi tidak ditemukan.')
+  })
+})
+
+describe('recordBonPayment', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedDbWithOneBonSale() {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({
+        id: 1,
+        username: 'kasir1',
+        passwordHash: 'hash',
+        name: 'Kasir Satu',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        satuan: 'PCS',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 10,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const result = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Siti',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 3 }],
+    })
+
+    return { db, saleId: result.saleId, total: 3 * 65000_00 }
+  }
+
+  it('records a payment, increments dibayar, and inserts a bon_payments row dated today', () => {
+    const { db, saleId } = seedDbWithOneBonSale()
+    const todayIso = new Date().toISOString().slice(0, 10)
+
+    recordBonPayment(db, saleId, 50000_00, 'Cicilan pertama')
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.dibayar).toBe(50000_00)
+
+    const payments = db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).all()
+    expect(payments).toHaveLength(1)
+    expect(payments[0]).toMatchObject({
+      saleId,
+      jumlah: 50000_00,
+      tanggal: todayIso,
+      keterangan: 'Cicilan pertama',
+    })
+  })
+
+  it('allows a payment with keterangan omitted (null)', () => {
+    const { db, saleId } = seedDbWithOneBonSale()
+
+    recordBonPayment(db, saleId, 10000_00, null)
+
+    const payments = db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).all()
+    expect(payments[0].keterangan).toBeNull()
+  })
+
+  it('allows a payment that exactly clears sisaPiutang', () => {
+    const { db, saleId, total } = seedDbWithOneBonSale()
+
+    recordBonPayment(db, saleId, total, null)
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.dibayar).toBe(total)
+  })
+
+  it('accumulates dibayar across multiple payments', () => {
+    const { db, saleId } = seedDbWithOneBonSale()
+
+    recordBonPayment(db, saleId, 50000_00, null)
+    recordBonPayment(db, saleId, 30000_00, null)
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.dibayar).toBe(80000_00)
+
+    const payments = db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).all()
+    expect(payments).toHaveLength(2)
+  })
+
+  it('throws when the sale does not exist', () => {
+    const { db } = seedDbWithOneBonSale()
+    expect(() => recordBonPayment(db, 999, 1000_00, null)).toThrow('Transaksi tidak ditemukan.')
+  })
+
+  it('throws when the sale is not a bon sale', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({ id: 1, username: 'kasir1', passwordHash: 'hash', name: 'Kasir Satu', createdAt: now, updatedAt: now })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        satuan: 'PCS',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 10,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    expect(() => recordBonPayment(db, result.saleId, 1000_00, null)).toThrow('Transaksi ini bukan bon aktif.')
+  })
+
+  it('throws when the sale has been cancelled', () => {
+    const { db, saleId } = seedDbWithOneBonSale()
+    cancelSale(db, saleId)
+
+    expect(() => recordBonPayment(db, saleId, 1000_00, null)).toThrow('Transaksi ini bukan bon aktif.')
+  })
+
+  it('throws when jumlah is zero or negative', () => {
+    const { db, saleId } = seedDbWithOneBonSale()
+
+    expect(() => recordBonPayment(db, saleId, 0, null)).toThrow('Jumlah bayar harus lebih dari 0.')
+    expect(() => recordBonPayment(db, saleId, -1000_00, null)).toThrow('Jumlah bayar harus lebih dari 0.')
+  })
+
+  it('throws when jumlah is not an integer', () => {
+    const { db, saleId } = seedDbWithOneBonSale()
+    expect(() => recordBonPayment(db, saleId, 1000.5, null)).toThrow('Jumlah bayar harus lebih dari 0.')
+  })
+
+  it('throws when jumlah exceeds sisaPiutang', () => {
+    const { db, saleId, total } = seedDbWithOneBonSale()
+    expect(() => recordBonPayment(db, saleId, total + 1, null)).toThrow('Jumlah bayar melebihi sisa piutang.')
+  })
+
+  it('throws when keterangan exceeds 500 characters', () => {
+    const { db, saleId } = seedDbWithOneBonSale()
+    const tooLong = 'a'.repeat(501)
+    expect(() => recordBonPayment(db, saleId, 1000_00, tooLong)).toThrow('Keterangan maksimal 500 karakter.')
+  })
+
+  it('does not mutate state when a validation error is thrown', () => {
+    const { db, saleId, total } = seedDbWithOneBonSale()
+
+    expect(() => recordBonPayment(db, saleId, total + 1, null)).toThrow()
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.dibayar).toBe(0)
+    expect(db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).all()).toHaveLength(0)
   })
 })

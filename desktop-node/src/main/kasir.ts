@@ -249,3 +249,55 @@ export function cancelSale(db: BetterSQLite3Database<typeof schema>, saleId: num
     tx.update(sales).set({ status: 'dibatalkan' }).where(eq(sales.id, saleId)).run()
   })
 }
+
+export function recordBonPayment(
+  db: BetterSQLite3Database<typeof schema>,
+  saleId: number,
+  jumlahCents: number,
+  keterangan: string | null,
+): void {
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  if (sale.metodePembayaran !== 'bon' || sale.status !== 'selesai') {
+    throw new Error('Transaksi ini bukan bon aktif.')
+  }
+
+  if (!Number.isInteger(jumlahCents) || jumlahCents <= 0) {
+    throw new Error('Jumlah bayar harus lebih dari 0.')
+  }
+
+  if (keterangan && keterangan.length > 500) {
+    throw new Error('Keterangan maksimal 500 karakter.')
+  }
+
+  const sisaPiutang = sale.total - sale.dibayar
+
+  if (jumlahCents > sisaPiutang) {
+    throw new Error('Jumlah bayar melebihi sisa piutang.')
+  }
+
+  const now = new Date()
+  const tanggal = now.toISOString().slice(0, 10)
+
+  db.transaction((tx) => {
+    tx.insert(bonPayments)
+      .values({
+        saleId,
+        jumlah: jumlahCents,
+        tanggal,
+        keterangan,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    tx.update(sales)
+      .set({ dibayar: sql`${sales.dibayar} + ${jumlahCents}` })
+      .where(eq(sales.id, saleId))
+      .run()
+  })
+}
