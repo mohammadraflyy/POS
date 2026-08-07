@@ -122,3 +122,24 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* react-data-grid: stronger, more visible cell borders + more breathing room.
+   Applies globally to every grid in the app (Kasir, KasirHistory, Inventory,
+   MassInput, ReportTable, CartGrid all share the .rdg-light/.rdg-dark classes). */
+.rdg-light,
+.rdg-dark {
+  --rdg-border-color: light-dark(oklch(0.82 0 0), oklch(0.4 0 0));
+}
+
+.rdg-light .rdg-cell,
+.rdg-dark .rdg-cell {
+  padding-inline: 12px;
+  padding-block: 6px;
+  border-inline-start: var(--rdg-border-width) solid var(--rdg-border-color);
+}
+
+.rdg-light .rdg-header-row .rdg-cell,
+.rdg-dark .rdg-header-row .rdg-cell {
+  border-block-start: var(--rdg-border-width) solid var(--rdg-border-color);
+  font-weight: 600;
+}
