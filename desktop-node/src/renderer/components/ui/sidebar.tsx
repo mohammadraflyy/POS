@@ -8,8 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-const SIDEBAR_COOKIE_NAME = 'sidebar_state'
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+const SIDEBAR_STORAGE_KEY = 'sidebar_state'
 const SIDEBAR_WIDTH = '16rem'
 const SIDEBAR_WIDTH_ICON = '3rem'
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b'
@@ -33,7 +32,7 @@ function useSidebar() {
 }
 
 function SidebarProvider({
-  defaultOpen = true,
+  defaultOpen,
   open: openProp,
   onOpenChange: setOpenProp,
   className,
@@ -45,7 +44,15 @@ function SidebarProvider({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
-  const [_open, _setOpen] = React.useState(defaultOpen)
+  const [_open, _setOpen] = React.useState(() => {
+    if (defaultOpen !== undefined) {
+      return defaultOpen
+    }
+    if (typeof window === 'undefined') {
+      return true
+    }
+    return localStorage.getItem(SIDEBAR_STORAGE_KEY) !== 'false'
+  })
   const open = openProp ?? _open
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -56,7 +63,7 @@ function SidebarProvider({
         _setOpen(openState)
       }
 
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(openState))
     },
     [setOpenProp, open],
   )

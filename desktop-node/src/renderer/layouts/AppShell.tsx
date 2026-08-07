@@ -39,7 +39,7 @@ export function AppShell({ breadcrumbs, children }: { breadcrumbs: BreadcrumbIte
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="print:hidden">
       <AppSidebar storeName={storeName} user={user} />
       <SidebarInset>
         <header className="border-sidebar-border/50 group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 flex h-16 shrink-0 items-center gap-2 border-b px-6 transition-[width,height] ease-linear md:px-4">
