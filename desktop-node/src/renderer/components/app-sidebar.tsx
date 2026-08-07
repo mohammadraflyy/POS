@@ -14,7 +14,7 @@ const penjualanNavItems: NavItem[] = [
 
 const pembelianNavItems: NavItem[] = [
   { title: 'Pembelian', href: '/purchase', icon: PackagePlus, disabled: true },
-  { title: 'Katalog Produk', href: '/inventory', icon: Boxes, disabled: true },
+  { title: 'Katalog Produk', href: '/inventory', icon: Boxes },
   { title: 'Stock Opname', href: '/stock-opname', icon: ClipboardCheck, disabled: true },
 ]
 
