@@ -70,16 +70,6 @@ export function padLine(left: string, right: string, width: number): string {
   return `${left}${' '.repeat(gap)}${right}`
 }
 
-/** Centers `text` within a `width`-character line. Returns it unchanged if it doesn't fit. */
-export function centerLine(text: string, width: number): string {
-  if (text.length >= width) {
-    return text
-  }
-
-  const padLeft = Math.floor((width - text.length) / 2)
-  return `${' '.repeat(padLeft)}${text}`
-}
-
 function formatRupiah(value: number): string {
   const formatted = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value)
   return formatted.replace(String.fromCharCode(160), ' ')
@@ -94,15 +84,15 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
 
   out.push(...setAlign(1))
   out.push(...setBold(true))
-  out.push(...textLine(centerLine(storeSettings.namaToko, width)))
+  out.push(...textLine(storeSettings.namaToko))
   out.push(...setBold(false))
 
   if (storeSettings.alamat) {
-    out.push(...textLine(centerLine(storeSettings.alamat, width)))
+    out.push(...textLine(storeSettings.alamat))
   }
 
   if (storeSettings.telepon) {
-    out.push(...textLine(centerLine(storeSettings.telepon, width)))
+    out.push(...textLine(storeSettings.telepon))
   }
 
   out.push(...setAlign(0))
@@ -140,7 +130,7 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
   if (storeSettings.pesanFooter) {
     out.push(...textLine(dashLine))
     out.push(...setAlign(1))
-    out.push(...textLine(centerLine(storeSettings.pesanFooter, width)))
+    out.push(...textLine(storeSettings.pesanFooter))
   }
 
   out.push(...feed(3))

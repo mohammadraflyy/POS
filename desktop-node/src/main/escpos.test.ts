@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildReceiptEscPos, centerLine, padLine, SAMPLE_RECEIPT, type EscPosReceiptSale, type EscPosStoreSettings } from './escpos'
+import { buildReceiptEscPos, padLine, SAMPLE_RECEIPT, type EscPosReceiptSale, type EscPosStoreSettings } from './escpos'
 
 describe('padLine', () => {
   it('pads with spaces to fill the width', () => {
@@ -15,17 +15,6 @@ describe('padLine', () => {
     const result = padLine('A very very very long product name that will not fit', 'Rp 65.000', 32)
     expect(result).toHaveLength(32)
     expect(result.endsWith('Rp 65.000')).toBe(true)
-  })
-})
-
-describe('centerLine', () => {
-  it('centers text with even padding', () => {
-    expect(centerLine('AB', 6)).toBe('  AB')
-  })
-
-  it('returns the text unchanged when it does not fit', () => {
-    const long = 'a'.repeat(40)
-    expect(centerLine(long, 32)).toBe(long)
   })
 })
 

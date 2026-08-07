@@ -99,18 +99,22 @@ export async function printRaw(printerName: string, data: Buffer): Promise<void>
   writeFileSync(scriptPath, RAW_PRINT_SCRIPT)
 
   try {
-    await execFileAsync('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      scriptPath,
-      '-PrinterName',
-      printerName,
-      '-DataPath',
-      dataPath,
-    ])
+    await execFileAsync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        scriptPath,
+        '-PrinterName',
+        printerName,
+        '-DataPath',
+        dataPath,
+      ],
+      { timeout: 30_000 },
+    )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     throw new Error(`Gagal mencetak: ${message}`)
