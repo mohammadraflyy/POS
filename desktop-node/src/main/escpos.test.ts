@@ -99,12 +99,12 @@ describe('buildReceiptEscPos', () => {
     const totalLine80 = text80.split('\n').find((line) => line.includes('TOTAL'))
     expect(totalLine58).toBeDefined()
     expect(totalLine80).toBeDefined()
-    // Both segments carry the same fixed-length bold-on control-byte prefix
-    // (ESC E 1, 3 bytes) before the padded text, so the printable-width
-    // difference between paper sizes shows up directly as a difference in
-    // raw segment length - exactly the 48-32=16 character gap between the
-    // two paper widths' padLine() output.
-    expect(totalLine80!.length - totalLine58!.length).toBe(48 - 32)
+    // Each segment carries a fixed 3-byte bold-on prefix (ESC E 1) before the
+    // width-character padded text, so the segment's total length is exactly
+    // width + 3 - this proves the actual 32/48 absolute widths, not just
+    // that the two differ by the expected 16-character gap between them.
+    expect(totalLine58).toHaveLength(32 + 3)
+    expect(totalLine80).toHaveLength(48 + 3)
   })
 
   it('clamps a negative kembalian to 0 rather than printing a negative amount', () => {
