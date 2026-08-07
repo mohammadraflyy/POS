@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { eq, gte, inArray } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { products, productUnits, productPriceTiers, sales, saleItems, storeSettings, users } from '../db/schema'
@@ -196,4 +196,96 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
 
     return getReceipt(db, saleId, kasir?.name ?? null)
   })
+
+  ipcMain.handle(
+    'kasir:listSalesHistory',
+    (
+      _event,
+      input: {
+        dari?: string
+        sampai?: string
+        status?: 'selesai' | 'dibatalkan'
+        metodePembayaran?: 'tunai' | 'bon'
+        search?: string
+        page: number
+      },
+    ) => {
+      if (!getCurrentUser()) {
+        throw new Error('Silakan login terlebih dahulu.')
+      }
+
+      const pageSize = 20
+      const page = Math.max(1, input.page)
+
+      const conditions = []
+
+      if (input.dari) {
+        conditions.push(gte(sales.createdAt, new Date(`${input.dari}T00:00:00`)))
+      }
+
+      if (input.sampai) {
+        conditions.push(lte(sales.createdAt, new Date(`${input.sampai}T23:59:59`)))
+      }
+
+      if (input.status) {
+        conditions.push(eq(sales.status, input.status))
+      }
+
+      if (input.metodePembayaran) {
+        conditions.push(eq(sales.metodePembayaran, input.metodePembayaran))
+      }
+
+      if (input.search) {
+        const q = `%${input.search}%`
+        const byCustomer = db.select({ id: sales.id }).from(sales).where(like(sales.namaPelanggan, q)).all()
+        const byProduct = db
+          .select({ id: saleItems.saleId })
+          .from(saleItems)
+          .innerJoin(products, eq(saleItems.productId, products.id))
+          .where(like(products.namaItem, q))
+          .all()
+        const matchingIds = Array.from(new Set([...byCustomer.map((row) => row.id), ...byProduct.map((row) => row.id)]))
+        conditions.push(matchingIds.length > 0 ? inArray(sales.id, matchingIds) : sql`0`)
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+      const totalRow = db.select({ count: sql<number>`count(*)` }).from(sales).where(whereClause).get()
+      const total = totalRow?.count ?? 0
+      const lastPage = Math.max(1, Math.ceil(total / pageSize))
+
+      const saleRows = db
+        .select()
+        .from(sales)
+        .where(whereClause)
+        .orderBy(desc(sales.createdAt), desc(sales.id))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize)
+        .all()
+
+      const saleIds = saleRows.map((sale) => sale.id)
+      const itemRows = saleIds.length > 0 ? db.select().from(saleItems).where(inArray(saleItems.saleId, saleIds)).all() : []
+      const productIds = itemRows.map((item) => item.productId)
+      const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
+      const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
+
+      return {
+        data: saleRows.map((sale) => ({
+          id: sale.id,
+          createdAt: sale.createdAt.toISOString(),
+          namaPelanggan: sale.namaPelanggan,
+          metodePembayaran: sale.metodePembayaran,
+          status: sale.status,
+          total: toRupiah(sale.total),
+          dibayar: toRupiah(sale.dibayar),
+          items: itemRows
+            .filter((item) => item.saleId === sale.id)
+            .map((item) => ({ namaItem: productNameById.get(item.productId) ?? '', qty: item.qty })),
+        })),
+        currentPage: page,
+        lastPage,
+        total,
+      }
+    },
+  )
 }

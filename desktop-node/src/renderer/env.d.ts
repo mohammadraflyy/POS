@@ -68,6 +68,28 @@ declare global {
           kasirName: string | null
           items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
         }>
+        listSalesHistory: (filters: {
+          dari?: string
+          sampai?: string
+          status?: 'selesai' | 'dibatalkan'
+          metodePembayaran?: 'tunai' | 'bon'
+          search?: string
+          page: number
+        }) => Promise<{
+          data: {
+            id: number
+            createdAt: string
+            namaPelanggan: string | null
+            metodePembayaran: 'tunai' | 'bon'
+            status: 'selesai' | 'dibatalkan'
+            total: number
+            dibayar: number
+            items: { namaItem: string; qty: number }[]
+          }[]
+          currentPage: number
+          lastPage: number
+          total: number
+        }>
       }
     }
   }

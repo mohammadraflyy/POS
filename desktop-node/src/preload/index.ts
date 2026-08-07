@@ -26,6 +26,14 @@ const api = {
     getStoreSettings: () => invoke('kasir:getStoreSettings'),
     printReceipt: () => invoke('kasir:printReceipt'),
     getReceiptForSale: (saleId: number) => invoke('kasir:getReceiptForSale', saleId),
+    listSalesHistory: (filters: {
+      dari?: string
+      sampai?: string
+      status?: 'selesai' | 'dibatalkan'
+      metodePembayaran?: 'tunai' | 'bon'
+      search?: string
+      page: number
+    }) => invoke('kasir:listSalesHistory', filters),
   },
 }
 
