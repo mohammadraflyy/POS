@@ -84,25 +84,31 @@ export function MassInput() {
       return
     }
 
-    window.api.inventory.getProductsByIds(ids).then((fetched) => {
-      setRows(
-        fetched.map((p) => ({
-          key: `product-${p.id}`,
-          id: p.id,
-          kodeItem: p.kodeItem,
-          barcode: p.barcode ?? '',
-          namaItem: p.namaItem,
-          kategori: p.categoryName ?? '',
-          satuan: p.satuan,
-          hargaPokok: String(p.hargaPokok),
-          hargaJual: String(p.hargaJual),
-          stok: String(p.stok),
-          unitsCount: p.unitsCount,
-          priceTiersCount: p.priceTiersCount,
-        })),
-      )
-      setLoaded(true)
-    })
+    window.api.inventory
+      .getProductsByIds(ids)
+      .then((fetched) => {
+        setRows(
+          fetched.map((p) => ({
+            key: `product-${p.id}`,
+            id: p.id,
+            kodeItem: p.kodeItem,
+            barcode: p.barcode ?? '',
+            namaItem: p.namaItem,
+            kategori: p.categoryName ?? '',
+            satuan: p.satuan,
+            hargaPokok: String(p.hargaPokok),
+            hargaJual: String(p.hargaJual),
+            stok: String(p.stok),
+            unitsCount: p.unitsCount,
+            priceTiersCount: p.priceTiersCount,
+          })),
+        )
+        setLoaded(true)
+      })
+      .catch((err) => {
+        setFormError(err instanceof Error ? err.message : 'Gagal memuat produk')
+        setLoaded(true)
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

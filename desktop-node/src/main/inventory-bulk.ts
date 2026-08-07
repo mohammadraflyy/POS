@@ -118,6 +118,10 @@ export function validateBulkRows(db: DbOrTx, rows: BulkSaveRow[]): Record<string
     } else if (row.hargaJual < 0) {
       addError(row.key, 'hargaJual', 'Harga jual tidak boleh negatif.')
     }
+
+    if (!Number.isInteger(row.stok) || row.stok < 0) {
+      addError(row.key, 'stok', 'Stok harus bilangan bulat dan tidak boleh negatif.')
+    }
   }
 
   const byKodeItem = new Map<string, string[]>()

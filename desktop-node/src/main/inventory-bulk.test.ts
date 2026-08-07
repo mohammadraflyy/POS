@@ -114,6 +114,15 @@ describe('validateBulkRows', () => {
     })
   })
 
+  it('flags negative or non-integer stok', () => {
+    const db = seedDb()
+    const errors = validateBulkRows(db, [baseRow({ stok: -5 })])
+    expect(errors['row-1'].stok).toBe('Stok harus bilangan bulat dan tidak boleh negatif.')
+
+    const errors2 = validateBulkRows(db, [baseRow({ key: 'row-2', stok: 2.5 })])
+    expect(errors2['row-2'].stok).toBe('Stok harus bilangan bulat dan tidak boleh negatif.')
+  })
+
   it('flags every row sharing a duplicate kodeItem within the batch', () => {
     const db = seedDb()
     const errors = validateBulkRows(db, [
