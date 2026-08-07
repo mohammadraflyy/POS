@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route } from 'react-router-dom'
 import { Login } from './pages/Login'
 import { Kasir } from './pages/Kasir'
+import { KasirHistory } from './pages/KasirHistory'
 
 export function App() {
   return (
@@ -8,6 +9,7 @@ export function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Kasir />} />
+        <Route path="/history" element={<KasirHistory />} />
       </Routes>
     </HashRouter>
   )

@@ -370,17 +370,22 @@ export function Kasir() {
       <div className="flex-1 space-y-4 p-4 sm:p-6 print:hidden">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{user.name}</p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            await window.api.auth.logout()
-            navigate('/login')
-          }}
-        >
-          Keluar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => navigate('/history')}>
+            Riwayat Transaksi
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              await window.api.auth.logout()
+              navigate('/login')
+            }}
+          >
+            Keluar
+          </Button>
+        </div>
       </div>
 
       {scanError && (
