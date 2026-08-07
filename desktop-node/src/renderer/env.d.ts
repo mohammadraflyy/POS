@@ -102,6 +102,13 @@ declare global {
           bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
         }>
         recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) => Promise<void>
+        updateStoreSettings: (input: {
+          namaToko: string
+          alamat: string | null
+          telepon: string | null
+          pesanFooter: string | null
+        }) => Promise<void>
+        purgeSalesBefore: (before: string) => Promise<{ deleted: number }>
       }
     }
   }

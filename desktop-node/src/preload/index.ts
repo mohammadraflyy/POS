@@ -37,6 +37,13 @@ const api = {
     getSaleDetail: (saleId: number) => invoke('kasir:getSaleDetail', saleId),
     recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) =>
       invoke('kasir:recordBonPayment', input),
+    updateStoreSettings: (input: {
+      namaToko: string
+      alamat: string | null
+      telepon: string | null
+      pesanFooter: string | null
+    }) => invoke('kasir:updateStoreSettings', input),
+    purgeSalesBefore: (before: string) => invoke('kasir:purgeSalesBefore', before),
   },
 }
 

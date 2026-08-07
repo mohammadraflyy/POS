@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings, users } from '../db/schema'
-import { checkout, cancelSale, recordBonPayment, type CheckoutInput } from '../kasir'
+import { checkout, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, type CheckoutInput } from '../kasir'
 import { getCurrentUser } from './auth'
 import { getMainWindow } from '../index'
 
@@ -353,4 +353,24 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       recordBonPayment(db, input.saleId, toCents(input.jumlah), input.keterangan)
     },
   )
+
+  ipcMain.handle(
+    'kasir:updateStoreSettings',
+    (_event, input: { namaToko: string; alamat: string | null; telepon: string | null; pesanFooter: string | null }) => {
+      if (!getCurrentUser()) {
+        throw new Error('Silakan login terlebih dahulu.')
+      }
+
+      updateStoreSettings(db, input)
+    },
+  )
+
+  ipcMain.handle('kasir:purgeSalesBefore', (_event, before: string) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const deleted = purgeSalesBefore(db, new Date(`${before}T00:00:00`))
+    return { deleted }
+  })
 }
