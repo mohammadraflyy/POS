@@ -213,6 +213,7 @@ declare global {
           | { success: true; created: number; updated: number; unchanged: number }
           | { success: false; rowErrors: Record<string, Record<string, string>> }
         >
+        importProducts: () => Promise<{ created: number; updated: number; unchanged: number; skipped: number } | null>
       }
     }
   }

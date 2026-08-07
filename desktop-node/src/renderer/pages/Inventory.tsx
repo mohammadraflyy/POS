@@ -88,6 +88,30 @@ export function Inventory() {
   const [paletteResults, setPaletteResults] = useState<ProductRow[]>([])
 
   const [detailProductId, setDetailProductId] = useState<number | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<string | null>(null)
+
+  function runImport() {
+    setImporting(true)
+    setImportResult(null)
+
+    window.api.inventory
+      .importProducts()
+      .then((result) => {
+        if (result === null) {
+          return
+        }
+
+        setImportResult(
+          `${result.created} produk baru, ${result.updated} diperbarui, ${result.unchanged} tidak berubah, ${result.skipped} baris dilewati.`,
+        )
+        loadPage(currentPage)
+      })
+      .catch((err) => {
+        setImportResult(err instanceof Error ? err.message : 'Gagal mengimpor')
+      })
+      .finally(() => setImporting(false))
+  }
 
   const { confirm, ConfirmDialog } = useConfirm()
 
@@ -399,6 +423,11 @@ export function Inventory() {
             {deleteError}
           </p>
         )}
+        {importResult && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {importResult}
+          </p>
+        )}
         {errorSummary.length > 0 && (
           <div className="space-y-1 text-sm text-destructive">
             {errorSummary.map((message, i) => (
@@ -425,6 +454,9 @@ export function Inventory() {
             </Button>
           </form>
           <div className="flex gap-2">
+            <Button type="button" variant="outline" disabled={importing} onClick={runImport}>
+              {importing ? 'Mengimpor...' : 'Import Excel'}
+            </Button>
             <Button
               type="button"
               variant="outline"

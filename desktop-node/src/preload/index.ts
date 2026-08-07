@@ -89,6 +89,7 @@ const api = {
         stok: number
       }[],
     ) => invoke('inventory:bulkSaveProducts', rows),
+    importProducts: () => invoke('inventory:importProducts'),
   },
 }
 

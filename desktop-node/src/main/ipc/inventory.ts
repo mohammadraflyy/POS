@@ -1,6 +1,7 @@
-import { ipcMain } from 'electron'
+import { dialog, ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
+import { getMainWindow } from '../index'
 import { listProducts, updateProduct, deleteProduct, bulkDeleteProducts, searchProductsQuick } from '../inventory'
 import {
   getProductDetail,
@@ -10,7 +11,7 @@ import {
   deletePriceTier,
   type ProductUnitRow,
 } from '../inventory-units'
-import { getProductsByIds, bulkSaveProducts, type BulkSaveRow } from '../inventory-bulk'
+import { getProductsByIds, bulkSaveProducts, importProducts, type BulkSaveRow } from '../inventory-bulk'
 import { getCurrentUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -262,4 +263,27 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
       return bulkSaveProducts(db, bulkRows, user.id)
     },
   )
+
+  ipcMain.handle('inventory:importProducts', async () => {
+    const user = getCurrentUser()
+    if (!user) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const window = getMainWindow()
+    if (!window) {
+      throw new Error('Jendela aplikasi tidak ditemukan.')
+    }
+
+    const result = await dialog.showOpenDialog(window, {
+      filters: [{ name: 'Spreadsheet', extensions: ['xlsx', 'xls', 'csv'] }],
+      properties: ['openFile'],
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+
+    return importProducts(db, result.filePaths[0], user.id)
+  })
 }
