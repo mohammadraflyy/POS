@@ -1493,7 +1493,7 @@ describe('importProducts', () => {
       ['BRS5', 'Beras 5kg', 'PCS', 61000, 66000, 999],
     ])
 
-    const result = importProducts(db, filePath, 4)
+    const result = importProducts(db, filePath, 3)
     expect(result).toEqual({ created: 0, updated: 1, unchanged: 0, skipped: 0 })
 
     const product = db.select().from(products).where(eq(products.id, 1)).get()
@@ -1501,7 +1501,7 @@ describe('importProducts', () => {
 
     const adjustments = db.select().from(stockAdjustments).where(eq(stockAdjustments.productId, 1)).all()
     expect(adjustments).toHaveLength(1)
-    expect(adjustments[0]).toMatchObject({ stokSebelum: 10, stokSesudah: 999, alasan: 'Import Excel', userId: 4 })
+    expect(adjustments[0]).toMatchObject({ stokSebelum: 10, stokSesudah: 999, alasan: 'Import Excel', userId: 3 })
   })
 
   it('locates the header row even when preceded by a title block', () => {
