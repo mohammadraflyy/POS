@@ -38,12 +38,14 @@ export const products = sqliteTable('products', {
 export const productUnits = sqliteTable('product_units', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  level: integer('level').notNull().default(2),
   satuan: text('satuan').notNull(),
+  jumlahKemasan: integer('jumlah_kemasan').notNull().default(0),
   konversi: integer('konversi').notNull(),
   hargaJual: integer('harga_jual').notNull(),
   ...timestamps(),
 }, (table) => ({
-  productSatuanUnique: uniqueIndex('product_units_product_id_satuan_unique').on(table.productId, table.satuan),
+  productLevelUnique: uniqueIndex('product_units_product_id_level_unique').on(table.productId, table.level),
 }))
 
 export const productPriceTiers = sqliteTable('product_price_tiers', {

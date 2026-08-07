@@ -15,6 +15,13 @@
       "when": 1786087617733,
       "tag": "0001_thin_thundra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786104466049,
+      "tag": "0002_bizarre_bug",
+      "breakpoints": true
     }
   ]
 }
