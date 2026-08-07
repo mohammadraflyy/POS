@@ -1335,29 +1335,7 @@ Replace with:
         testPrint: () => Promise<void>
 ```
 
-Find:
-
-```typescript
-        updateStoreSettings: (input: {
-          namaToko: string
-          alamat: string | null
-          telepon: string | null
-          pesanFooter: string | null
-        }) => Promise<void>
-```
-
-Replace with:
-
-```typescript
-        updateStoreSettings: (input: {
-          namaToko: string
-          alamat: string | null
-          telepon: string | null
-          pesanFooter: string | null
-          printerName: string | null
-          receiptWidth: '58mm' | '80mm'
-        }) => Promise<void>
-```
+Note: `updateStoreSettings`'s type here stays at its current 4-field shape for now — widening it is Task 5's job, done in the same step as `Settings.tsx`'s own call-site update (Task 5 needs the untouched 4-field `Settings.tsx` text intact for its own find/replace to match; widening the type here without updating that call site would also break this task's own `tsc --noEmit`).
 
 Continue directly with the renderer-side changes below — do not stop to typecheck or commit yet, since `Kasir.tsx`/`KasirHistory.tsx` still reference the old API at this point and the build is intentionally mid-edit.
 
@@ -1766,11 +1744,39 @@ git commit -m "Rewire printing to ESC/POS end-to-end, delete dead Receipt.tsx an
 
 **Files:**
 - Modify: `desktop-node/src/renderer/pages/Settings.tsx`
+- Modify: `desktop-node/src/renderer/env.d.ts`
 
 **Interfaces:**
 - Consumes: `window.api.kasir.listPrinters()`, `.testPrint()` (Task 4); `Select`/`SelectContent`/`SelectItem`/`SelectTrigger`/`SelectValue` (existing, already used by `KasirHistory.tsx`'s filters).
+- Note: Task 4 deliberately left `env.d.ts`'s `updateStoreSettings` type at its old 4-field shape — widening it and updating `Settings.tsx`'s call site must land together (Task 4 needed `Settings.tsx` untouched for this task's own find/replace to match its current text), so this task does both in Steps 1-2 below, before touching anything else.
 
-- [ ] **Step 1: Add printer/width fields to the store form, and a Test Print section**
+- [ ] **Step 1: Widen `env.d.ts`'s `updateStoreSettings` type**
+
+In `desktop-node/src/renderer/env.d.ts`, find:
+
+```typescript
+        updateStoreSettings: (input: {
+          namaToko: string
+          alamat: string | null
+          telepon: string | null
+          pesanFooter: string | null
+        }) => Promise<void>
+```
+
+Replace with:
+
+```typescript
+        updateStoreSettings: (input: {
+          namaToko: string
+          alamat: string | null
+          telepon: string | null
+          pesanFooter: string | null
+          printerName: string | null
+          receiptWidth: '58mm' | '80mm'
+        }) => Promise<void>
+```
+
+- [ ] **Step 2: Add printer/width fields to the store form, and a Test Print section**
 
 In `desktop-node/src/renderer/pages/Settings.tsx`, find:
 
@@ -1867,7 +1873,7 @@ function TestPrint() {
 function PurgeHistory() {
 ```
 
-- [ ] **Step 2: Extend `Settings()`'s state and load/submit logic**
+- [ ] **Step 3: Extend `Settings()`'s state and load/submit logic**
 
 Find:
 
@@ -1967,7 +1973,7 @@ export function Settings() {
   }
 ```
 
-- [ ] **Step 3: Add the printer/width fields to the form, and the Test Print section to the page**
+- [ ] **Step 4: Add the printer/width fields to the form, and the Test Print section to the page**
 
 Find:
 
@@ -2041,17 +2047,17 @@ Replace with:
 
 (`Select`'s value must be a non-empty string — `'__default__'` is a sentinel meaning "no printer explicitly chosen," translated to/from `null` at the boundary, since Radix `Select` cannot use an empty string as an item value.)
 
-- [ ] **Step 4: Typecheck**
+- [ ] **Step 5: Typecheck**
 
 Run: `cd desktop-node && npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 5: Run the full test suite**
+- [ ] **Step 6: Run the full test suite**
 
 Run: `cd desktop-node && npx vitest run`
 Expected: PASS, same count as after Task 4 (this task is pure UI, no new automated tests — verified manually in Step 7).
 
-- [ ] **Step 6: Rebuild better-sqlite3 for Electron and launch the app**
+- [ ] **Step 7: Rebuild better-sqlite3 for Electron and launch the app**
 
 ```bash
 cd desktop-node
@@ -2061,7 +2067,7 @@ npm run dev -- --remote-debugging-port=9222
 
 (Run in background. Confirm via log output: `DevTools listening on ws://127.0.0.1:9222/...`.)
 
-- [ ] **Step 7: Manual end-to-end verification via CDP — and a real printed receipt**
+- [ ] **Step 8: Manual end-to-end verification via CDP — and a real printed receipt**
 
 Using the established CDP pattern (query `http://127.0.0.1:9222/json` for the page target's `webSocketDebuggerUrl`, `Runtime.evaluate` with `awaitPromise: true, returnByValue: true`; capture at least one `Page.captureScreenshot` for visual confirmation, not just `innerText`):
 
@@ -2073,18 +2079,18 @@ Using the established CDP pattern (query `http://127.0.0.1:9222/json` for the pa
 6. Deliberately break printing to confirm error handling: in Pengaturan, set Printer to a name that doesn't exist by temporarily editing `store_settings.printer_name` directly via `node -e "..."` against `dev.sqlite` (bypассing the UI's dropdown, which only offers valid names) to some bogus string, then attempt a Test Print. Confirm a user-facing error message appears (not a silent failure or an unhandled crash) — this is `printRaw`'s `OpenPrinter` failure path. Restore the correct printer name afterward (via the UI, Simpan) before moving on.
 7. If a real bug is found, fix it and re-verify the affected step before proceeding — do not defer known bugs.
 
-- [ ] **Step 8: Switch back to plain-Node ABI**
+- [ ] **Step 9: Switch back to plain-Node ABI**
 
 ```bash
 cd desktop-node
 npm run rebuild:node
 ```
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 cd desktop-node
-git add src/renderer/pages/Settings.tsx
+git add src/renderer/pages/Settings.tsx src/renderer/env.d.ts
 git commit -m "Add printer/paper-width settings and Test Print"
 ```
 
