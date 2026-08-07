@@ -64,6 +64,7 @@ export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpen
   }
 
   useEffect(() => {
+    setError(null)
     if (productId === null) {
       setDetail(null)
       return
