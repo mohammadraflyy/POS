@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Badge } from '@/components/ui/badge'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
+import { ProductDetailDialog } from './inventory/ProductDetailDialog'
 
 interface ProductRow {
   id: number
@@ -25,6 +27,8 @@ interface ProductRow {
   hargaJual: number
   stok: number
   isActive: boolean
+  unitsCount: number
+  priceTiersCount: number
 }
 
 interface DraftRow {
@@ -55,7 +59,7 @@ function toDraftRow(product: ProductRow): DraftRow {
   }
 }
 
-const OTHER_COLUMNS_WIDTH = 50 + 110 + 130 + 130 + 90 + 110 + 110 + 90 + 90 + 70
+const OTHER_COLUMNS_WIDTH = 50 + 110 + 130 + 130 + 90 + 110 + 110 + 90 + 90 + 170 + 70
 const MIN_NAMA_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Katalog Produk', href: '/inventory' }]
@@ -80,6 +84,8 @@ export function Inventory() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [paletteResults, setPaletteResults] = useState<ProductRow[]>([])
+
+  const [detailProductId, setDetailProductId] = useState<number | null>(null)
 
   const { confirm, ConfirmDialog } = useConfirm()
 
@@ -335,6 +341,31 @@ export function Inventory() {
       ),
     },
     {
+      key: 'unitsTiers',
+      name: 'Satuan/Harga Bertingkat',
+      width: 170,
+      renderCell: ({ row }) => {
+        const product = rawProducts.find((p) => p.id === row.id)
+        if (!product) {
+          return null
+        }
+        return (
+          <button
+            type="button"
+            className="flex h-full items-center gap-1"
+            onClick={() => setDetailProductId(row.id)}
+          >
+            <Badge variant={product.unitsCount > 0 ? 'secondary' : 'outline'} className="text-[10px]">
+              {product.unitsCount} unit
+            </Badge>
+            <Badge variant={product.priceTiersCount > 0 ? 'secondary' : 'outline'} className="text-[10px]">
+              {product.priceTiersCount} tingkat
+            </Badge>
+          </button>
+        )
+      },
+    },
+    {
       key: 'aksi',
       name: '',
       width: 70,
@@ -496,6 +527,14 @@ export function Inventory() {
           )}
         </CommandList>
       </CommandDialog>
+
+      <ProductDetailDialog
+        productId={detailProductId}
+        productNama={rawProducts.find((p) => p.id === detailProductId)?.namaItem ?? null}
+        baseSatuan={rawProducts.find((p) => p.id === detailProductId)?.satuan ?? ''}
+        onOpenChange={(open) => !open && setDetailProductId(null)}
+        onChanged={() => loadPage(currentPage)}
+      />
 
       {ConfirmDialog}
     </AppShell>
