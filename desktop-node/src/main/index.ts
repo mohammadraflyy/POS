@@ -3,6 +3,7 @@ import { join } from 'path'
 import { createDb } from './db/migrate'
 import { registerAuthIpc } from './ipc/auth'
 import { registerKasirIpc } from './ipc/kasir'
+import { registerInventoryIpc } from './ipc/inventory'
 
 let mainWindow: BrowserWindow | null
 let db: ReturnType<typeof createDb> | null = null
@@ -62,6 +63,7 @@ app.whenReady().then(() => {
   db = createDb(getDbPath(), getMigrationsFolder())
   registerAuthIpc(db)
   registerKasirIpc(db)
+  registerInventoryIpc(db)
   createWindow()
 })
 

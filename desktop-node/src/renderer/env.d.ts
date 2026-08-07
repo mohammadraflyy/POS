@@ -106,6 +106,54 @@ declare global {
         }) => Promise<void>
         purgeSalesBefore: (before: string) => Promise<{ deleted: number }>
       }
+      inventory: {
+        listProducts: (input: { search?: string; page: number; pageSize?: number }) => Promise<{
+          data: {
+            id: number
+            kodeItem: string
+            barcode: string | null
+            namaItem: string
+            categoryName: string | null
+            satuan: string
+            hargaPokok: number
+            hargaJual: number
+            stok: number
+            isActive: boolean
+          }[]
+          currentPage: number
+          lastPage: number
+          total: number
+        }>
+        updateProduct: (
+          id: number,
+          input: {
+            kodeItem: string
+            barcode: string | null
+            namaItem: string
+            kategori: string | null
+            satuan: string
+            hargaPokok: number
+            hargaJual: number
+            isActive: boolean
+          },
+        ) => Promise<void>
+        deleteProduct: (id: number) => Promise<void>
+        bulkDeleteProducts: (ids: number[]) => Promise<{ deleted: number; blocked: string[] }>
+        searchProducts: (q: string) => Promise<
+          {
+            id: number
+            kodeItem: string
+            barcode: string | null
+            namaItem: string
+            categoryName: string | null
+            satuan: string
+            hargaPokok: number
+            hargaJual: number
+            stok: number
+            isActive: boolean
+          }[]
+        >
+      }
     }
   }
 }

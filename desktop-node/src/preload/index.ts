@@ -48,6 +48,26 @@ const api = {
     }) => invoke('kasir:updateStoreSettings', input),
     purgeSalesBefore: (before: string) => invoke('kasir:purgeSalesBefore', before),
   },
+  inventory: {
+    listProducts: (input: { search?: string; page: number; pageSize?: number }) =>
+      invoke('inventory:listProducts', input),
+    updateProduct: (
+      id: number,
+      input: {
+        kodeItem: string
+        barcode: string | null
+        namaItem: string
+        kategori: string | null
+        satuan: string
+        hargaPokok: number
+        hargaJual: number
+        isActive: boolean
+      },
+    ) => invoke('inventory:updateProduct', id, input),
+    deleteProduct: (id: number) => invoke('inventory:deleteProduct', id),
+    bulkDeleteProducts: (ids: number[]) => invoke('inventory:bulkDeleteProducts', ids),
+    searchProducts: (q: string) => invoke('inventory:searchProducts', q),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)
