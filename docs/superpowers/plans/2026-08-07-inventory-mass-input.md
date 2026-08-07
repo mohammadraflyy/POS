@@ -1581,6 +1581,35 @@ describe('importProducts', () => {
     expect(product).toMatchObject({ hargaPokok: 15000_00, hargaJual: 18500_00 })
   })
 
+  it('skips rows with a non-numeric price cell instead of silently importing at Rp 0', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['IMP1', 'Harga Rusak', 'PCS', 'N/A', 1500],
+      ['IMP2', 'Produk Valid', 'PCS', 1000, 1500],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 1, updated: 0, unchanged: 0, skipped: 1 })
+
+    const broken = db.select().from(products).where(eq(products.kodeItem, 'IMP1')).get()
+    expect(broken).toBeUndefined()
+  })
+
+  it('still allows an explicitly blank price cell to default to 0 (not treated as garbage)', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Nama Item', 'Satuan', 'Harga Pokok', 'Harga Jual'],
+      ['IMP1', 'Harga Nol', 'PCS', '', 1500],
+    ])
+
+    const result = importProducts(db, filePath, null)
+    expect(result).toEqual({ created: 1, updated: 0, unchanged: 0, skipped: 0 })
+
+    const product = db.select().from(products).where(eq(products.kodeItem, 'IMP1')).get()
+    expect(product?.hargaPokok).toBe(0)
+  })
+
   it('returns all-zero counts when no header row is found', () => {
     const db = seedDb()
     const filePath = writeTestSheet([
@@ -1656,14 +1685,19 @@ function resolveImportColumns(sheetRow: unknown[]): Record<string, number> | nul
   return hasAllRequired ? found : null
 }
 
-function parseImportNumber(value: unknown): number {
+function parseImportNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
   }
 
   const clean = String(value ?? '').replace(/[, ]/g, '')
+
+  if (clean === '') {
+    return 0
+  }
+
   const parsed = Number(clean)
-  return Number.isFinite(parsed) ? parsed : 0
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 export interface ImportResult {
@@ -1736,9 +1770,18 @@ export function importProducts(db: Db, filePath: string, userId: number | null):
     const kategoriRaw = resolvedColumns.kategori !== undefined ? String(sheetRow[resolvedColumns.kategori] ?? '').trim() : ''
     const hargaPokok = parseImportNumber(sheetRow[resolvedColumns.hargaPokok])
     const hargaJual = parseImportNumber(sheetRow[resolvedColumns.hargaJual])
-    const stok = resolvedColumns.stok !== undefined ? Math.trunc(parseImportNumber(sheetRow[resolvedColumns.stok])) : 0
+    const stok = resolvedColumns.stok !== undefined ? Math.trunc(parseImportNumber(sheetRow[resolvedColumns.stok]) ?? 0) : 0
 
-    if (hargaPokok < 0 || hargaJual < 0 || stok < 0 || namaItem.length > 255 || satuan.length > 20 || kodeItem.length > 50) {
+    if (
+      hargaPokok === null ||
+      hargaJual === null ||
+      hargaPokok < 0 ||
+      hargaJual < 0 ||
+      stok < 0 ||
+      namaItem.length > 255 ||
+      satuan.length > 20 ||
+      kodeItem.length > 50
+    ) {
       skipped++
       continue
     }
