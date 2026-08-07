@@ -306,7 +306,14 @@ export function recordBonPayment(
 
 export function updateStoreSettings(
   db: BetterSQLite3Database<typeof schema>,
-  input: { namaToko: string; alamat: string | null; telepon: string | null; pesanFooter: string | null },
+  input: {
+    namaToko: string
+    alamat: string | null
+    telepon: string | null
+    pesanFooter: string | null
+    printerName: string | null
+    receiptWidth: '58mm' | '80mm'
+  },
 ): void {
   if (!input.namaToko.trim()) {
     throw new Error('Nama toko wajib diisi.')
@@ -328,6 +335,10 @@ export function updateStoreSettings(
     throw new Error('Pesan footer maksimal 255 karakter.')
   }
 
+  if (input.receiptWidth !== '58mm' && input.receiptWidth !== '80mm') {
+    throw new Error('Lebar kertas tidak valid.')
+  }
+
   const now = new Date()
   const existing = db.select().from(storeSettings).get()
 
@@ -338,6 +349,8 @@ export function updateStoreSettings(
         alamat: input.alamat,
         telepon: input.telepon,
         pesanFooter: input.pesanFooter,
+        printerName: input.printerName,
+        receiptWidth: input.receiptWidth,
       })
       .where(eq(storeSettings.id, existing.id))
       .run()
@@ -348,6 +361,8 @@ export function updateStoreSettings(
         alamat: input.alamat,
         telepon: input.telepon,
         pesanFooter: input.pesanFooter,
+        printerName: input.printerName,
+        receiptWidth: input.receiptWidth,
         createdAt: now,
         updatedAt: now,
       })

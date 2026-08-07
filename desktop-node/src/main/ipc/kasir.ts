@@ -152,6 +152,8 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       alamat: setting?.alamat ?? null,
       telepon: setting?.telepon ?? null,
       pesanFooter: setting?.pesanFooter ?? null,
+      printerName: setting?.printerName ?? null,
+      receiptWidth: setting?.receiptWidth ?? '58mm',
     }
   })
 
@@ -356,7 +358,17 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
 
   ipcMain.handle(
     'kasir:updateStoreSettings',
-    (_event, input: { namaToko: string; alamat: string | null; telepon: string | null; pesanFooter: string | null }) => {
+    (
+      _event,
+      input: {
+        namaToko: string
+        alamat: string | null
+        telepon: string | null
+        pesanFooter: string | null
+        printerName: string | null
+        receiptWidth: '58mm' | '80mm'
+      },
+    ) => {
       if (!getCurrentUser()) {
         throw new Error('Silakan login terlebih dahulu.')
       }

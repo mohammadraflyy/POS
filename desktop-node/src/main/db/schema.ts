@@ -148,5 +148,7 @@ export const storeSettings = sqliteTable('store_settings', {
   alamat: text('alamat'),
   telepon: text('telepon'),
   pesanFooter: text('pesan_footer'),
+  printerName: text('printer_name'),
+  receiptWidth: text('receipt_width', { enum: ['58mm', '80mm'] }).notNull().default('58mm'),
   ...timestamps(),
 })

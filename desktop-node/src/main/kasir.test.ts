@@ -739,7 +739,14 @@ describe('updateStoreSettings', () => {
   it('inserts a new row when none exists yet', () => {
     const db = createDb(':memory:', migrationsFolder)
 
-    updateStoreSettings(db, { namaToko: 'Toko Baru', alamat: 'Jl. Baru', telepon: '021', pesanFooter: 'Terima kasih' })
+    updateStoreSettings(db, {
+      namaToko: 'Toko Baru',
+      alamat: 'Jl. Baru',
+      telepon: '021',
+      pesanFooter: 'Terima kasih',
+      printerName: null,
+      receiptWidth: '58mm',
+    })
 
     const setting = db.select().from(storeSettings).get()
     expect(setting).toMatchObject({
@@ -747,24 +754,54 @@ describe('updateStoreSettings', () => {
       alamat: 'Jl. Baru',
       telepon: '021',
       pesanFooter: 'Terima kasih',
+      printerName: null,
+      receiptWidth: '58mm',
     })
   })
 
   it('updates the existing row instead of inserting a second one', () => {
     const db = createDb(':memory:', migrationsFolder)
-    updateStoreSettings(db, { namaToko: 'Toko A', alamat: null, telepon: null, pesanFooter: null })
+    updateStoreSettings(db, {
+      namaToko: 'Toko A',
+      alamat: null,
+      telepon: null,
+      pesanFooter: null,
+      printerName: null,
+      receiptWidth: '58mm',
+    })
 
-    updateStoreSettings(db, { namaToko: 'Toko B', alamat: 'Jl. B', telepon: '022', pesanFooter: 'Footer B' })
+    updateStoreSettings(db, {
+      namaToko: 'Toko B',
+      alamat: 'Jl. B',
+      telepon: '022',
+      pesanFooter: 'Footer B',
+      printerName: 'EPPOS EP58M',
+      receiptWidth: '80mm',
+    })
 
     const rows = db.select().from(storeSettings).all()
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ namaToko: 'Toko B', alamat: 'Jl. B', telepon: '022', pesanFooter: 'Footer B' })
+    expect(rows[0]).toMatchObject({
+      namaToko: 'Toko B',
+      alamat: 'Jl. B',
+      telepon: '022',
+      pesanFooter: 'Footer B',
+      printerName: 'EPPOS EP58M',
+      receiptWidth: '80mm',
+    })
   })
 
   it('allows null alamat/telepon/pesanFooter', () => {
     const db = createDb(':memory:', migrationsFolder)
 
-    updateStoreSettings(db, { namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null })
+    updateStoreSettings(db, {
+      namaToko: 'Toko',
+      alamat: null,
+      telepon: null,
+      pesanFooter: null,
+      printerName: null,
+      receiptWidth: '58mm',
+    })
 
     const setting = db.select().from(storeSettings).get()
     expect(setting).toMatchObject({ namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null })
@@ -772,56 +809,106 @@ describe('updateStoreSettings', () => {
 
   it('throws when namaToko is empty', () => {
     const db = createDb(':memory:', migrationsFolder)
-    expect(() => updateStoreSettings(db, { namaToko: '', alamat: null, telepon: null, pesanFooter: null })).toThrow(
-      'Nama toko wajib diisi.',
-    )
+    expect(() =>
+      updateStoreSettings(db, { namaToko: '', alamat: null, telepon: null, pesanFooter: null, printerName: null, receiptWidth: '58mm' }),
+    ).toThrow('Nama toko wajib diisi.')
   })
 
   it('throws when namaToko is only whitespace', () => {
     const db = createDb(':memory:', migrationsFolder)
-    expect(() => updateStoreSettings(db, { namaToko: '   ', alamat: null, telepon: null, pesanFooter: null })).toThrow(
-      'Nama toko wajib diisi.',
-    )
+    expect(() =>
+      updateStoreSettings(db, { namaToko: '   ', alamat: null, telepon: null, pesanFooter: null, printerName: null, receiptWidth: '58mm' }),
+    ).toThrow('Nama toko wajib diisi.')
   })
 
   it('throws when namaToko exceeds 255 characters', () => {
     const db = createDb(':memory:', migrationsFolder)
     const tooLong = 'a'.repeat(256)
-    expect(() => updateStoreSettings(db, { namaToko: tooLong, alamat: null, telepon: null, pesanFooter: null })).toThrow(
-      'Nama toko maksimal 255 karakter.',
-    )
+    expect(() =>
+      updateStoreSettings(db, { namaToko: tooLong, alamat: null, telepon: null, pesanFooter: null, printerName: null, receiptWidth: '58mm' }),
+    ).toThrow('Nama toko maksimal 255 karakter.')
   })
 
   it('allows namaToko of exactly 255 characters', () => {
     const db = createDb(':memory:', migrationsFolder)
     const exactly255 = 'a'.repeat(255)
     expect(() =>
-      updateStoreSettings(db, { namaToko: exactly255, alamat: null, telepon: null, pesanFooter: null }),
+      updateStoreSettings(db, {
+        namaToko: exactly255,
+        alamat: null,
+        telepon: null,
+        pesanFooter: null,
+        printerName: null,
+        receiptWidth: '58mm',
+      }),
     ).not.toThrow()
   })
 
   it('throws when alamat exceeds 255 characters', () => {
     const db = createDb(':memory:', migrationsFolder)
     const tooLong = 'a'.repeat(256)
-    expect(() => updateStoreSettings(db, { namaToko: 'Toko', alamat: tooLong, telepon: null, pesanFooter: null })).toThrow(
-      'Alamat maksimal 255 karakter.',
-    )
+    expect(() =>
+      updateStoreSettings(db, { namaToko: 'Toko', alamat: tooLong, telepon: null, pesanFooter: null, printerName: null, receiptWidth: '58mm' }),
+    ).toThrow('Alamat maksimal 255 karakter.')
   })
 
   it('throws when telepon exceeds 50 characters', () => {
     const db = createDb(':memory:', migrationsFolder)
     const tooLong = '1'.repeat(51)
-    expect(() => updateStoreSettings(db, { namaToko: 'Toko', alamat: null, telepon: tooLong, pesanFooter: null })).toThrow(
-      'Telepon maksimal 50 karakter.',
-    )
+    expect(() =>
+      updateStoreSettings(db, { namaToko: 'Toko', alamat: null, telepon: tooLong, pesanFooter: null, printerName: null, receiptWidth: '58mm' }),
+    ).toThrow('Telepon maksimal 50 karakter.')
   })
 
   it('throws when pesanFooter exceeds 255 characters', () => {
     const db = createDb(':memory:', migrationsFolder)
     const tooLong = 'a'.repeat(256)
     expect(() =>
-      updateStoreSettings(db, { namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: tooLong }),
+      updateStoreSettings(db, { namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: tooLong, printerName: null, receiptWidth: '58mm' }),
     ).toThrow('Pesan footer maksimal 255 karakter.')
+  })
+
+  it('allows a non-null printerName', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    updateStoreSettings(db, {
+      namaToko: 'Toko',
+      alamat: null,
+      telepon: null,
+      pesanFooter: null,
+      printerName: '80mm Series Printer',
+      receiptWidth: '58mm',
+    })
+    const setting = db.select().from(storeSettings).get()
+    expect(setting?.printerName).toBe('80mm Series Printer')
+  })
+
+  it('allows receiptWidth of 80mm', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    updateStoreSettings(db, {
+      namaToko: 'Toko',
+      alamat: null,
+      telepon: null,
+      pesanFooter: null,
+      printerName: null,
+      receiptWidth: '80mm',
+    })
+    const setting = db.select().from(storeSettings).get()
+    expect(setting?.receiptWidth).toBe('80mm')
+  })
+
+  it('throws when receiptWidth is not 58mm or 80mm', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    expect(() =>
+      updateStoreSettings(db, {
+        namaToko: 'Toko',
+        alamat: null,
+        telepon: null,
+        pesanFooter: null,
+        printerName: null,
+        // @ts-expect-error - deliberately invalid for this test
+        receiptWidth: '100mm',
+      }),
+    ).toThrow('Lebar kertas tidak valid.')
   })
 })
 
