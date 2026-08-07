@@ -3,6 +3,7 @@ import { Login } from './pages/Login'
 import { Kasir } from './pages/Kasir'
 import { KasirHistory } from './pages/KasirHistory'
 import { BonPayment } from './pages/BonPayment'
+import { Settings } from './pages/Settings'
 
 export function App() {
   return (
@@ -12,6 +13,7 @@ export function App() {
         <Route path="/" element={<Kasir />} />
         <Route path="/history" element={<KasirHistory />} />
         <Route path="/bon-payment/:saleId" element={<BonPayment />} />
+        <Route path="/settings" element={<Settings />} />
       </Routes>
     </HashRouter>
   )
