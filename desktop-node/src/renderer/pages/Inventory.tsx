@@ -124,6 +124,19 @@ export function Inventory() {
       return next
     })
 
+    const hargaPokokNum = Number(row.hargaPokok)
+    const hargaJualNum = Number(row.hargaJual)
+
+    if (row.hargaPokok.trim() === '' || !Number.isFinite(hargaPokokNum)) {
+      setRowErrors((prev) => ({ ...prev, [row.id]: 'Harga pokok wajib diisi.' }))
+      return
+    }
+
+    if (row.hargaJual.trim() === '' || !Number.isFinite(hargaJualNum)) {
+      setRowErrors((prev) => ({ ...prev, [row.id]: 'Harga jual wajib diisi.' }))
+      return
+    }
+
     window.api.inventory
       .updateProduct(row.id, {
         kodeItem: row.kodeItem,
@@ -131,8 +144,8 @@ export function Inventory() {
         namaItem: row.namaItem,
         kategori: row.kategori || null,
         satuan: row.satuan,
-        hargaPokok: Number(row.hargaPokok),
-        hargaJual: Number(row.hargaJual),
+        hargaPokok: hargaPokokNum,
+        hargaJual: hargaJualNum,
         isActive: row.isActive,
       })
       .then(() => loadPage(currentPage))
