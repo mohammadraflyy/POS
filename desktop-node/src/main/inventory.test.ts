@@ -2,7 +2,18 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { categories, products, productPriceHistories, saleItems, sales, purchaseItems, purchases, users } from './db/schema'
+import {
+  categories,
+  products,
+  productPriceHistories,
+  saleItems,
+  sales,
+  purchaseItems,
+  purchases,
+  users,
+  productUnits,
+  productPriceTiers,
+} from './db/schema'
 import { listProducts, updateProduct, deleteProduct, bulkDeleteProducts, searchProductsQuick } from './inventory'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
@@ -421,5 +432,65 @@ describe('searchProductsQuick', () => {
     const results = searchProductsQuick(db, 'gula')
     expect(results.map((p) => p.id)).toEqual([3])
     expect(results[0].isActive).toBe(false)
+  })
+})
+
+describe('listProducts unit/tier counts', () => {
+  it('returns unitsCount and priceTiersCount for each product', () => {
+    const db = seedProducts()
+    const now = new Date()
+
+    db.insert(productUnits)
+      .values({
+        productId: 1,
+        level: 2,
+        satuan: 'Renteng',
+        jumlahKemasan: 12,
+        konversi: 12,
+        hargaJual: 15000_00,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(productPriceTiers)
+      .values([
+        { productId: 1, minQty: 6, hargaJual: 63000_00, createdAt: now, updatedAt: now },
+        { productId: 1, minQty: 12, hargaJual: 60000_00, createdAt: now, updatedAt: now },
+      ])
+      .run()
+
+    const result = listProducts(db, { page: 1 })
+    const beras = result.data.find((p) => p.id === 1)
+    const mie = result.data.find((p) => p.id === 2)
+
+    expect(beras?.unitsCount).toBe(1)
+    expect(beras?.priceTiersCount).toBe(2)
+    expect(mie?.unitsCount).toBe(0)
+    expect(mie?.priceTiersCount).toBe(0)
+  })
+})
+
+describe('searchProductsQuick unit/tier counts', () => {
+  it('returns unitsCount and priceTiersCount', () => {
+    const db = seedProducts()
+    const now = new Date()
+
+    db.insert(productUnits)
+      .values({
+        productId: 1,
+        level: 2,
+        satuan: 'Renteng',
+        jumlahKemasan: 12,
+        konversi: 12,
+        hargaJual: 15000_00,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const results = searchProductsQuick(db, 'beras')
+    expect(results[0].unitsCount).toBe(1)
+    expect(results[0].priceTiersCount).toBe(0)
   })
 })

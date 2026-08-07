@@ -1,7 +1,7 @@
 import { and, eq, like, ne, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { categories, products, productPriceHistories } from './db/schema'
+import { categories, products, productPriceHistories, productUnits, productPriceTiers } from './db/schema'
 
 export interface ProductListItem {
   id: number
@@ -14,6 +14,8 @@ export interface ProductListItem {
   hargaJual: number
   stok: number
   isActive: boolean
+  unitsCount: number
+  priceTiersCount: number
 }
 
 const DEFAULT_PAGE_SIZE = 25
@@ -32,6 +34,8 @@ function productListSelect(db: BetterSQLite3Database<typeof schema>) {
       hargaJual: products.hargaJual,
       stok: products.stok,
       isActive: products.isActive,
+      unitsCount: sql<number>`(SELECT COUNT(*) FROM ${productUnits} WHERE ${productUnits.productId} = ${products.id})`,
+      priceTiersCount: sql<number>`(SELECT COUNT(*) FROM ${productPriceTiers} WHERE ${productPriceTiers.productId} = ${products.id})`,
     })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
@@ -48,6 +52,8 @@ function toListItem(row: {
   hargaJual: number
   stok: number
   isActive: boolean
+  unitsCount: number
+  priceTiersCount: number
 }): ProductListItem {
   return row
 }

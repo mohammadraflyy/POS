@@ -1,7 +1,7 @@
-import { and, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { productUnits } from './db/schema'
+import { productUnits, productPriceTiers, productPriceHistories, users } from './db/schema'
 
 export interface ProductUnitRow {
   id: number
@@ -139,4 +139,114 @@ export function deleteProductUnit(db: BetterSQLite3Database<typeof schema>, prod
   }
 
   db.delete(productUnits).where(and(eq(productUnits.productId, productId), eq(productUnits.level, level))).run()
+}
+
+export interface PriceTierRow {
+  id: number
+  minQty: number
+  hargaJual: number
+}
+
+export interface AddPriceTierInput {
+  minQty: number
+  hargaJual: number
+}
+
+export function addPriceTier(db: BetterSQLite3Database<typeof schema>, productId: number, input: AddPriceTierInput): void {
+  if (!Number.isFinite(input.minQty)) {
+    throw new Error('Qty minimal wajib diisi.')
+  }
+
+  if (!Number.isInteger(input.minQty) || input.minQty < 2) {
+    throw new Error('Qty minimal harus 2 atau lebih.')
+  }
+
+  if (!Number.isFinite(input.hargaJual)) {
+    throw new Error('Harga jual wajib diisi.')
+  }
+
+  if (input.hargaJual < 0) {
+    throw new Error('Harga jual tidak boleh negatif.')
+  }
+
+  const existing = db
+    .select({ id: productPriceTiers.id })
+    .from(productPriceTiers)
+    .where(and(eq(productPriceTiers.productId, productId), eq(productPriceTiers.minQty, input.minQty)))
+    .get()
+
+  if (existing) {
+    throw new Error(`Harga bertingkat untuk qty ${input.minQty} sudah ada.`)
+  }
+
+  const now = new Date()
+
+  db.insert(productPriceTiers)
+    .values({ productId, minQty: input.minQty, hargaJual: input.hargaJual, createdAt: now, updatedAt: now })
+    .run()
+}
+
+export function deletePriceTier(db: BetterSQLite3Database<typeof schema>, productId: number, tierId: number): void {
+  const tier = db
+    .select({ id: productPriceTiers.id })
+    .from(productPriceTiers)
+    .where(and(eq(productPriceTiers.id, tierId), eq(productPriceTiers.productId, productId)))
+    .get()
+
+  if (!tier) {
+    throw new Error('Harga bertingkat tidak ditemukan.')
+  }
+
+  db.delete(productPriceTiers).where(eq(productPriceTiers.id, tierId)).run()
+}
+
+export function listPriceTiers(db: BetterSQLite3Database<typeof schema>, productId: number): PriceTierRow[] {
+  return db
+    .select({ id: productPriceTiers.id, minQty: productPriceTiers.minQty, hargaJual: productPriceTiers.hargaJual })
+    .from(productPriceTiers)
+    .where(eq(productPriceTiers.productId, productId))
+    .orderBy(productPriceTiers.minQty)
+    .all()
+}
+
+export interface PriceHistoryRow {
+  id: number
+  hargaPokokLama: number
+  hargaPokokBaru: number
+  hargaJualLama: number
+  hargaJualBaru: number
+  createdAt: Date
+  userName: string | null
+}
+
+export function listPriceHistory(db: BetterSQLite3Database<typeof schema>, productId: number): PriceHistoryRow[] {
+  return db
+    .select({
+      id: productPriceHistories.id,
+      hargaPokokLama: productPriceHistories.hargaPokokLama,
+      hargaPokokBaru: productPriceHistories.hargaPokokBaru,
+      hargaJualLama: productPriceHistories.hargaJualLama,
+      hargaJualBaru: productPriceHistories.hargaJualBaru,
+      createdAt: productPriceHistories.createdAt,
+      userName: users.name,
+    })
+    .from(productPriceHistories)
+    .leftJoin(users, eq(productPriceHistories.userId, users.id))
+    .where(eq(productPriceHistories.productId, productId))
+    .orderBy(desc(productPriceHistories.createdAt))
+    .all()
+}
+
+export interface ProductDetail {
+  units: { level2: ProductUnitRow | null; level3: ProductUnitRow | null }
+  priceTiers: PriceTierRow[]
+  priceHistory: PriceHistoryRow[]
+}
+
+export function getProductDetail(db: BetterSQLite3Database<typeof schema>, productId: number): ProductDetail {
+  return {
+    units: getProductUnits(db, productId),
+    priceTiers: listPriceTiers(db, productId),
+    priceHistory: listPriceHistory(db, productId),
+  }
 }
