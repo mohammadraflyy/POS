@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import type { CellKeyboardEvent, CellKeyDownArgs, DataGridHandle, RowsChangeData } from 'react-data-grid'
 import { Search, ShoppingCart, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -7,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
-import type { AuthUser } from '../types'
+import { AppShell } from '../layouts/AppShell'
+import type { BreadcrumbItem } from '../types'
 import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
@@ -23,9 +23,9 @@ interface SaleDto {
   dibayar: number
 }
 
+const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Penjualan', href: '/' }]
+
 export function Kasir() {
-  const navigate = useNavigate()
-  const [user, setUser] = useState<AuthUser | null>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [salesToday, setSalesToday] = useState<SaleDto[]>([])
   const [cart, setCart] = useState<CartLine[]>([])
@@ -48,22 +48,6 @@ export function Kasir() {
   const lastTouchedKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    window.api.auth
-      .me()
-      .then((result) => {
-        if (!result) {
-          navigate('/login')
-          return
-        }
-        setUser(result)
-      })
-      .catch(() => navigate('/login'))
-  }, [navigate])
-
-  useEffect(() => {
-    if (!user) {
-      return
-    }
     refreshProducts()
     refreshSalesToday()
     window.api.kasir
@@ -71,7 +55,7 @@ export function Kasir() {
       .then(setStoreSettings)
       .catch(() => setStoreSettings({ namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [])
 
   function refreshProducts() {
     window.api.kasir
@@ -361,33 +345,10 @@ export function Kasir() {
     }
   }
 
-  if (!user) {
-    return <p>Memuat...</p>
-  }
-
   return (
     <>
+      <AppShell breadcrumbs={BREADCRUMBS}>
       <div className="flex-1 space-y-4 p-4 sm:p-6 print:hidden">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">{user.name}</p>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => navigate('/history')}>
-            Riwayat Transaksi
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              await window.api.auth.logout()
-              navigate('/login')
-            }}
-          >
-            Keluar
-          </Button>
-        </div>
-      </div>
-
       {scanError && (
         <p role="alert" className="text-sm text-destructive">
           {scanError}
@@ -552,6 +513,7 @@ export function Kasir() {
         </div>
       </section>
       </div>
+      </AppShell>
 
       {receiptSale && storeSettings && <Receipt sale={receiptSale} storeSettings={storeSettings} />}
     </>

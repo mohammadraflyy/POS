@@ -12,7 +12,8 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
-import type { AuthUser } from '../types'
+import { AppShell } from '../layouts/AppShell'
+import type { BreadcrumbItem } from '../types'
 import { Receipt, type ReceiptSale, type StoreSettingsDto } from './kasir/Receipt'
 
 interface SaleHistoryItem {
@@ -34,9 +35,13 @@ interface SaleHistoryRow {
 const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 300
 const MIN_ITEM_WIDTH = 200
 
+const BREADCRUMBS: BreadcrumbItem[] = [
+  { title: 'Penjualan', href: '/' },
+  { title: 'Riwayat Transaksi', href: '/history' },
+]
+
 export function KasirHistory() {
   const navigate = useNavigate()
-  const [user, setUser] = useState<AuthUser | null>(null)
   const { resolvedAppearance } = useAppearance()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(56)
@@ -56,28 +61,11 @@ export function KasirHistory() {
   const [storeSettings, setStoreSettings] = useState<StoreSettingsDto | null>(null)
 
   useEffect(() => {
-    window.api.auth
-      .me()
-      .then((result) => {
-        if (!result) {
-          navigate('/login')
-          return
-        }
-        setUser(result)
-      })
-      .catch(() => navigate('/login'))
-  }, [navigate])
-
-  useEffect(() => {
-    if (!user) {
-      return
-    }
     window.api.kasir
       .getStoreSettings()
       .then(setStoreSettings)
       .catch(() => setStoreSettings({ namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [])
 
   function loadPage(page: number) {
     window.api.kasir
@@ -98,12 +86,9 @@ export function KasirHistory() {
   }
 
   useEffect(() => {
-    if (!user) {
-      return
-    }
     loadPage(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [])
 
   function submitFilters(e: FormEvent) {
     e.preventDefault()
@@ -238,12 +223,9 @@ export function KasirHistory() {
     },
   ]
 
-  if (!user) {
-    return <p>Memuat...</p>
-  }
-
   return (
     <>
+      <AppShell breadcrumbs={BREADCRUMBS}>
       <div className="flex flex-1 flex-col gap-4 p-4">
         <h1 className="text-xl font-semibold">Riwayat Transaksi</h1>
 
@@ -337,6 +319,7 @@ export function KasirHistory() {
           </Button>
         </div>
       </div>
+      </AppShell>
 
       {receiptSale && storeSettings && <Receipt sale={receiptSale} storeSettings={storeSettings} />}
     </>

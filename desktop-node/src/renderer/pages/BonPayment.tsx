@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label'
 import { InputError } from '@/components/input-error'
 import { ReportTable } from '@/components/report-table'
 import { cn, formatRupiah } from '@/lib/utils'
-import type { AuthUser } from '../types'
+import { AppShell } from '../layouts/AppShell'
+import type { BreadcrumbItem } from '../types'
 
 interface SaleDetail {
   id: number
@@ -30,29 +31,20 @@ interface BonPaymentRow {
   keterangan: string | null
 }
 
+const BREADCRUMBS: BreadcrumbItem[] = [
+  { title: 'Penjualan', href: '/' },
+  { title: 'Riwayat Transaksi', href: '/history' },
+]
+
 export function BonPayment() {
   const navigate = useNavigate()
   const { saleId } = useParams<{ saleId: string }>()
-  const [user, setUser] = useState<AuthUser | null>(null)
   const [sale, setSale] = useState<SaleDetail | null>(null)
   const [jumlah, setJumlah] = useState('')
   const [keterangan, setKeterangan] = useState('')
   const [processing, setProcessing] = useState(false)
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-
-  useEffect(() => {
-    window.api.auth
-      .me()
-      .then((result) => {
-        if (!result) {
-          navigate('/login')
-          return
-        }
-        setUser(result)
-      })
-      .catch(() => navigate('/login'))
-  }, [navigate])
 
   function loadSale() {
     window.api.kasir
@@ -65,12 +57,9 @@ export function BonPayment() {
   }
 
   useEffect(() => {
-    if (!user) {
-      return
-    }
     loadSale()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [])
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -88,18 +77,20 @@ export function BonPayment() {
       .finally(() => setProcessing(false))
   }
 
-  if (!user || !sale) {
+  if (!sale) {
     return (
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <div className="flex items-center justify-between">
-          <p>{loadError ?? 'Memuat...'}</p>
-          {loadError && (
-            <Button variant="outline" size="sm" onClick={() => navigate('/history')}>
-              Kembali
-            </Button>
-          )}
+      <AppShell breadcrumbs={BREADCRUMBS}>
+        <div className="flex flex-1 flex-col gap-4 p-4">
+          <div className="flex items-center justify-between">
+            <p>{loadError ?? 'Memuat...'}</p>
+            {loadError && (
+              <Button variant="outline" size="sm" onClick={() => navigate('/history')}>
+                Kembali
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      </AppShell>
     )
   }
 
@@ -128,6 +119,7 @@ export function BonPayment() {
   ]
 
   return (
+    <AppShell breadcrumbs={BREADCRUMBS}>
     <div className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -211,5 +203,6 @@ export function BonPayment() {
         columns={columns}
       />
     </div>
+    </AppShell>
   )
 }
