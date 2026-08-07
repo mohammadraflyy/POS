@@ -101,8 +101,6 @@ declare global {
           alamat: string | null
           telepon: string | null
           pesanFooter: string | null
-          printerName: string | null
-          receiptWidth: '58mm' | '80mm'
         }) => Promise<void>
         purgeSalesBefore: (before: string) => Promise<{ deleted: number }>
       }
