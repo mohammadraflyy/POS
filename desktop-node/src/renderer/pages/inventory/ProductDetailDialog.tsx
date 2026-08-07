@@ -51,9 +51,16 @@ interface ProductDetailDialogProps {
 
 export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpenChange, onChanged }: ProductDetailDialogProps) {
   const [detail, setDetail] = useState<ProductDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   function reload(id: number) {
-    window.api.inventory.getProductDetail(id).then(setDetail)
+    window.api.inventory
+      .getProductDetail(id)
+      .then((result) => {
+        setDetail(result)
+        setError(null)
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat data produk'))
   }
 
   useEffect(() => {
@@ -78,6 +85,7 @@ export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpen
         <DialogHeader>
           <DialogTitle>{productNama} &mdash; Satuan, Harga Bertingkat & Riwayat Harga</DialogTitle>
         </DialogHeader>
+        {error && <p className="text-sm text-destructive">{error}</p>}
         {productId !== null && detail && (
           <>
             <UnitLevelsManager productId={productId} baseSatuan={baseSatuan} units={detail.units} onChanged={refresh} />
@@ -211,7 +219,10 @@ function UnitLevelSlot({
       return
     }
 
-    window.api.inventory.deleteProductUnit(productId, level).then(onChanged)
+    window.api.inventory
+      .deleteProductUnit(productId, level)
+      .then(onChanged)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal menghapus'))
   }
 
   if (disabled) {
@@ -338,7 +349,13 @@ function PriceTiersManager({
       return
     }
 
-    window.api.inventory.deletePriceTier(productId, tier.id).then(onChanged)
+    window.api.inventory
+      .deletePriceTier(productId, tier.id)
+      .then(() => {
+        setError(null)
+        onChanged()
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal menghapus'))
   }
 
   return (
