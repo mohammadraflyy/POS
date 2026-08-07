@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { Column, RowsChangeData } from 'react-data-grid'
 import { DataGrid, SelectColumn, renderTextEditor } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
@@ -65,6 +66,7 @@ const MIN_NAMA_WIDTH = 200
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Katalog Produk', href: '/inventory' }]
 
 export function Inventory() {
+  const navigate = useNavigate()
   const { resolvedAppearance } = useAppearance()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(72)
@@ -423,13 +425,18 @@ export function Inventory() {
             </Button>
           </form>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" disabled title="Menunggu fitur Mass Input">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={selectedIds.size === 0}
+              onClick={() => navigate(`/inventory/mass-input?ids=${[...selectedIds].join(',')}`)}
+            >
               Edit Massal ({selectedIds.size})
             </Button>
             <Button type="button" variant="destructive" disabled={selectedIds.size === 0} onClick={deleteSelected}>
               Hapus Terpilih ({selectedIds.size})
             </Button>
-            <Button type="button" disabled title="Menunggu fitur Mass Input">
+            <Button type="button" onClick={() => navigate('/inventory/mass-input')}>
               Tambah Produk
             </Button>
           </div>

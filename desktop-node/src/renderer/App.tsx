@@ -5,6 +5,7 @@ import { KasirHistory } from './pages/KasirHistory'
 import { BonPayment } from './pages/BonPayment'
 import { Settings } from './pages/Settings'
 import { Inventory } from './pages/Inventory'
+import { MassInput } from './pages/inventory/MassInput'
 
 export function App() {
   return (
@@ -16,6 +17,7 @@ export function App() {
         <Route path="/bon-payment/:saleId" element={<BonPayment />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/inventory" element={<Inventory />} />
+        <Route path="/inventory/mass-input" element={<MassInput />} />
       </Routes>
     </HashRouter>
   )
