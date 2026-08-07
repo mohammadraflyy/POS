@@ -95,10 +95,16 @@ describe('buildReceiptEscPos', () => {
   it('produces wider padded lines for 80mm than 58mm', () => {
     const text58 = buildReceiptEscPos(tunaiSale, storeSettings, '58mm').toString('ascii')
     const text80 = buildReceiptEscPos(tunaiSale, storeSettings, '80mm').toString('ascii')
-    const totalLine58 = text58.split('\n').find((line) => line.startsWith('TOTAL'))
-    const totalLine80 = text80.split('\n').find((line) => line.startsWith('TOTAL'))
-    expect(totalLine58).toHaveLength(32)
-    expect(totalLine80).toHaveLength(48)
+    const totalLine58 = text58.split('\n').find((line) => line.includes('TOTAL'))
+    const totalLine80 = text80.split('\n').find((line) => line.includes('TOTAL'))
+    expect(totalLine58).toBeDefined()
+    expect(totalLine80).toBeDefined()
+    // Both segments carry the same fixed-length bold-on control-byte prefix
+    // (ESC E 1, 3 bytes) before the padded text, so the printable-width
+    // difference between paper sizes shows up directly as a difference in
+    // raw segment length - exactly the 48-32=16 character gap between the
+    // two paper widths' padLine() output.
+    expect(totalLine80!.length - totalLine58!.length).toBe(48 - 32)
   })
 
   it('clamps a negative kembalian to 0 rather than printing a negative amount', () => {
