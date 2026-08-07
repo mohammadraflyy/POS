@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import * as XLSX from 'xlsx'
+import XLSX from 'xlsx'
 import * as schema from './db/schema'
 import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments } from './db/schema'
 
