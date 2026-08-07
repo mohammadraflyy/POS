@@ -119,6 +119,8 @@ declare global {
             hargaJual: number
             stok: number
             isActive: boolean
+            unitsCount: number
+            priceTiersCount: number
           }[]
           currentPage: number
           lastPage: number
@@ -151,8 +153,34 @@ declare global {
             hargaJual: number
             stok: number
             isActive: boolean
+            unitsCount: number
+            priceTiersCount: number
           }[]
         >
+        getProductDetail: (productId: number) => Promise<{
+          units: {
+            level2: { id: number; level: number; satuan: string; jumlahKemasan: number; konversi: number; hargaJual: number } | null
+            level3: { id: number; level: number; satuan: string; jumlahKemasan: number; konversi: number; hargaJual: number } | null
+          }
+          priceTiers: { id: number; minQty: number; hargaJual: number }[]
+          priceHistory: {
+            id: number
+            hargaPokokLama: number
+            hargaPokokBaru: number
+            hargaJualLama: number
+            hargaJualBaru: number
+            createdAt: string
+            userName: string | null
+          }[]
+        }>
+        setProductUnit: (
+          productId: number,
+          level: 2 | 3,
+          input: { satuan: string; jumlahKemasan: number; hargaJual: number },
+        ) => Promise<void>
+        deleteProductUnit: (productId: number, level: 2 | 3) => Promise<void>
+        addPriceTier: (productId: number, input: { minQty: number; hargaJual: number }) => Promise<void>
+        deletePriceTier: (productId: number, tierId: number) => Promise<void>
       }
     }
   }

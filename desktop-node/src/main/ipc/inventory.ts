@@ -2,6 +2,14 @@ import { ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { listProducts, updateProduct, deleteProduct, bulkDeleteProducts, searchProductsQuick } from '../inventory'
+import {
+  getProductDetail,
+  setProductUnit,
+  deleteProductUnit,
+  addPriceTier,
+  deletePriceTier,
+  type ProductUnitRow,
+} from '../inventory-units'
 import { getCurrentUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -23,6 +31,8 @@ interface ProductListItemDto {
   hargaJual: number
   stok: number
   isActive: boolean
+  unitsCount: number
+  priceTiersCount: number
 }
 
 function toDto(item: ReturnType<typeof searchProductsQuick>[number]): ProductListItemDto {
@@ -37,6 +47,19 @@ function toDto(item: ReturnType<typeof searchProductsQuick>[number]): ProductLis
     hargaJual: toRupiah(item.hargaJual),
     stok: item.stok,
     isActive: item.isActive,
+    unitsCount: item.unitsCount,
+    priceTiersCount: item.priceTiersCount,
+  }
+}
+
+function toUnitDto(unit: ProductUnitRow) {
+  return {
+    id: unit.id,
+    level: unit.level,
+    satuan: unit.satuan,
+    jumlahKemasan: unit.jumlahKemasan,
+    konversi: unit.konversi,
+    hargaJual: toRupiah(unit.hargaJual),
   }
 }
 
@@ -114,5 +137,69 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     return searchProductsQuick(db, q).map(toDto)
+  })
+
+  ipcMain.handle('inventory:getProductDetail', (_event, productId: number) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const detail = getProductDetail(db, productId)
+
+    return {
+      units: {
+        level2: detail.units.level2 ? toUnitDto(detail.units.level2) : null,
+        level3: detail.units.level3 ? toUnitDto(detail.units.level3) : null,
+      },
+      priceTiers: detail.priceTiers.map((tier) => ({ id: tier.id, minQty: tier.minQty, hargaJual: toRupiah(tier.hargaJual) })),
+      priceHistory: detail.priceHistory.map((entry) => ({
+        id: entry.id,
+        hargaPokokLama: toRupiah(entry.hargaPokokLama),
+        hargaPokokBaru: toRupiah(entry.hargaPokokBaru),
+        hargaJualLama: toRupiah(entry.hargaJualLama),
+        hargaJualBaru: toRupiah(entry.hargaJualBaru),
+        createdAt: entry.createdAt.toISOString(),
+        userName: entry.userName,
+      })),
+    }
+  })
+
+  ipcMain.handle(
+    'inventory:setProductUnit',
+    (_event, productId: number, level: 2 | 3, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) => {
+      if (!getCurrentUser()) {
+        throw new Error('Silakan login terlebih dahulu.')
+      }
+
+      setProductUnit(db, productId, level, {
+        satuan: input.satuan,
+        jumlahKemasan: input.jumlahKemasan,
+        hargaJual: toCents(input.hargaJual),
+      })
+    },
+  )
+
+  ipcMain.handle('inventory:deleteProductUnit', (_event, productId: number, level: 2 | 3) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    deleteProductUnit(db, productId, level)
+  })
+
+  ipcMain.handle('inventory:addPriceTier', (_event, productId: number, input: { minQty: number; hargaJual: number }) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    addPriceTier(db, productId, { minQty: input.minQty, hargaJual: toCents(input.hargaJual) })
+  })
+
+  ipcMain.handle('inventory:deletePriceTier', (_event, productId: number, tierId: number) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    deletePriceTier(db, productId, tierId)
   })
 }
