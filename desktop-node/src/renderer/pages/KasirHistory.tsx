@@ -188,7 +188,7 @@ export function KasirHistory() {
       key: 'metodePembayaran',
       name: 'Metode',
       width: 120,
-      renderCell: ({ row }) => (row.metodePembayaran === 'bon' ? `Bon (${row.namaPelanggan})` : 'Tunai'),
+      renderCell: ({ row }) => (row.metodePembayaran === 'bon' ? `Pending Payment (${row.namaPelanggan})` : 'Tunai'),
     },
     {
       key: 'status',
@@ -220,6 +220,11 @@ export function KasirHistory() {
       width: 140,
       renderCell: ({ row }) => (
         <div className="flex items-center gap-2">
+          {row.metodePembayaran === 'bon' && row.status === 'selesai' && row.total - row.dibayar > 0 && (
+            <Button variant="default" size="sm" onClick={() => navigate(`/bon-payment/${row.id}`)}>
+              Pending Payment
+            </Button>
+          )}
           {row.status === 'selesai' && row.dibayar === 0 && (
             <Button variant="destructive" size="sm" onClick={() => cancelSale(row)}>
               Batalkan
