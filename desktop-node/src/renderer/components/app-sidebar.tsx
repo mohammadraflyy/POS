@@ -19,7 +19,7 @@ const pembelianNavItems: NavItem[] = [
   { title: 'Stock Opname', href: '/stock-opname', icon: ClipboardCheck },
 ]
 
-const laporanNavItems: NavItem[] = [{ title: 'Rekap', href: '/rekap', icon: ClipboardList, disabled: true }]
+const laporanNavItems: NavItem[] = [{ title: 'Rekap', href: '/rekap', icon: ClipboardList }]
 
 export function AppSidebar({ storeName, user }: { storeName: string; user: AuthUser }) {
   return (
