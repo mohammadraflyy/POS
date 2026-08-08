@@ -40,6 +40,24 @@ interface PembelianPerSupplierRow {
   totalPembelian: number
 }
 
+interface StockValueRow {
+  namaItem: string
+  kodeItem: string
+  stok: number
+  hargaPokok: number
+  nilai: number
+}
+
+interface SalesHistoryRow {
+  id: number
+  createdAt: string
+  namaPelanggan: string | null
+  metodePembayaran: 'tunai' | 'bon'
+  status: 'selesai' | 'dibatalkan'
+  total: number
+  dibayar: number
+}
+
 function firstOfMonth(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
@@ -60,6 +78,11 @@ export function Rekap() {
   const [labaPerHari, setLabaPerHari] = useState<LabaPerHariRow[]>([])
   const [produkTerlaris, setProdukTerlaris] = useState<ProdukTerlarisRow[]>([])
   const [pembelianPerSupplier, setPembelianPerSupplier] = useState<PembelianPerSupplierRow[]>([])
+  const [stockValue, setStockValue] = useState<{ totalNilai: number; produk: StockValueRow[] } | null>(null)
+  const [salesHistory, setSalesHistory] = useState<SalesHistoryRow[]>([])
+  const [exporting, setExporting] = useState(false)
+  const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   function load(rangeFrom: string, rangeTo: string) {
     window.api.rekap.getRekap({ from: rangeFrom, to: rangeTo }).then((result) => {
@@ -68,6 +91,8 @@ export function Rekap() {
       setLabaPerHari(result.labaPerHari)
       setProdukTerlaris(result.produkTerlaris)
       setPembelianPerSupplier(result.pembelianPerSupplier)
+      setStockValue(result.stockValue)
+      setSalesHistory(result.salesHistory)
     })
   }
 
@@ -79,6 +104,22 @@ export function Rekap() {
   function submitFilter(e: FormEvent) {
     e.preventDefault()
     load(from, to)
+  }
+
+  function exportExcel() {
+    setExporting(true)
+    setExportError(null)
+    setExportMessage(null)
+
+    window.api.rekap
+      .exportExcel({ from, to })
+      .then((path) => {
+        if (path) {
+          setExportMessage(`Tersimpan ke ${path}`)
+        }
+      })
+      .catch((err) => setExportError(err instanceof Error ? err.message : 'Gagal mengekspor'))
+      .finally(() => setExporting(false))
   }
 
   const labaPerKategoriColumns: Column<LabaPerKategoriRow>[] = [
@@ -135,6 +176,58 @@ export function Rekap() {
     },
   ]
 
+  const stockValueColumns: Column<StockValueRow>[] = [
+    { key: 'kodeItem', name: 'Kode', width: 100 },
+    { key: 'namaItem', name: 'Produk' },
+    { key: 'stok', name: 'Stok', width: 90 },
+    {
+      key: 'hargaPokok',
+      name: 'Harga Pokok',
+      width: 130,
+      renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.hargaPokok)}</span>,
+    },
+    {
+      key: 'nilai',
+      name: 'Nilai',
+      width: 150,
+      renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.nilai)}</span>,
+    },
+  ]
+
+  const salesHistoryColumns: Column<SalesHistoryRow>[] = [
+    {
+      key: 'createdAt',
+      name: 'Tanggal',
+      width: 160,
+      renderCell: ({ row }) => new Date(row.createdAt).toLocaleString('id-ID'),
+    },
+    { key: 'namaPelanggan', name: 'Pelanggan', renderCell: ({ row }) => row.namaPelanggan ?? '-' },
+    {
+      key: 'metodePembayaran',
+      name: 'Metode',
+      width: 100,
+      renderCell: ({ row }) => (row.metodePembayaran === 'bon' ? 'Bon' : 'Tunai'),
+    },
+    {
+      key: 'status',
+      name: 'Status',
+      width: 110,
+      renderCell: ({ row }) => (row.status === 'dibatalkan' ? 'Dibatalkan' : 'Selesai'),
+    },
+    {
+      key: 'total',
+      name: 'Total',
+      width: 120,
+      renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.total)}</span>,
+    },
+    {
+      key: 'dibayar',
+      name: 'Dibayar',
+      width: 120,
+      renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.dibayar)}</span>,
+    },
+  ]
+
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
       <div className="flex flex-1 flex-col gap-4 p-4">
@@ -152,9 +245,19 @@ export function Rekap() {
           <Button type="submit" variant="secondary">
             Terapkan
           </Button>
+          <Button type="button" variant="outline" onClick={exportExcel} disabled={exporting}>
+            Export Excel
+          </Button>
         </form>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {exportError && (
+          <p role="alert" className="text-sm text-destructive">
+            {exportError}
+          </p>
+        )}
+        {exportMessage && <p className="text-sm text-muted-foreground">{exportMessage}</p>}
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Card>
             <CardHeader>
               <CardDescription>Omzet Tunai</CardDescription>
@@ -179,7 +282,21 @@ export function Rekap() {
               <CardTitle className="text-2xl">{formatRupiah(summary?.labaKotor ?? 0)}</CardTitle>
             </CardHeader>
           </Card>
+          <Card>
+            <CardHeader>
+              <CardDescription>Total Nilai Stock</CardDescription>
+              <CardTitle className="text-2xl">{formatRupiah(stockValue?.totalNilai ?? 0)}</CardTitle>
+            </CardHeader>
+          </Card>
         </div>
+
+        <ReportTable<SalesHistoryRow>
+          title="Riwayat Transaksi"
+          columns={salesHistoryColumns}
+          rows={salesHistory}
+          rowKey={(row) => row.id}
+          emptyMessage="Belum ada transaksi pada rentang ini."
+        />
 
         <div className="grid gap-4 lg:grid-cols-2">
           <ReportTable<ProdukTerlarisRow>
@@ -212,6 +329,17 @@ export function Rekap() {
             rows={labaPerHari}
             rowKey={(row) => row.tanggal}
             emptyMessage="Belum ada penjualan."
+          />
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Nilai stock selalu berdasarkan data terkini, tidak mengikuti filter tanggal di atas.</p>
+          <ReportTable<StockValueRow>
+            title="Nilai Stock"
+            columns={stockValueColumns}
+            rows={stockValue?.produk ?? []}
+            rowKey={(row) => row.kodeItem}
+            emptyMessage="Belum ada produk dengan stok."
           />
         </div>
       </div>
