@@ -7,6 +7,7 @@ import { Settings } from './pages/Settings'
 import { Inventory } from './pages/Inventory'
 import { MassInput } from './pages/inventory/MassInput'
 import { Supplier } from './pages/Supplier'
+import { Purchase } from './pages/Purchase'
 
 export function App() {
   return (
@@ -20,6 +21,7 @@ export function App() {
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/inventory/mass-input" element={<MassInput />} />
         <Route path="/supplier" element={<Supplier />} />
+        <Route path="/purchase" element={<Purchase />} />
       </Routes>
     </HashRouter>
   )
