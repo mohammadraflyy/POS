@@ -9,6 +9,7 @@ import { registerPurchaseIpc } from './ipc/purchase'
 import { registerStockOpnameIpc } from './ipc/stock-opname'
 import { registerRekapIpc } from './ipc/rekap'
 import { registerDashboardIpc } from './ipc/dashboard'
+import { seedDefaultAdmin } from './db/seed'
 
 let mainWindow: BrowserWindow | null
 let db: ReturnType<typeof createDb> | null = null
@@ -66,6 +67,7 @@ app.on('activate', () => {
 
 app.whenReady().then(() => {
   db = createDb(getDbPath(), getMigrationsFolder())
+  seedDefaultAdmin(db)
   registerAuthIpc(db)
   registerKasirIpc(db)
   registerInventoryIpc(db)

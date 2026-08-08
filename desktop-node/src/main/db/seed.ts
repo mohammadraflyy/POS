@@ -1,24 +1,30 @@
-import path from 'node:path'
 import bcrypt from 'bcryptjs'
-import { createDb } from './migrate'
+import { eq } from 'drizzle-orm'
 import { users } from './schema'
 
-const dbPath = path.resolve(process.cwd(), 'dev.sqlite')
-const migrationsFolder = path.resolve(process.cwd(), 'drizzle')
-const db = createDb(dbPath, migrationsFolder)
+export function seedDefaultAdmin(db: any) {
+  const existingAdmin = db
+    .select()
+    .from(users)
+    .where(eq(users.username, 'admin'))
+    .get()
 
-const passwordHash = bcrypt.hashSync('password', 10)
-const now = new Date()
+  if (existingAdmin) {
+    return
+  }
 
-db.insert(users)
-  .values({
-    username: 'admin',
-    passwordHash,
-    name: 'Admin',
-    createdAt: now,
-    updatedAt: now,
-  })
-  .onConflictDoNothing()
-  .run()
+  const passwordHash = bcrypt.hashSync('admin', 10)
+  const now = new Date()
 
-console.log('Seeded user "admin" with password "password" into dev.sqlite')
+  db.insert(users)
+    .values({
+      username: 'admin',
+      passwordHash,
+      name: 'Admin',
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  console.log('Default admin account created')
+}
