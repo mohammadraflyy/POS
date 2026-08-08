@@ -145,6 +145,9 @@ describe('recordPurchase', () => {
     const productB = db.select().from(products).where(eq(products.id, 2)).get()
     expect(productA?.stok).toBe(20)
     expect(productB?.stok).toBe(10)
+
+    const list = listPurchases(db, { page: 1 })
+    expect(list.data[0].itemSummary).toBe('Kopi Kapal Api x10, Gula Pasir x5')
   })
 
   it('allows a null supplierId', () => {

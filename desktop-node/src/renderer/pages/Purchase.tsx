@@ -63,7 +63,10 @@ export function Purchase() {
   const [supplierPaletteOpen, setSupplierPaletteOpen] = useState(false)
   const selectedSupplier = supplierList.find((s) => s.id === supplierId)
 
-  const [tanggal, setTanggal] = useState(() => new Date().toISOString().slice(0, 10))
+  const [tanggal, setTanggal] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  })
   const [catatan, setCatatan] = useState('')
   const [items, setItems] = useState<DraftItem[]>([])
   const [processing, setProcessing] = useState(false)
@@ -380,6 +383,7 @@ export function Purchase() {
             { key: 'tanggal', name: 'Tanggal', width: 130 },
             { key: 'supplierName', name: 'Supplier', width: 180, renderCell: ({ row }) => row.supplierName ?? '-' },
             { key: 'itemSummary', name: 'Item' },
+            { key: 'catatan', name: 'Catatan', width: 180, renderCell: ({ row }) => row.catatan ?? '-' },
             {
               key: 'total',
               name: 'Total',
