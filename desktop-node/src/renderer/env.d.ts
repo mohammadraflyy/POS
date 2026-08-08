@@ -297,7 +297,21 @@ declare global {
           labaPerHari: { tanggal: string; omzet: number; laba: number }[]
           produkTerlaris: { namaItem: string; qtyTerjual: number; totalPenjualan: number }[]
           pembelianPerSupplier: { supplierName: string; totalPembelian: number }[]
+          stockValue: {
+            totalNilai: number
+            produk: { namaItem: string; kodeItem: string; stok: number; hargaPokok: number; nilai: number }[]
+          }
+          salesHistory: {
+            id: number
+            createdAt: string
+            namaPelanggan: string | null
+            metodePembayaran: 'tunai' | 'bon'
+            status: 'selesai' | 'dibatalkan'
+            total: number
+            dibayar: number
+          }[]
         }>
+        exportExcel: (input: { from: string; to: string }) => Promise<string | null>
       }
       dashboard: {
         getDashboard: () => Promise<{

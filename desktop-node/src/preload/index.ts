@@ -122,6 +122,7 @@ const api = {
   },
   rekap: {
     getRekap: (input: { from: string; to: string }) => invoke('rekap:getRekap', input),
+    exportExcel: (input: { from: string; to: string }) => invoke('rekap:exportExcel', input),
   },
   dashboard: {
     getDashboard: () => invoke('dashboard:getDashboard'),
