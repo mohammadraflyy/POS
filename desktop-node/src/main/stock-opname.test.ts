@@ -275,4 +275,20 @@ describe('recordStockAdjustment', () => {
       'Produk tidak ditemukan.',
     )
   })
+
+  it('throws when alasan exceeds 255 characters', () => {
+    const db = seedDb()
+    expect(() =>
+      recordStockAdjustment(db, { productId: 1, stokSesudah: 12, alasan: 'a'.repeat(256), userId: 1 }),
+    ).toThrow('Alasan maksimal 255 karakter.')
+  })
+
+  it('records tanggal as the local date, not UTC', () => {
+    const db = seedDb()
+    const result = recordStockAdjustment(db, { productId: 1, stokSesudah: 12, alasan: null, userId: 1 })
+    const adjustment = db.select().from(stockAdjustments).where(eq(stockAdjustments.id, result.id)).get()
+    const now = new Date()
+    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    expect(adjustment?.tanggal).toBe(expected)
+  })
 })

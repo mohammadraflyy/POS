@@ -76,12 +76,15 @@ export function StockOpname() {
   const [rows, setRows] = useState<DraftRow[]>([])
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const [hasSearched, setHasSearched] = useState(false)
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     window.api.stockOpname.listCategories().then(setCategories)
   }, [])
 
   function runSearch(q: string, categoryIds: number[]) {
+    setRowErrors({})
+
     if (q.trim() === '' && categoryIds.length === 0) {
       setRows([])
       setHasSearched(false)
@@ -124,7 +127,17 @@ export function StockOpname() {
     window.api.stockOpname
       .recordAdjustment({ productId: row.productId, stokSesudah: stokFisikNum, alasan: row.alasan || null })
       .then(() => {
-        runSearch(search, selectedCategoryIds)
+        setRows((prev) =>
+          prev.map((r) => (r.key === row.key ? { ...r, stokSistem: stokFisikNum } : r)),
+        )
+        setSavedKeys((prev) => new Set(prev).add(row.key))
+        setTimeout(() => {
+          setSavedKeys((prev) => {
+            const next = new Set(prev)
+            next.delete(row.key)
+            return next
+          })
+        }, 2000)
       })
       .catch((err) => {
         setRowErrors((prev) => ({ ...prev, [row.key]: err instanceof Error ? err.message : 'Gagal menyimpan' }))
@@ -133,7 +146,13 @@ export function StockOpname() {
 
   function handleRowsChange(newRows: DraftRow[], data: RowsChangeData<DraftRow>) {
     setRows(newRows)
-    saveRow(newRows[data.indexes[0]])
+    if (data.column.key !== 'stokFisik') {
+      return
+    }
+    const row = newRows[data.indexes[0]]
+    if (row.stokFisik !== String(row.stokSistem)) {
+      saveRow(row)
+    }
   }
 
   const namaWidth = Math.max(MIN_NAMA_WIDTH, gridWidth - OTHER_COLUMNS_WIDTH - 2)
@@ -172,7 +191,12 @@ export function StockOpname() {
         }
         const selisih = stokFisikNum - row.stokSistem
         const colorClass = selisih > 0 ? 'text-green-600' : selisih < 0 ? 'text-destructive' : 'text-muted-foreground'
-        return <span className={colorClass}>{selisih > 0 ? `+${selisih}` : selisih}</span>
+        return (
+          <span className={colorClass}>
+            {selisih > 0 ? `+${selisih}` : selisih}
+            {savedKeys.has(row.key) && <span className="text-xs text-muted-foreground"> · Tersimpan</span>}
+          </span>
+        )
       },
     },
     textColumn('alasan', 'Alasan', 200),
@@ -247,6 +271,13 @@ export function StockOpname() {
                 rows={rows}
                 rowKeyGetter={(row) => row.key}
                 onRowsChange={handleRowsChange}
+                renderers={{
+                  noRowsFallback: (
+                    <div className="col-span-full p-6 text-center text-sm text-muted-foreground">
+                      Produk tidak ditemukan.
+                    </div>
+                  ),
+                }}
                 style={{ blockSize: gridHeight, minHeight: 300 }}
               />
             )}

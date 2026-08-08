@@ -86,6 +86,10 @@ export function recordStockAdjustment(
 
   const alasan = input.alasan?.trim() || null
 
+  if (alasan !== null && alasan.length > 255) {
+    throw new Error('Alasan maksimal 255 karakter.')
+  }
+
   return db.transaction((tx) => {
     const product = tx.select().from(products).where(eq(products.id, input.productId)).get()
 
