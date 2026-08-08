@@ -143,11 +143,11 @@ export function Rekap() {
         <form onSubmit={submitFilter} className="flex flex-wrap items-end gap-2">
           <div className="grid gap-1">
             <Label className="text-xs">Dari</Label>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} required />
           </div>
           <div className="grid gap-1">
             <Label className="text-xs">Sampai</Label>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} required />
           </div>
           <Button type="submit" variant="secondary">
             Terapkan

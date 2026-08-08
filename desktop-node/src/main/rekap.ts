@@ -134,10 +134,11 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
       totalPembelian: sql<number>`coalesce(sum(${purchases.total}), 0)`,
     })
     .from(purchases)
-    .innerJoin(suppliers, eq(purchases.supplierId, suppliers.id))
+    .leftJoin(suppliers, eq(purchases.supplierId, suppliers.id))
     .where(and(gte(purchases.tanggal, input.from), lte(purchases.tanggal, input.to)))
-    .groupBy(suppliers.id, suppliers.nama)
+    .groupBy(purchases.supplierId)
     .all()
+    .map((row) => ({ supplierName: row.supplierName ?? 'Tanpa Supplier', totalPembelian: row.totalPembelian }))
     .sort((a, b) => b.totalPembelian - a.totalPembelian)
 
   return {

@@ -9,5 +9,8 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],
+    env: {
+      TZ: 'Asia/Jakarta',
+    },
   },
 })

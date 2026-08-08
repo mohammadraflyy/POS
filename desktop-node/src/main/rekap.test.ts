@@ -254,7 +254,7 @@ describe('getRekap', () => {
       status: 'selesai',
       total: 1500_00,
       dibayar: 1500_00,
-      createdAt: new Date(2026, 0, 15, 10, 0),
+      createdAt: new Date(2026, 0, 15, 23, 30),
       items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 1500_00, hargaPokok: 1000_00, subtotal: 1500_00 }],
     })
     insertSale(db, {
@@ -263,7 +263,7 @@ describe('getRekap', () => {
       status: 'selesai',
       total: 1500_00,
       dibayar: 1500_00,
-      createdAt: new Date(2026, 0, 16, 10, 0),
+      createdAt: new Date(2026, 0, 16, 0, 30),
       items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 1500_00, hargaPokok: 1000_00, subtotal: 1500_00 }],
     })
 
@@ -336,6 +336,20 @@ describe('getRekap', () => {
 
     const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
     expect(result.pembelianPerSupplier).toEqual([{ supplierName: 'CV Sumber Makmur', totalPembelian: 100000_00 }])
+  })
+
+  it('pembelianPerSupplier buckets purchases with no supplier under Tanpa Supplier', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    db.insert(purchases)
+      .values([
+        { id: 1, supplierId: null, userId: 1, tanggal: '2026-01-10', total: 75000_00, catatan: null, createdAt: new Date(), updatedAt: new Date() },
+      ])
+      .run()
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(result.pembelianPerSupplier).toEqual([{ supplierName: 'Tanpa Supplier', totalPembelian: 75000_00 }])
   })
 
   it('excludes cancelled sales from labaKotor, labaPerKategori, labaPerHari, and produkTerlaris', () => {
