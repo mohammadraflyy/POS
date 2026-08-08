@@ -5,7 +5,8 @@ import { getMainWindow } from '../index'
 import { listProducts, updateProduct, deleteProduct, bulkDeleteProducts, searchProductsQuick } from '../inventory'
 import {
   getProductDetail,
-  setProductUnit,
+  addProductUnit,
+  updateProductUnit,
   deleteProductUnit,
   addPriceTier,
   deletePriceTier,
@@ -57,7 +58,6 @@ function toDto(item: ReturnType<typeof searchProductsQuick>[number]): ProductLis
 function toUnitDto(unit: ProductUnitRow) {
   return {
     id: unit.id,
-    level: unit.level,
     satuan: unit.satuan,
     jumlahKemasan: unit.jumlahKemasan,
     konversi: unit.konversi,
@@ -149,10 +149,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     const detail = getProductDetail(db, productId)
 
     return {
-      units: {
-        level2: detail.units.level2 ? toUnitDto(detail.units.level2) : null,
-        level3: detail.units.level3 ? toUnitDto(detail.units.level3) : null,
-      },
+      units: detail.units.map(toUnitDto),
       priceTiers: detail.priceTiers.map((tier) => ({ id: tier.id, minQty: tier.minQty, hargaJual: toRupiah(tier.hargaJual) })),
       priceHistory: detail.priceHistory.map((entry) => ({
         id: entry.id,
@@ -167,13 +164,13 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle(
-    'inventory:setProductUnit',
-    (_event, productId: number, level: 2 | 3, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) => {
+    'inventory:addProductUnit',
+    (_event, productId: number, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) => {
       if (!getCurrentUser()) {
         throw new Error('Silakan login terlebih dahulu.')
       }
 
-      setProductUnit(db, productId, level, {
+      addProductUnit(db, productId, {
         satuan: input.satuan,
         jumlahKemasan: input.jumlahKemasan,
         hargaJual: toCents(input.hargaJual),
@@ -181,12 +178,27 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     },
   )
 
-  ipcMain.handle('inventory:deleteProductUnit', (_event, productId: number, level: 2 | 3) => {
+  ipcMain.handle(
+    'inventory:updateProductUnit',
+    (_event, productId: number, unitId: number, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) => {
+      if (!getCurrentUser()) {
+        throw new Error('Silakan login terlebih dahulu.')
+      }
+
+      updateProductUnit(db, productId, unitId, {
+        satuan: input.satuan,
+        jumlahKemasan: input.jumlahKemasan,
+        hargaJual: toCents(input.hargaJual),
+      })
+    },
+  )
+
+  ipcMain.handle('inventory:deleteProductUnit', (_event, productId: number, unitId: number) => {
     if (!getCurrentUser()) {
       throw new Error('Silakan login terlebih dahulu.')
     }
 
-    deleteProductUnit(db, productId, level)
+    deleteProductUnit(db, productId, unitId)
   })
 
   ipcMain.handle('inventory:addPriceTier', (_event, productId: number, input: { minQty: number; hargaJual: number }) => {
