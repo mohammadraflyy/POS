@@ -1,7 +1,9 @@
-import { ipcMain } from 'electron'
+import { dialog, ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import XLSX from 'xlsx'
 import * as schema from '../db/schema'
-import { getRekap } from '../rekap'
+import { getRekap, buildRekapWorkbook } from '../rekap'
+import { getMainWindow } from '../index'
 import { getCurrentUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -42,6 +44,51 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
         supplierName: row.supplierName,
         totalPembelian: toRupiah(row.totalPembelian),
       })),
+      stockValue: {
+        totalNilai: toRupiah(result.stockValue.totalNilai),
+        produk: result.stockValue.produk.map((row) => ({
+          namaItem: row.namaItem,
+          kodeItem: row.kodeItem,
+          stok: row.stok,
+          hargaPokok: toRupiah(row.hargaPokok),
+          nilai: toRupiah(row.nilai),
+        })),
+      },
+      salesHistory: result.salesHistory.map((row) => ({
+        id: row.id,
+        createdAt: row.createdAt,
+        namaPelanggan: row.namaPelanggan,
+        metodePembayaran: row.metodePembayaran,
+        status: row.status,
+        total: toRupiah(row.total),
+        dibayar: toRupiah(row.dibayar),
+      })),
     }
+  })
+
+  ipcMain.handle('rekap:exportExcel', async (_event, input: { from: string; to: string }) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const window = getMainWindow()
+    if (!window) {
+      throw new Error('Jendela aplikasi tidak ditemukan.')
+    }
+
+    const result = await dialog.showSaveDialog(window, {
+      defaultPath: `rekap-${input.from}-${input.to}.xlsx`,
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+    })
+
+    if (result.canceled || !result.filePath) {
+      return null
+    }
+
+    const rekap = getRekap(db, input)
+    const workbook = buildRekapWorkbook(rekap)
+    XLSX.writeFile(workbook, result.filePath)
+
+    return result.filePath
   })
 }
