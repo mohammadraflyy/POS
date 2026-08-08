@@ -22,7 +22,7 @@ function unitRowSelect(db: BetterSQLite3Database<typeof schema>) {
 }
 
 export function listProductUnits(db: BetterSQLite3Database<typeof schema>, productId: number): ProductUnitRow[] {
-  return unitRowSelect(db).where(eq(productUnits.productId, productId)).orderBy(productUnits.konversi).all()
+  return unitRowSelect(db).where(eq(productUnits.productId, productId)).orderBy(productUnits.konversi, productUnits.id).all()
 }
 
 export interface UpsertProductUnitInput {

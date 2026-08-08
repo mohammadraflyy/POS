@@ -76,6 +76,16 @@ describe('addProductUnit', () => {
     ])
   })
 
+  it('breaks konversi ties deterministically by insertion order (id) when jumlahKemasan is 1', () => {
+    const db = seedProduct()
+
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 }) // konversi 12
+    addProductUnit(db, 1, { satuan: 'Alt', jumlahKemasan: 1, hargaJual: 15000_00 }) // konversi 12, ties with Renteng
+
+    const units = listProductUnits(db, 1)
+    expect(units.map((u) => u.satuan)).toEqual(['Renteng', 'Alt'])
+  })
+
   it('throws when satuan already exists for the product', () => {
     const db = seedProduct()
     addProductUnit(db, 1, validInput)
