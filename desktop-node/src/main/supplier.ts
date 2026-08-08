@@ -24,14 +24,19 @@ function supplierListSelect(db: BetterSQLite3Database<typeof schema>) {
       alamat: suppliers.alamat,
       keterangan: suppliers.keterangan,
       // Deliberately raw SQL identifiers here, not Drizzle's ${table}/${table.column}
-      // interpolation (unlike the identical-shaped unitsCount/priceTiersCount pattern in
-      // main/inventory.ts): when a correlated subquery needs to reference a column on the
-      // SAME table the outer query selects FROM (suppliers referencing suppliers.id here),
-      // Drizzle's parameterized interpolation produces wrong (undercounted) results —
-      // verified empirically against this project's installed drizzle-orm version. The
-      // inventory.ts pattern works because its subqueries reference DIFFERENT tables
-      // (productUnits/productPriceTiers) than the outer table (products) — no self-reference,
-      // no bug. Do not "fix" this back to ${suppliers.id} — it will silently undercount.
+      // interpolation. Verified empirically (against this project's installed drizzle-orm
+      // version): Drizzle only table-qualifies a ${column} reference when the outer query
+      // contains a JOIN. This query is join-less (.from(suppliers), no leftJoin), so
+      // ${suppliers.id} would interpolate as a bare, unqualified "id" — which SQLite then
+      // resolves against the SUBQUERY's own innermost FROM table (purchases), not the outer
+      // suppliers table, silently binding the predicate as `purchases.supplier_id = purchases.id`
+      // and undercounting. This is NOT about referencing the same table vs. a different one —
+      // a join-less query with a correlated subquery on a completely different table hits the
+      // identical bug (verified). The main/inventory.ts unitsCount/priceTiersCount subqueries
+      // are safe only because listProducts/getProductsForBulk both .leftJoin(categories, ...),
+      // which forces Drizzle to table-qualify. Any future join-less list query needing a
+      // correlated-subquery count (e.g. a purchases list with a supplier-purchase-count, or an
+      // item-count) MUST use raw SQL identifiers like this one, or add a join first.
       purchaseCount: sql<number>`(SELECT COUNT(*) FROM purchases WHERE supplier_id = suppliers.id)`,
     })
     .from(suppliers)

@@ -151,6 +151,11 @@ export function Supplier() {
   async function deleteRow(row: DraftRow) {
     if (row.id === null) {
       setRows((prev) => prev.filter((r) => r.key !== row.key))
+      setRowErrors((prev) => {
+        const next = { ...prev }
+        delete next[row.key]
+        return next
+      })
       return
     }
 
