@@ -58,7 +58,6 @@ function seedBase(db: ReturnType<typeof createDb>) {
     .values({
       id: 1,
       productId: 1,
-      level: 2,
       satuan: 'DUS',
       jumlahKemasan: 10,
       konversi: 10,

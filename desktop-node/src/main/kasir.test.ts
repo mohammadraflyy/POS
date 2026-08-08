@@ -124,6 +124,7 @@ describe('checkout', () => {
       .values({
         id: 9,
         productId: 2,
+        jumlahKemasan: 40,
         satuan: 'DUS',
         konversi: 40,
         hargaJual: 110000_00,
@@ -512,6 +513,7 @@ describe('cancelSale', () => {
       .values({
         id: 9,
         productId: 2,
+        jumlahKemasan: 40,
         satuan: 'DUS',
         konversi: 40,
         hargaJual: 110000_00,

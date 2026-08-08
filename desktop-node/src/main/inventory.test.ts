@@ -443,7 +443,6 @@ describe('listProducts unit/tier counts', () => {
     db.insert(productUnits)
       .values({
         productId: 1,
-        level: 2,
         satuan: 'Renteng',
         jumlahKemasan: 12,
         konversi: 12,
@@ -479,7 +478,6 @@ describe('searchProductsQuick unit/tier counts', () => {
     db.insert(productUnits)
       .values({
         productId: 1,
-        level: 2,
         satuan: 'Renteng',
         jumlahKemasan: 12,
         konversi: 12,
