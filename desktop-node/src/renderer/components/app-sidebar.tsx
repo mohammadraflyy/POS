@@ -1,4 +1,4 @@
-import { Boxes, ClipboardCheck, ClipboardList, History, LayoutGrid, PackagePlus, ShoppingCart } from 'lucide-react'
+import { Boxes, Building2, ClipboardCheck, ClipboardList, History, LayoutGrid, PackagePlus, ShoppingCart } from 'lucide-react'
 import { AppLogo } from './app-logo'
 import { NavMain } from './nav-main'
 import { NavUser } from './nav-user'
@@ -14,6 +14,7 @@ const penjualanNavItems: NavItem[] = [
 
 const pembelianNavItems: NavItem[] = [
   { title: 'Pembelian', href: '/purchase', icon: PackagePlus, disabled: true },
+  { title: 'Supplier', href: '/supplier', icon: Building2 },
   { title: 'Katalog Produk', href: '/inventory', icon: Boxes },
   { title: 'Stock Opname', href: '/stock-opname', icon: ClipboardCheck, disabled: true },
 ]

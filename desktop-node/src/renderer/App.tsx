@@ -6,6 +6,7 @@ import { BonPayment } from './pages/BonPayment'
 import { Settings } from './pages/Settings'
 import { Inventory } from './pages/Inventory'
 import { MassInput } from './pages/inventory/MassInput'
+import { Supplier } from './pages/Supplier'
 
 export function App() {
   return (
@@ -18,6 +19,7 @@ export function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/inventory/mass-input" element={<MassInput />} />
+        <Route path="/supplier" element={<Supplier />} />
       </Routes>
     </HashRouter>
   )
