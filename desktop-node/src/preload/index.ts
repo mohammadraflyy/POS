@@ -102,6 +102,16 @@ const api = {
     ) => invoke('supplier:updateSupplier', id, input),
     deleteSupplier: (id: number) => invoke('supplier:deleteSupplier', id),
   },
+  purchase: {
+    recordPurchase: (input: {
+      supplierId: number | null
+      tanggal: string
+      catatan: string | null
+      items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+    }) => invoke('purchase:recordPurchase', input),
+    listPurchases: (input: { page: number; pageSize?: number }) => invoke('purchase:listPurchases', input),
+    searchProducts: (q: string) => invoke('purchase:searchProducts', q),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

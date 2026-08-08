@@ -241,6 +241,37 @@ declare global {
         ) => Promise<void>
         deleteSupplier: (id: number) => Promise<void>
       }
+      purchase: {
+        recordPurchase: (input: {
+          supplierId: number | null
+          tanggal: string
+          catatan: string | null
+          items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+        }) => Promise<{ purchaseId: number }>
+        listPurchases: (input: { page: number; pageSize?: number }) => Promise<{
+          data: {
+            id: number
+            tanggal: string
+            total: number
+            catatan: string | null
+            supplierName: string | null
+            itemSummary: string
+          }[]
+          currentPage: number
+          lastPage: number
+          total: number
+        }>
+        searchProducts: (q: string) => Promise<
+          {
+            id: number
+            kodeItem: string
+            namaItem: string
+            satuan: string
+            hargaPokok: number
+            units: { id: number; level: number; satuan: string; konversi: number }[]
+          }[]
+        >
+      }
     }
   }
 }
