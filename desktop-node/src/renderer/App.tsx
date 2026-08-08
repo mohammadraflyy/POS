@@ -8,6 +8,7 @@ import { Inventory } from './pages/Inventory'
 import { MassInput } from './pages/inventory/MassInput'
 import { Supplier } from './pages/Supplier'
 import { Purchase } from './pages/Purchase'
+import { StockOpname } from './pages/StockOpname'
 
 export function App() {
   return (
@@ -22,6 +23,7 @@ export function App() {
         <Route path="/inventory/mass-input" element={<MassInput />} />
         <Route path="/supplier" element={<Supplier />} />
         <Route path="/purchase" element={<Purchase />} />
+        <Route path="/stock-opname" element={<StockOpname />} />
       </Routes>
     </HashRouter>
   )
