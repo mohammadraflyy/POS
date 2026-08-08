@@ -121,6 +121,9 @@ const api = {
   rekap: {
     getRekap: (input: { from: string; to: string }) => invoke('rekap:getRekap', input),
   },
+  dashboard: {
+    getDashboard: () => invoke('dashboard:getDashboard'),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

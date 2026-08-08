@@ -301,6 +301,28 @@ declare global {
           pembelianPerSupplier: { supplierName: string; totalPembelian: number }[]
         }>
       }
+      dashboard: {
+        getDashboard: () => Promise<{
+          summary: {
+            omzetTunai: number
+            piutangBeredar: number
+            jumlahTransaksi: number
+            labaKotor: number
+          }
+          stokMenipis: { id: number; kodeItem: string; namaItem: string; satuan: string; stok: number }[]
+          produkTerlarisHariIni: { namaItem: string; qtyTerjual: number; totalPenjualan: number }[]
+          transaksiTerbaru: {
+            id: number
+            namaPelanggan: string | null
+            metodePembayaran: 'tunai' | 'bon'
+            status: 'selesai' | 'dibatalkan'
+            total: number
+            dibayar: number
+            createdAt: string
+            itemSummary: string
+          }[]
+        }>
+      }
     }
   }
 }
