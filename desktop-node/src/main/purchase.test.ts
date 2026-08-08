@@ -56,7 +56,6 @@ function seedDb() {
     .values({
       id: 1,
       productId: 1,
-      level: 2,
       satuan: 'Renteng',
       jumlahKemasan: 12,
       konversi: 12,
@@ -290,7 +289,7 @@ describe('searchProductsForPurchase', () => {
   it('includes each product\'s available units', () => {
     const db = seedDb()
     const results = searchProductsForPurchase(db, 'kopi')
-    expect(results[0].units).toEqual([{ id: 1, level: 2, satuan: 'Renteng', konversi: 12 }])
+    expect(results[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12 }])
   })
 
   it('returns an empty units array for a product with no satuan turunan', () => {

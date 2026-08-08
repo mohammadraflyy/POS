@@ -2,7 +2,7 @@ import { desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { purchases, purchaseItems, products, suppliers, productUnits } from './db/schema'
-import { getProductUnits } from './inventory-units'
+import { listProductUnits } from './inventory-units'
 
 export interface PurchaseItemInput {
   productId: number
@@ -224,7 +224,7 @@ export interface PurchaseProductOption {
   namaItem: string
   satuan: string
   hargaPokok: number
-  units: { id: number; level: number; satuan: string; konversi: number }[]
+  units: { id: number; satuan: string; konversi: number }[]
 }
 
 export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schema>, q: string): PurchaseProductOption[] {
@@ -247,10 +247,7 @@ export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schem
     .all()
 
   return rows.map((row) => {
-    const { level2, level3 } = getProductUnits(db, row.id)
-    const units = [level2, level3]
-      .filter((u): u is NonNullable<typeof u> => u !== null)
-      .map((u) => ({ id: u.id, level: u.level, satuan: u.satuan, konversi: u.konversi }))
+    const units = listProductUnits(db, row.id).map((u) => ({ id: u.id, satuan: u.satuan, konversi: u.konversi }))
 
     return { ...row, units }
   })
