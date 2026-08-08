@@ -3,8 +3,9 @@ import path from 'node:path'
 import { createDb } from './db/migrate'
 import { products, productPriceHistories, users } from './db/schema'
 import {
-  getProductUnits,
-  setProductUnit,
+  listProductUnits,
+  addProductUnit,
+  updateProductUnit,
   deleteProductUnit,
   addPriceTier,
   deletePriceTier,
@@ -39,137 +40,160 @@ function seedProduct() {
   return db
 }
 
-describe('getProductUnits', () => {
-  it('returns null for both levels when none exist', () => {
+describe('listProductUnits', () => {
+  it('returns an empty array when no derived units exist', () => {
     const db = seedProduct()
-    expect(getProductUnits(db, 1)).toEqual({ level2: null, level3: null })
+    expect(listProductUnits(db, 1)).toEqual([])
   })
 })
 
-describe('setProductUnit', () => {
+describe('addProductUnit', () => {
   const validInput = { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 }
 
-  it('creates a level 2 unit with konversi equal to jumlahKemasan', () => {
+  it('appends the first unit with konversi equal to jumlahKemasan', () => {
     const db = seedProduct()
 
-    setProductUnit(db, 1, 2, validInput)
+    addProductUnit(db, 1, validInput)
 
-    const { level2, level3 } = getProductUnits(db, 1)
-    expect(level2).toMatchObject({ level: 2, satuan: 'Renteng', jumlahKemasan: 12, konversi: 12, hargaJual: 15000_00 })
-    expect(level3).toBeNull()
+    const units = listProductUnits(db, 1)
+    expect(units).toEqual([
+      { id: expect.any(Number), satuan: 'Renteng', jumlahKemasan: 12, konversi: 12, hargaJual: 15000_00 },
+    ])
   })
 
-  it('creates a level 3 unit with konversi = jumlahKemasan * level 2 konversi', () => {
+  it('supports a chain longer than 2 derived units, each konversi cumulative from the one below it', () => {
     const db = seedProduct()
 
-    setProductUnit(db, 1, 2, validInput)
-    setProductUnit(db, 1, 3, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 })
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 }) // 12
+    addProductUnit(db, 1, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 }) // 10 * 12 = 120
+    addProductUnit(db, 1, { satuan: 'Pak', jumlahKemasan: 5, hargaJual: 650000_00 }) // 5 * 120 = 600
 
-    const { level3 } = getProductUnits(db, 1)
-    expect(level3).toMatchObject({ level: 3, satuan: 'Dus', jumlahKemasan: 10, konversi: 120 })
+    const units = listProductUnits(db, 1)
+    expect(units.map((u) => ({ satuan: u.satuan, konversi: u.konversi }))).toEqual([
+      { satuan: 'Renteng', konversi: 12 },
+      { satuan: 'Dus', konversi: 120 },
+      { satuan: 'Pak', konversi: 600 },
+    ])
   })
 
-  it('throws when level 3 is set before level 2 exists', () => {
+  it('throws when satuan already exists for the product', () => {
     const db = seedProduct()
+    addProductUnit(db, 1, validInput)
 
-    expect(() => setProductUnit(db, 1, 3, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 })).toThrow(
-      'Isi Level 2 (satuan turunan pertama) dulu sebelum Level 3.',
-    )
-  })
-
-  it('updates an existing level 2 unit (upsert)', () => {
-    const db = seedProduct()
-
-    setProductUnit(db, 1, 2, validInput)
-    setProductUnit(db, 1, 2, { satuan: 'Renteng Baru', jumlahKemasan: 20, hargaJual: 20000_00 })
-
-    const { level2 } = getProductUnits(db, 1)
-    expect(level2).toMatchObject({ satuan: 'Renteng Baru', jumlahKemasan: 20, konversi: 20, hargaJual: 20000_00 })
-  })
-
-  it('recomputes level 3 konversi when level 2 is updated, keeping level 3 jumlahKemasan unchanged', () => {
-    const db = seedProduct()
-
-    setProductUnit(db, 1, 2, validInput) // konversi 12
-    setProductUnit(db, 1, 3, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 }) // konversi 120
-    setProductUnit(db, 1, 2, { satuan: 'Renteng', jumlahKemasan: 24, hargaJual: 15000_00 }) // konversi 24
-
-    const { level3 } = getProductUnits(db, 1)
-    expect(level3?.konversi).toBe(240) // 10 * 24
-    expect(level3?.jumlahKemasan).toBe(10) // unchanged relative quantity
+    expect(() => addProductUnit(db, 1, { ...validInput, hargaJual: 16000_00 })).toThrow('Satuan "Renteng" sudah ada.')
   })
 
   it('throws when satuan is empty', () => {
     const db = seedProduct()
-    expect(() => setProductUnit(db, 1, 2, { ...validInput, satuan: '' })).toThrow('Satuan wajib diisi.')
+    expect(() => addProductUnit(db, 1, { ...validInput, satuan: '' })).toThrow('Satuan wajib diisi.')
   })
 
   it('throws when satuan exceeds 20 characters', () => {
     const db = seedProduct()
-    expect(() => setProductUnit(db, 1, 2, { ...validInput, satuan: 'a'.repeat(21) })).toThrow('Satuan maksimal 20 karakter.')
+    expect(() => addProductUnit(db, 1, { ...validInput, satuan: 'a'.repeat(21) })).toThrow('Satuan maksimal 20 karakter.')
   })
 
   it('throws when jumlahKemasan is not finite', () => {
     const db = seedProduct()
-    expect(() => setProductUnit(db, 1, 2, { ...validInput, jumlahKemasan: NaN })).toThrow('Jumlah kemasan wajib diisi.')
+    expect(() => addProductUnit(db, 1, { ...validInput, jumlahKemasan: NaN })).toThrow('Jumlah kemasan wajib diisi.')
   })
 
   it('throws when jumlahKemasan is less than 1', () => {
     const db = seedProduct()
-    expect(() => setProductUnit(db, 1, 2, { ...validInput, jumlahKemasan: 0 })).toThrow('Jumlah kemasan minimal 1.')
+    expect(() => addProductUnit(db, 1, { ...validInput, jumlahKemasan: 0 })).toThrow('Jumlah kemasan minimal 1.')
   })
 
   it('throws when jumlahKemasan is not an integer', () => {
     const db = seedProduct()
-    expect(() => setProductUnit(db, 1, 2, { ...validInput, jumlahKemasan: 1.5 })).toThrow('Jumlah kemasan minimal 1.')
+    expect(() => addProductUnit(db, 1, { ...validInput, jumlahKemasan: 1.5 })).toThrow('Jumlah kemasan minimal 1.')
   })
 
   it('throws when hargaJual is not finite', () => {
     const db = seedProduct()
-    expect(() => setProductUnit(db, 1, 2, { ...validInput, hargaJual: NaN })).toThrow('Harga jual wajib diisi.')
+    expect(() => addProductUnit(db, 1, { ...validInput, hargaJual: NaN })).toThrow('Harga jual wajib diisi.')
   })
 
   it('throws when hargaJual is negative', () => {
     const db = seedProduct()
-    expect(() => setProductUnit(db, 1, 2, { ...validInput, hargaJual: -1 })).toThrow('Harga jual tidak boleh negatif.')
+    expect(() => addProductUnit(db, 1, { ...validInput, hargaJual: -1 })).toThrow('Harga jual tidak boleh negatif.')
+  })
+})
+
+describe('updateProductUnit', () => {
+  it('recomputes konversi for the edited unit and every unit above it, leaving units below untouched', () => {
+    const db = seedProduct()
+
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 }) // 12
+    addProductUnit(db, 1, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 }) // 120
+    addProductUnit(db, 1, { satuan: 'Pak', jumlahKemasan: 5, hargaJual: 650000_00 }) // 600
+
+    const [renteng, dus] = listProductUnits(db, 1)
+    updateProductUnit(db, 1, renteng.id, { satuan: 'Renteng', jumlahKemasan: 24, hargaJual: 15000_00 })
+
+    const units = listProductUnits(db, 1)
+    expect(units.map((u) => u.konversi)).toEqual([24, 240, 1200])
+    expect(units[1].id).toBe(dus.id)
+    expect(units[1].jumlahKemasan).toBe(10) // unchanged relative quantity
+  })
+
+  it('throws when the unit does not belong to the product', () => {
+    const db = seedProduct()
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
+
+    expect(() => updateProductUnit(db, 1, 999, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })).toThrow(
+      'Satuan tidak ditemukan.',
+    )
+  })
+
+  it('throws when renaming to a satuan already used by another unit of the same product', () => {
+    const db = seedProduct()
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
+    addProductUnit(db, 1, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 })
+
+    const [renteng] = listProductUnits(db, 1)
+    expect(() => updateProductUnit(db, 1, renteng.id, { satuan: 'Dus', jumlahKemasan: 12, hargaJual: 15000_00 })).toThrow(
+      'Satuan "Dus" sudah ada.',
+    )
+  })
+
+  it('allows re-saving a unit with its own unchanged satuan', () => {
+    const db = seedProduct()
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
+
+    const [renteng] = listProductUnits(db, 1)
+    expect(() => updateProductUnit(db, 1, renteng.id, { satuan: 'Renteng', jumlahKemasan: 20, hargaJual: 16000_00 })).not.toThrow()
+    expect(listProductUnits(db, 1)[0]).toMatchObject({ jumlahKemasan: 20, konversi: 20, hargaJual: 16000_00 })
   })
 })
 
 describe('deleteProductUnit', () => {
-  it('deletes a level 2 unit with no level 3', () => {
+  it('deletes a unit with nothing above it', () => {
     const db = seedProduct()
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
 
-    setProductUnit(db, 1, 2, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
-    deleteProductUnit(db, 1, 2)
+    const [renteng] = listProductUnits(db, 1)
+    deleteProductUnit(db, 1, renteng.id)
 
-    expect(getProductUnits(db, 1)).toEqual({ level2: null, level3: null })
+    expect(listProductUnits(db, 1)).toEqual([])
   })
 
-  it('deletes a level 3 unit without affecting level 2', () => {
+  it('cascades: deleting a middle unit also deletes every unit above it, leaving units below untouched', () => {
     const db = seedProduct()
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
+    addProductUnit(db, 1, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 })
+    addProductUnit(db, 1, { satuan: 'Pak', jumlahKemasan: 5, hargaJual: 650000_00 })
 
-    setProductUnit(db, 1, 2, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
-    setProductUnit(db, 1, 3, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 })
-    deleteProductUnit(db, 1, 3)
+    const [renteng, dus] = listProductUnits(db, 1)
+    deleteProductUnit(db, 1, dus.id)
 
-    const { level2, level3 } = getProductUnits(db, 1)
-    expect(level2).not.toBeNull()
-    expect(level3).toBeNull()
+    const remaining = listProductUnits(db, 1)
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].id).toBe(renteng.id)
   })
 
-  it('cascades: deleting level 2 also deletes level 3', () => {
+  it('is a no-op when the unit does not exist', () => {
     const db = seedProduct()
-
-    setProductUnit(db, 1, 2, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
-    setProductUnit(db, 1, 3, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 })
-    deleteProductUnit(db, 1, 2)
-
-    expect(getProductUnits(db, 1)).toEqual({ level2: null, level3: null })
-  })
-
-  it('is a no-op when the level does not exist', () => {
-    const db = seedProduct()
-    expect(() => deleteProductUnit(db, 1, 2)).not.toThrow()
+    expect(() => deleteProductUnit(db, 1, 999)).not.toThrow()
   })
 })
 
@@ -313,12 +337,12 @@ describe('getProductDetail', () => {
   it('bundles units, price tiers, and price history', () => {
     const db = seedProduct()
 
-    setProductUnit(db, 1, 2, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
+    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
     addPriceTier(db, 1, { minQty: 6, hargaJual: 1400_00 })
 
     const detail = getProductDetail(db, 1)
-    expect(detail.units.level2).not.toBeNull()
-    expect(detail.units.level3).toBeNull()
+    expect(detail.units).toHaveLength(1)
+    expect(detail.units[0]).toMatchObject({ satuan: 'Renteng', konversi: 12 })
     expect(detail.priceTiers).toHaveLength(1)
     expect(detail.priceHistory).toEqual([])
   })

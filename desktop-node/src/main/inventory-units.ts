@@ -1,11 +1,10 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq, inArray, desc } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { productUnits, productPriceTiers, productPriceHistories, users } from './db/schema'
 
 export interface ProductUnitRow {
   id: number
-  level: number
   satuan: string
   jumlahKemasan: number
   konversi: number
@@ -15,7 +14,6 @@ export interface ProductUnitRow {
 function unitRowSelect(db: BetterSQLite3Database<typeof schema>) {
   return db.select({
     id: productUnits.id,
-    level: productUnits.level,
     satuan: productUnits.satuan,
     jumlahKemasan: productUnits.jumlahKemasan,
     konversi: productUnits.konversi,
@@ -23,30 +21,17 @@ function unitRowSelect(db: BetterSQLite3Database<typeof schema>) {
   }).from(productUnits)
 }
 
-export function getProductUnits(
-  db: BetterSQLite3Database<typeof schema>,
-  productId: number,
-): { level2: ProductUnitRow | null; level3: ProductUnitRow | null } {
-  const rows = unitRowSelect(db).where(eq(productUnits.productId, productId)).all()
-
-  return {
-    level2: rows.find((r) => r.level === 2) ?? null,
-    level3: rows.find((r) => r.level === 3) ?? null,
-  }
+export function listProductUnits(db: BetterSQLite3Database<typeof schema>, productId: number): ProductUnitRow[] {
+  return unitRowSelect(db).where(eq(productUnits.productId, productId)).orderBy(productUnits.konversi).all()
 }
 
-export interface SetProductUnitInput {
+export interface UpsertProductUnitInput {
   satuan: string
   jumlahKemasan: number
   hargaJual: number
 }
 
-export function setProductUnit(
-  db: BetterSQLite3Database<typeof schema>,
-  productId: number,
-  level: 2 | 3,
-  input: SetProductUnitInput,
-): void {
+function validateUnitInput(input: UpsertProductUnitInput): void {
   if (!input.satuan.trim()) {
     throw new Error('Satuan wajib diisi.')
   }
@@ -70,75 +55,81 @@ export function setProductUnit(
   if (input.hargaJual < 0) {
     throw new Error('Harga jual tidak boleh negatif.')
   }
+}
 
-  let konversi: number
+export function addProductUnit(db: BetterSQLite3Database<typeof schema>, productId: number, input: UpsertProductUnitInput): void {
+  validateUnitInput(input)
 
-  if (level === 2) {
-    konversi = input.jumlahKemasan
-  } else {
-    const level2 = db
-      .select({ konversi: productUnits.konversi })
-      .from(productUnits)
-      .where(and(eq(productUnits.productId, productId), eq(productUnits.level, 2)))
-      .get()
+  const chain = listProductUnits(db, productId)
 
-    if (!level2) {
-      throw new Error('Isi Level 2 (satuan turunan pertama) dulu sebelum Level 3.')
-    }
-
-    konversi = input.jumlahKemasan * level2.konversi
+  if (chain.some((u) => u.satuan === input.satuan)) {
+    throw new Error(`Satuan "${input.satuan}" sudah ada.`)
   }
 
-  const existing = db
-    .select({ id: productUnits.id })
-    .from(productUnits)
-    .where(and(eq(productUnits.productId, productId), eq(productUnits.level, level)))
-    .get()
-
+  const prevKonversi = chain.length > 0 ? chain[chain.length - 1].konversi : 1
+  const konversi = input.jumlahKemasan * prevKonversi
   const now = new Date()
 
-  if (existing) {
-    db.update(productUnits)
-      .set({ satuan: input.satuan, jumlahKemasan: input.jumlahKemasan, konversi, hargaJual: input.hargaJual, updatedAt: now })
-      .where(eq(productUnits.id, existing.id))
-      .run()
-  } else {
-    db.insert(productUnits)
-      .values({
-        productId,
-        level,
-        satuan: input.satuan,
-        jumlahKemasan: input.jumlahKemasan,
-        konversi,
-        hargaJual: input.hargaJual,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
+  db.insert(productUnits)
+    .values({
+      productId,
+      satuan: input.satuan,
+      jumlahKemasan: input.jumlahKemasan,
+      konversi,
+      hargaJual: input.hargaJual,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+}
+
+export function updateProductUnit(
+  db: BetterSQLite3Database<typeof schema>,
+  productId: number,
+  unitId: number,
+  input: UpsertProductUnitInput,
+): void {
+  validateUnitInput(input)
+
+  const chain = listProductUnits(db, productId)
+  const idx = chain.findIndex((u) => u.id === unitId)
+
+  if (idx === -1) {
+    throw new Error('Satuan tidak ditemukan.')
   }
 
-  if (level === 2) {
-    const level3 = db
-      .select({ id: productUnits.id, jumlahKemasan: productUnits.jumlahKemasan })
-      .from(productUnits)
-      .where(and(eq(productUnits.productId, productId), eq(productUnits.level, 3)))
-      .get()
+  if (chain.some((u) => u.id !== unitId && u.satuan === input.satuan)) {
+    throw new Error(`Satuan "${input.satuan}" sudah ada.`)
+  }
 
-    if (level3) {
-      db.update(productUnits)
-        .set({ konversi: level3.jumlahKemasan * konversi, updatedAt: now })
-        .where(eq(productUnits.id, level3.id))
-        .run()
-    }
+  const now = new Date()
+  let prevKonversi = idx === 0 ? 1 : chain[idx - 1].konversi
+
+  for (let i = idx; i < chain.length; i++) {
+    const jumlahKemasan = i === idx ? input.jumlahKemasan : chain[i].jumlahKemasan
+    const satuan = i === idx ? input.satuan : chain[i].satuan
+    const hargaJual = i === idx ? input.hargaJual : chain[i].hargaJual
+    const konversi = jumlahKemasan * prevKonversi
+
+    db.update(productUnits)
+      .set({ satuan, jumlahKemasan, konversi, hargaJual, updatedAt: now })
+      .where(eq(productUnits.id, chain[i].id))
+      .run()
+
+    prevKonversi = konversi
   }
 }
 
-export function deleteProductUnit(db: BetterSQLite3Database<typeof schema>, productId: number, level: 2 | 3): void {
-  if (level === 2) {
-    db.delete(productUnits).where(and(eq(productUnits.productId, productId), eq(productUnits.level, 3))).run()
+export function deleteProductUnit(db: BetterSQLite3Database<typeof schema>, productId: number, unitId: number): void {
+  const chain = listProductUnits(db, productId)
+  const idx = chain.findIndex((u) => u.id === unitId)
+
+  if (idx === -1) {
+    return
   }
 
-  db.delete(productUnits).where(and(eq(productUnits.productId, productId), eq(productUnits.level, level))).run()
+  const idsToDelete = chain.slice(idx).map((u) => u.id)
+  db.delete(productUnits).where(inArray(productUnits.id, idsToDelete)).run()
 }
 
 export interface PriceTierRow {
@@ -238,14 +229,14 @@ export function listPriceHistory(db: BetterSQLite3Database<typeof schema>, produ
 }
 
 export interface ProductDetail {
-  units: { level2: ProductUnitRow | null; level3: ProductUnitRow | null }
+  units: ProductUnitRow[]
   priceTiers: PriceTierRow[]
   priceHistory: PriceHistoryRow[]
 }
 
 export function getProductDetail(db: BetterSQLite3Database<typeof schema>, productId: number): ProductDetail {
   return {
-    units: getProductUnits(db, productId),
+    units: listProductUnits(db, productId),
     priceTiers: listPriceTiers(db, productId),
     priceHistory: listPriceHistory(db, productId),
   }
