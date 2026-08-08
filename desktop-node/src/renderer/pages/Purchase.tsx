@@ -31,7 +31,7 @@ interface SearchResult {
   namaItem: string
   satuan: string
   hargaPokok: number
-  units: { id: number; level: number; satuan: string; konversi: number }[]
+  units: { id: number; satuan: string; konversi: number }[]
 }
 
 interface PurchaseRow {
