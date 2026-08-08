@@ -118,6 +118,9 @@ const api = {
     recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null }) =>
       invoke('stock-opname:recordAdjustment', input),
   },
+  rekap: {
+    getRekap: (input: { from: string; to: string }) => invoke('rekap:getRekap', input),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

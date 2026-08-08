@@ -287,6 +287,20 @@ declare global {
         >
         recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null }) => Promise<{ id: number }>
       }
+      rekap: {
+        getRekap: (input: { from: string; to: string }) => Promise<{
+          summary: {
+            omzetTunai: number
+            piutangBeredar: number
+            jumlahTransaksi: number
+            labaKotor: number
+          }
+          labaPerKategori: { categoryName: string; omzet: number; laba: number }[]
+          labaPerHari: { tanggal: string; omzet: number; laba: number }[]
+          produkTerlaris: { namaItem: string; qtyTerjual: number; totalPenjualan: number }[]
+          pembelianPerSupplier: { supplierName: string; totalPembelian: number }[]
+        }>
+      }
     }
   }
 }
