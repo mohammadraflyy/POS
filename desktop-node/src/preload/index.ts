@@ -112,6 +112,12 @@ const api = {
     listPurchases: (input: { page: number; pageSize?: number }) => invoke('purchase:listPurchases', input),
     searchProducts: (q: string) => invoke('purchase:searchProducts', q),
   },
+  stockOpname: {
+    listCategories: () => invoke('stock-opname:listCategories'),
+    searchProducts: (input: { q: string; categoryIds: number[] }) => invoke('stock-opname:searchProducts', input),
+    recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null }) =>
+      invoke('stock-opname:recordAdjustment', input),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -272,6 +272,21 @@ declare global {
           }[]
         >
       }
+      stockOpname: {
+        listCategories: () => Promise<{ id: number; nama: string }[]>
+        searchProducts: (input: { q: string; categoryIds: number[] }) => Promise<
+          {
+            id: number
+            kodeItem: string
+            barcode: string | null
+            namaItem: string
+            categoryName: string | null
+            satuan: string
+            stok: number
+          }[]
+        >
+        recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null }) => Promise<{ id: number }>
+      }
     }
   }
 }

@@ -6,6 +6,7 @@ import { registerKasirIpc } from './ipc/kasir'
 import { registerInventoryIpc } from './ipc/inventory'
 import { registerSupplierIpc } from './ipc/supplier'
 import { registerPurchaseIpc } from './ipc/purchase'
+import { registerStockOpnameIpc } from './ipc/stock-opname'
 
 let mainWindow: BrowserWindow | null
 let db: ReturnType<typeof createDb> | null = null
@@ -68,6 +69,7 @@ app.whenReady().then(() => {
   registerInventoryIpc(db)
   registerSupplierIpc(db)
   registerPurchaseIpc(db)
+  registerStockOpnameIpc(db)
   createWindow()
 })
 
