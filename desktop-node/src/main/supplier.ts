@@ -23,6 +23,15 @@ function supplierListSelect(db: BetterSQLite3Database<typeof schema>) {
       telepon: suppliers.telepon,
       alamat: suppliers.alamat,
       keterangan: suppliers.keterangan,
+      // Deliberately raw SQL identifiers here, not Drizzle's ${table}/${table.column}
+      // interpolation (unlike the identical-shaped unitsCount/priceTiersCount pattern in
+      // main/inventory.ts): when a correlated subquery needs to reference a column on the
+      // SAME table the outer query selects FROM (suppliers referencing suppliers.id here),
+      // Drizzle's parameterized interpolation produces wrong (undercounted) results —
+      // verified empirically against this project's installed drizzle-orm version. The
+      // inventory.ts pattern works because its subqueries reference DIFFERENT tables
+      // (productUnits/productPriceTiers) than the outer table (products) — no self-reference,
+      // no bug. Do not "fix" this back to ${suppliers.id} — it will silently undercount.
       purchaseCount: sql<number>`(SELECT COUNT(*) FROM purchases WHERE supplier_id = suppliers.id)`,
     })
     .from(suppliers)
