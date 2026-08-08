@@ -12,7 +12,6 @@ import { formatRupiah } from '@/lib/utils'
 
 interface UnitRow {
   id: number
-  level: number
   satuan: string
   jumlahKemasan: number
   konversi: number
@@ -36,7 +35,7 @@ interface PriceHistoryRow {
 }
 
 interface ProductDetail {
-  units: { level2: UnitRow | null; level3: UnitRow | null }
+  units: UnitRow[]
   priceTiers: PriceTierRow[]
   priceHistory: PriceHistoryRow[]
 }
@@ -89,7 +88,7 @@ export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpen
         {error && <p className="text-sm text-destructive">{error}</p>}
         {productId !== null && detail && (
           <>
-            <UnitLevelsManager productId={productId} baseSatuan={baseSatuan} units={detail.units} onChanged={refresh} />
+            <UnitChainManager productId={productId} baseSatuan={baseSatuan} units={detail.units} onChanged={refresh} />
             <PriceTiersManager productId={productId} baseSatuan={baseSatuan} tiers={detail.priceTiers} onChanged={refresh} />
             <PriceHistoryList history={detail.priceHistory} />
           </>
@@ -99,7 +98,7 @@ export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpen
   )
 }
 
-function UnitLevelsManager({
+function UnitChainManager({
   productId,
   baseSatuan,
   units,
@@ -107,9 +106,13 @@ function UnitLevelsManager({
 }: {
   productId: number
   baseSatuan: string
-  units: { level2: UnitRow | null; level3: UnitRow | null }
+  units: UnitRow[]
   onChanged: () => void
 }) {
+  const [adding, setAdding] = useState(false)
+
+  const largest = units.length > 0 ? units[units.length - 1] : null
+
   return (
     <div className="space-y-3 border-t pt-4">
       <div className="flex items-center gap-2">
@@ -117,57 +120,68 @@ function UnitLevelsManager({
         <Label className="text-sm font-semibold">Satuan Turunan</Label>
         <span className="text-xs text-muted-foreground">mis. 1 Renteng = 12 {baseSatuan}, 1 Dus = 10 Renteng</span>
       </div>
-      <UnitLevelSlot
-        productId={productId}
-        level={2}
-        relativeToLabel={baseSatuan}
-        unit={units.level2}
-        siblingLevel3={units.level3}
-        disabled={false}
-        onChanged={onChanged}
-      />
-      <UnitLevelSlot
-        productId={productId}
-        level={3}
-        relativeToLabel={units.level2?.satuan ?? baseSatuan}
-        unit={units.level3}
-        siblingLevel3={null}
-        disabled={units.level2 === null}
-        onChanged={onChanged}
-      />
+
+      {units.length > 0 ? (
+        <div className="space-y-1.5">
+          {units.map((unit, idx) => (
+            <UnitChainRow
+              key={unit.id}
+              productId={productId}
+              unit={unit}
+              relativeToLabel={idx === 0 ? baseSatuan : units[idx - 1].satuan}
+              baseSatuan={baseSatuan}
+              unitsAbove={units.slice(idx + 1)}
+              onChanged={onChanged}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">Belum ada satuan turunan.</p>
+      )}
+
+      {adding ? (
+        <UnitChainAddForm
+          productId={productId}
+          relativeToLabel={largest?.satuan ?? baseSatuan}
+          onDone={() => setAdding(false)}
+          onChanged={onChanged}
+        />
+      ) : (
+        <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)}>
+          + Tambah Satuan
+        </Button>
+      )}
     </div>
   )
 }
 
-function UnitLevelSlot({
+function UnitChainRow({
   productId,
-  level,
-  relativeToLabel,
   unit,
-  siblingLevel3,
-  disabled,
+  relativeToLabel,
+  baseSatuan,
+  unitsAbove,
   onChanged,
 }: {
   productId: number
-  level: 2 | 3
+  unit: UnitRow
   relativeToLabel: string
-  unit: UnitRow | null
-  siblingLevel3: UnitRow | null
-  disabled: boolean
+  baseSatuan: string
+  unitsAbove: UnitRow[]
   onChanged: () => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [satuan, setSatuan] = useState('')
-  const [jumlahKemasan, setJumlahKemasan] = useState('')
-  const [hargaJual, setHargaJual] = useState('')
+  const [satuan, setSatuan] = useState(unit.satuan)
+  const [jumlahKemasan, setJumlahKemasan] = useState(String(unit.jumlahKemasan))
+  const [hargaJual, setHargaJual] = useState(String(unit.hargaJual))
   const [error, setError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const { confirm, ConfirmDialog } = useConfirm()
 
   function startEdit() {
-    setSatuan(unit?.satuan ?? '')
-    setJumlahKemasan(unit ? String(unit.jumlahKemasan) : '')
-    setHargaJual(unit ? String(unit.hargaJual) : '')
+    setSatuan(unit.satuan)
+    setJumlahKemasan(String(unit.jumlahKemasan))
+    setHargaJual(String(unit.hargaJual))
     setError(null)
     setEditing(true)
   }
@@ -196,7 +210,7 @@ function UnitLevelSlot({
     setError(null)
 
     window.api.inventory
-      .setProductUnit(productId, level, { satuan, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
+      .updateProductUnit(productId, unit.id, { satuan, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
       .then(() => {
         setEditing(false)
         onChanged()
@@ -207,11 +221,11 @@ function UnitLevelSlot({
 
   async function remove() {
     const ok = await confirm({
-      title: `Hapus Level ${level}`,
+      title: 'Hapus Satuan',
       description:
-        level === 2 && siblingLevel3
-          ? `Hapus satuan "${unit?.satuan}"? Ini juga akan menghapus satuan Level 3 ("${siblingLevel3.satuan}").`
-          : `Hapus satuan "${unit?.satuan}"?`,
+        unitsAbove.length > 0
+          ? `Hapus satuan "${unit.satuan}"? Ini juga akan menghapus ${unitsAbove.map((u) => `"${u.satuan}"`).join(', ')}.`
+          : `Hapus satuan "${unit.satuan}"?`,
       confirmLabel: 'Hapus',
       destructive: true,
     })
@@ -221,48 +235,110 @@ function UnitLevelSlot({
     }
 
     window.api.inventory
-      .deleteProductUnit(productId, level)
+      .deleteProductUnit(productId, unit.id)
       .then(onChanged)
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal menghapus'))
   }
 
-  if (disabled) {
+  if (editing) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Level {level}: isi Level {level - 1} dulu.
-      </p>
-    )
-  }
-
-  if (unit && !editing) {
-    return (
-      <div className="flex items-center justify-between rounded-lg border px-3 py-2 transition-colors hover:bg-accent/50">
-        <span className="text-sm font-medium">
-          1 {unit.satuan} = {unit.jumlahKemasan} {relativeToLabel}
-        </span>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary">{formatRupiah(unit.hargaJual)}</Badge>
-          <Button type="button" variant="ghost" size="sm" onClick={startEdit}>
-            Edit
+      <form onSubmit={submit} className="space-y-2 rounded-lg border bg-muted/30 p-3">
+        <div className="flex items-end gap-2">
+          <div className="grid flex-1 gap-1">
+            <Label className="text-xs">Satuan</Label>
+            <Input value={satuan} onChange={(e) => setSatuan(e.target.value)} />
+          </div>
+          <div className="grid w-32 gap-1">
+            <Label className="text-xs">= jumlah {relativeToLabel}</Label>
+            <Input type="number" value={jumlahKemasan} onChange={(e) => setJumlahKemasan(e.target.value)} />
+          </div>
+          <div className="grid w-32 gap-1">
+            <Label className="text-xs">Harga Jual</Label>
+            <Input type="number" value={hargaJual} onChange={(e) => setHargaJual(e.target.value)} />
+          </div>
+          <Button type="submit" size="sm" disabled={processing}>
+            Simpan
           </Button>
-          <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={remove}>
-            Hapus
+          <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>
+            Batal
           </Button>
         </div>
-        {ConfirmDialog}
-      </div>
+        <InputError message={error ?? undefined} />
+      </form>
     )
   }
 
-  if (!unit && !editing) {
-    return (
-      <div className="flex items-center justify-between rounded-lg border border-dashed px-3 py-2">
-        <span className="text-sm text-muted-foreground">Level {level} belum diisi.</span>
-        <Button type="button" size="sm" onClick={startEdit}>
-          Tambah
+  return (
+    <div className="flex items-center justify-between rounded-lg border px-3 py-2 transition-colors hover:bg-accent/50">
+      <span className="text-sm font-medium">
+        1 {unit.satuan} = {unit.jumlahKemasan} {relativeToLabel}{' '}
+        <span className="font-normal text-muted-foreground">
+          (= {unit.konversi} {baseSatuan})
+        </span>
+      </span>
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary">{formatRupiah(unit.hargaJual)}</Badge>
+        <Button type="button" variant="ghost" size="sm" onClick={startEdit}>
+          Edit
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={remove}>
+          Hapus
         </Button>
       </div>
-    )
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {ConfirmDialog}
+    </div>
+  )
+}
+
+function UnitChainAddForm({
+  productId,
+  relativeToLabel,
+  onDone,
+  onChanged,
+}: {
+  productId: number
+  relativeToLabel: string
+  onDone: () => void
+  onChanged: () => void
+}) {
+  const [satuan, setSatuan] = useState('')
+  const [jumlahKemasan, setJumlahKemasan] = useState('')
+  const [hargaJual, setHargaJual] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+
+    if (!satuan.trim()) {
+      setError('Satuan wajib diisi.')
+      return
+    }
+
+    const jumlahNum = Number(jumlahKemasan)
+    if (jumlahKemasan.trim() === '' || !Number.isFinite(jumlahNum)) {
+      setError('Jumlah kemasan wajib diisi.')
+      return
+    }
+
+    const hargaNum = Number(hargaJual)
+    if (hargaJual.trim() === '' || !Number.isFinite(hargaNum)) {
+      setError('Harga jual wajib diisi.')
+      return
+    }
+
+    setProcessing(true)
+    setError(null)
+
+    window.api.inventory
+      .addProductUnit(productId, { satuan, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
+      .then(() => {
+        onDone()
+        onChanged()
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal menyimpan'))
+      .finally(() => setProcessing(false))
   }
 
   return (
@@ -270,7 +346,7 @@ function UnitLevelSlot({
       <div className="flex items-end gap-2">
         <div className="grid flex-1 gap-1">
           <Label className="text-xs">Satuan</Label>
-          <Input value={satuan} onChange={(e) => setSatuan(e.target.value)} placeholder={level === 2 ? 'Renteng' : 'Dus'} />
+          <Input value={satuan} onChange={(e) => setSatuan(e.target.value)} placeholder="Dus" autoFocus />
         </div>
         <div className="grid w-32 gap-1">
           <Label className="text-xs">= jumlah {relativeToLabel}</Label>
@@ -283,7 +359,7 @@ function UnitLevelSlot({
         <Button type="submit" size="sm" disabled={processing}>
           Simpan
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => setEditing(false)}>
+        <Button type="button" variant="outline" size="sm" onClick={onDone}>
           Batal
         </Button>
       </div>
