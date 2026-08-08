@@ -4,6 +4,7 @@ import { createDb } from './db/migrate'
 import { registerAuthIpc } from './ipc/auth'
 import { registerKasirIpc } from './ipc/kasir'
 import { registerInventoryIpc } from './ipc/inventory'
+import { registerSupplierIpc } from './ipc/supplier'
 
 let mainWindow: BrowserWindow | null
 let db: ReturnType<typeof createDb> | null = null
@@ -64,6 +65,7 @@ app.whenReady().then(() => {
   registerAuthIpc(db)
   registerKasirIpc(db)
   registerInventoryIpc(db)
+  registerSupplierIpc(db)
   createWindow()
 })
 

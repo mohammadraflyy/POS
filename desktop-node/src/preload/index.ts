@@ -91,6 +91,17 @@ const api = {
     ) => invoke('inventory:bulkSaveProducts', rows),
     importProducts: () => invoke('inventory:importProducts'),
   },
+  supplier: {
+    listSuppliers: (input: { search?: string; page: number; pageSize?: number }) =>
+      invoke('supplier:listSuppliers', input),
+    createSupplier: (input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null }) =>
+      invoke('supplier:createSupplier', input),
+    updateSupplier: (
+      id: number,
+      input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null },
+    ) => invoke('supplier:updateSupplier', id, input),
+    deleteSupplier: (id: number) => invoke('supplier:deleteSupplier', id),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

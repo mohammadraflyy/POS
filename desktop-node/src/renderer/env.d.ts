@@ -215,6 +215,32 @@ declare global {
         >
         importProducts: () => Promise<{ created: number; updated: number; unchanged: number; skipped: number } | null>
       }
+      supplier: {
+        listSuppliers: (input: { search?: string; page: number; pageSize?: number }) => Promise<{
+          data: {
+            id: number
+            nama: string
+            telepon: string | null
+            alamat: string | null
+            keterangan: string | null
+            purchaseCount: number
+          }[]
+          currentPage: number
+          lastPage: number
+          total: number
+        }>
+        createSupplier: (input: {
+          nama: string
+          telepon: string | null
+          alamat: string | null
+          keterangan: string | null
+        }) => Promise<number>
+        updateSupplier: (
+          id: number,
+          input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null },
+        ) => Promise<void>
+        deleteSupplier: (id: number) => Promise<void>
+      }
     }
   }
 }
