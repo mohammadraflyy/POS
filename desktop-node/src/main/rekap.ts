@@ -1,5 +1,6 @@
-import { and, eq, gte, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import XLSX from 'xlsx'
 import * as schema from './db/schema'
 import { categories, products, purchases, saleItems, sales, suppliers } from './db/schema'
 
@@ -33,12 +34,37 @@ export interface PembelianPerSupplierRow {
   totalPembelian: number
 }
 
+export interface StockValueRow {
+  namaItem: string
+  kodeItem: string
+  stok: number
+  hargaPokok: number
+  nilai: number
+}
+
+export interface StockValueSummary {
+  totalNilai: number
+  produk: StockValueRow[]
+}
+
+export interface SalesHistoryRow {
+  id: number
+  createdAt: string
+  namaPelanggan: string | null
+  metodePembayaran: 'tunai' | 'bon'
+  status: 'selesai' | 'dibatalkan'
+  total: number
+  dibayar: number
+}
+
 export interface RekapResult {
   summary: RekapSummary
   labaPerKategori: LabaPerKategoriRow[]
   labaPerHari: LabaPerHariRow[]
   produkTerlaris: ProdukTerlarisRow[]
   pembelianPerSupplier: PembelianPerSupplierRow[]
+  stockValue: StockValueSummary
+  salesHistory: SalesHistoryRow[]
 }
 
 export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from: string; to: string }): RekapResult {
@@ -141,6 +167,9 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     .map((row) => ({ supplierName: row.supplierName ?? 'Tanpa Supplier', totalPembelian: row.totalPembelian }))
     .sort((a, b) => b.totalPembelian - a.totalPembelian)
 
+  const stockValue = getStockValue(db)
+  const salesHistory = getSalesHistory(db, input)
+
   return {
     summary: {
       omzetTunai: omzetTunaiRow?.total ?? 0,
@@ -152,5 +181,122 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     labaPerHari,
     produkTerlaris,
     pembelianPerSupplier,
+    stockValue,
+    salesHistory,
   }
+}
+
+export function getStockValue(db: BetterSQLite3Database<typeof schema>): StockValueSummary {
+  const rows = db
+    .select({
+      namaItem: products.namaItem,
+      kodeItem: products.kodeItem,
+      stok: products.stok,
+      hargaPokok: products.hargaPokok,
+    })
+    .from(products)
+    .where(and(eq(products.isActive, true), gt(products.stok, 0)))
+    .all()
+
+  const produk: StockValueRow[] = rows
+    .map((row) => ({ ...row, nilai: row.stok * row.hargaPokok }))
+    .sort((a, b) => b.nilai - a.nilai)
+
+  const totalNilai = produk.reduce((sum, row) => sum + row.nilai, 0)
+
+  return { totalNilai, produk }
+}
+
+export function getSalesHistory(
+  db: BetterSQLite3Database<typeof schema>,
+  input: { from: string; to: string },
+): SalesHistoryRow[] {
+  const rangeStart = new Date(`${input.from}T00:00:00`)
+  const rangeEnd = new Date(`${input.to}T23:59:59`)
+
+  return db
+    .select({
+      id: sales.id,
+      createdAt: sales.createdAt,
+      namaPelanggan: sales.namaPelanggan,
+      metodePembayaran: sales.metodePembayaran,
+      status: sales.status,
+      total: sales.total,
+      dibayar: sales.dibayar,
+    })
+    .from(sales)
+    .where(and(gte(sales.createdAt, rangeStart), lte(sales.createdAt, rangeEnd)))
+    .orderBy(desc(sales.createdAt))
+    .all()
+    .map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }))
+}
+
+function toRupiahExport(cents: number): number {
+  return cents / 100
+}
+
+export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
+  const workbook = XLSX.utils.book_new()
+
+  const sheets: { name: string; rows: Record<string, unknown>[] }[] = [
+    {
+      name: 'Riwayat Transaksi',
+      rows: rekap.salesHistory.map((row) => ({
+        Tanggal: new Date(row.createdAt).toLocaleString('id-ID'),
+        Pelanggan: row.namaPelanggan ?? '-',
+        Metode: row.metodePembayaran,
+        Status: row.status,
+        Total: toRupiahExport(row.total),
+        Dibayar: toRupiahExport(row.dibayar),
+      })),
+    },
+    {
+      name: 'Laba per Kategori',
+      rows: rekap.labaPerKategori.map((row) => ({
+        Kategori: row.categoryName,
+        Omzet: toRupiahExport(row.omzet),
+        Laba: toRupiahExport(row.laba),
+      })),
+    },
+    {
+      name: 'Laba per Hari',
+      rows: rekap.labaPerHari.map((row) => ({
+        Tanggal: row.tanggal,
+        Omzet: toRupiahExport(row.omzet),
+        Laba: toRupiahExport(row.laba),
+      })),
+    },
+    {
+      name: 'Produk Terlaris',
+      rows: rekap.produkTerlaris.map((row) => ({
+        Produk: row.namaItem,
+        'Qty Terjual': row.qtyTerjual,
+        'Total Penjualan': toRupiahExport(row.totalPenjualan),
+      })),
+    },
+    {
+      name: 'Pembelian per Supplier',
+      rows: rekap.pembelianPerSupplier.map((row) => ({
+        Supplier: row.supplierName,
+        'Total Pembelian': toRupiahExport(row.totalPembelian),
+      })),
+    },
+    {
+      name: 'Nilai Stock',
+      rows: rekap.stockValue.produk.map((row) => ({
+        'Kode Item': row.kodeItem,
+        Produk: row.namaItem,
+        Stok: row.stok,
+        'Harga Pokok': toRupiahExport(row.hargaPokok),
+        Nilai: toRupiahExport(row.nilai),
+      })),
+    },
+  ]
+
+  for (const sheet of sheets) {
+    const worksheet = XLSX.utils.json_to_sheet(sheet.rows)
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31))
+  }
+
+  return workbook
 }

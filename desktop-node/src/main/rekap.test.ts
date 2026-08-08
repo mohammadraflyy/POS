@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
+import XLSX from 'xlsx'
 import { createDb } from './db/migrate'
 import { categories, products, productUnits, purchases, sales, saleItems, suppliers, users } from './db/schema'
-import { getRekap } from './rekap'
+import { getRekap, getStockValue, getSalesHistory, buildRekapWorkbook } from './rekap'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
 
@@ -113,6 +114,145 @@ function insertSale(
     )
     .run()
 }
+
+describe('getStockValue', () => {
+  it('computes nilai as stok * hargaPokok and totalNilai as the sum, sorted by nilai descending', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    const result = getStockValue(db)
+    // Kopi: 100 * 1000_00 = 100000_00; Gula: 100 * 12000_00 = 1200000_00
+    expect(result.produk).toEqual([
+      { namaItem: 'Gula Pasir', kodeItem: 'GULA1', stok: 100, hargaPokok: 12000_00, nilai: 1200000_00 },
+      { namaItem: 'Kopi Kapal Api', kodeItem: 'KOPI1', stok: 100, hargaPokok: 1000_00, nilai: 100000_00 },
+    ])
+    expect(result.totalNilai).toBe(1300000_00)
+  })
+
+  it('excludes products with zero stock and inactive products', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+    const now = new Date()
+
+    db.insert(products)
+      .values([
+        {
+          id: 3,
+          kodeItem: 'HABIS1',
+          barcode: null,
+          namaItem: 'Stok Habis',
+          categoryId: null,
+          satuan: 'PCS',
+          hargaPokok: 5000_00,
+          hargaJual: 6000_00,
+          stok: 0,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 4,
+          kodeItem: 'NONAKTIF1',
+          barcode: null,
+          namaItem: 'Produk Nonaktif',
+          categoryId: null,
+          satuan: 'PCS',
+          hargaPokok: 5000_00,
+          hargaJual: 6000_00,
+          stok: 50,
+          isActive: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run()
+
+    const result = getStockValue(db)
+    expect(result.produk.map((p) => p.namaItem)).toEqual(['Gula Pasir', 'Kopi Kapal Api'])
+  })
+})
+
+describe('getSalesHistory', () => {
+  it('returns both selesai and dibatalkan sales within range, ordered newest first', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 50000_00,
+      dibayar: 50000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 50000_00, hargaPokok: 1000_00, subtotal: 50000_00 }],
+    })
+    insertSale(db, {
+      id: 2,
+      metodePembayaran: 'tunai',
+      status: 'dibatalkan',
+      total: 20000_00,
+      dibayar: 20000_00,
+      createdAt: new Date(2026, 0, 16, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 20000_00, hargaPokok: 1000_00, subtotal: 20000_00 }],
+    })
+
+    const result = getSalesHistory(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(result.map((r) => ({ id: r.id, status: r.status }))).toEqual([
+      { id: 2, status: 'dibatalkan' },
+      { id: 1, status: 'selesai' },
+    ])
+  })
+
+  it('excludes sales outside the date range', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 50000_00,
+      dibayar: 50000_00,
+      createdAt: new Date(2025, 5, 1, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 50000_00, hargaPokok: 1000_00, subtotal: 50000_00 }],
+    })
+
+    const result = getSalesHistory(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(result).toEqual([])
+  })
+})
+
+describe('buildRekapWorkbook', () => {
+  it('produces a workbook with all six expected sheets', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    const rekap = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    const workbook = buildRekapWorkbook(rekap)
+
+    expect(workbook.SheetNames).toEqual([
+      'Riwayat Transaksi',
+      'Laba per Kategori',
+      'Laba per Hari',
+      'Produk Terlaris',
+      'Pembelian per Supplier',
+      'Nilai Stock',
+    ])
+  })
+
+  it('converts money fields from cents to Rupiah in the Nilai Stock sheet', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    const rekap = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    const workbook = buildRekapWorkbook(rekap)
+    const sheet = workbook.Sheets['Nilai Stock']
+    const rows = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[]
+
+    const gula = rows.find((r) => r.Produk === 'Gula Pasir')
+    expect(gula).toMatchObject({ 'Harga Pokok': 12000, Nilai: 1200000 })
+  })
+})
 
 describe('getRekap', () => {
   it('omzetTunai sums only tunai selesai sales in range, excluding bon and cancelled', () => {
