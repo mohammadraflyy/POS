@@ -1,6 +1,6 @@
 # Inventory Slice 2: Satuan Turunan & Harga Bertingkat — Design Spec
 
-**Status:** Approved
+**Status:** Superseded by `docs/superpowers/specs/2026-08-09-inventory-units-dynamic-chain-design.md` (fixed-level cap removed).
 **Scope:** `desktop-node/` only. Second slice of the Katalog Produk (Inventory) module — manage each product's derived selling units (satuan turunan) and quantity-tiered pricing (harga bertingkat), plus a read-only price-change history view. Triggered from the product grid built in Slice 1 (`docs/superpowers/specs/2026-08-07-inventory-crud-design.md`).
 
 ## Why
