@@ -5,10 +5,10 @@ import { NavUser } from './nav-user'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar'
 import type { AuthUser, NavItem } from '../types'
 
-const overviewNavItems: NavItem[] = [{ title: 'Dashboard', href: '/dashboard', icon: LayoutGrid, disabled: true }]
+const overviewNavItems: NavItem[] = [{ title: 'Dashboard', href: '/', icon: LayoutGrid }]
 
 const penjualanNavItems: NavItem[] = [
-  { title: 'Penjualan', href: '/', icon: ShoppingCart },
+  { title: 'Penjualan', href: '/kasir', icon: ShoppingCart },
   { title: 'Riwayat Transaksi', href: '/history', icon: History },
 ]
 

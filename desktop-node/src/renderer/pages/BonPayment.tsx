@@ -32,7 +32,7 @@ interface BonPaymentRow {
 }
 
 const BREADCRUMBS: BreadcrumbItem[] = [
-  { title: 'Penjualan', href: '/' },
+  { title: 'Penjualan', href: '/kasir' },
   { title: 'Riwayat Transaksi', href: '/history' },
 ]
 

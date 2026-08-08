@@ -35,7 +35,7 @@ const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 300
 const MIN_ITEM_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [
-  { title: 'Penjualan', href: '/' },
+  { title: 'Penjualan', href: '/kasir' },
   { title: 'Riwayat Transaksi', href: '/history' },
 ]
 
@@ -241,7 +241,7 @@ export function KasirHistory() {
           <Button type="submit" variant="secondary">
             Filter
           </Button>
-          <Button type="button" variant="outline" onClick={() => navigate('/')}>
+          <Button type="button" variant="outline" onClick={() => navigate('/kasir')}>
             Ke Kasir
           </Button>
         </form>

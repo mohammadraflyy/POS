@@ -22,7 +22,7 @@ interface SaleDto {
   dibayar: number
 }
 
-const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Penjualan', href: '/' }]
+const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Penjualan', href: '/kasir' }]
 
 export function Kasir() {
   const [products, setProducts] = useState<Product[]>([])

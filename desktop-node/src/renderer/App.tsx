@@ -10,13 +10,15 @@ import { Supplier } from './pages/Supplier'
 import { Purchase } from './pages/Purchase'
 import { StockOpname } from './pages/StockOpname'
 import { Rekap } from './pages/Rekap'
+import { Dashboard } from './pages/Dashboard'
 
 export function App() {
   return (
     <HashRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<Kasir />} />
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/kasir" element={<Kasir />} />
         <Route path="/history" element={<KasirHistory />} />
         <Route path="/bon-payment/:saleId" element={<BonPayment />} />
         <Route path="/settings" element={<Settings />} />
