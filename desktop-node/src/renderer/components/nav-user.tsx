@@ -1,6 +1,5 @@
-import { Settings } from 'lucide-react'
+import { Settings, LogOut } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 import type { AuthUser } from '../types'
@@ -34,22 +33,16 @@ export function NavUser({ user }: { user: AuthUser }) {
               <Settings className="size-4" />
               Pengaturan
             </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={async () => {
+              await window.api.auth.logout()
+              navigate('/login')
+            }}>
+              <LogOut className="size-4" />
+              Keluar
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </SidebarMenuItem>
-      <SidebarMenuItem>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="w-full"
-          onClick={async () => {
-            await window.api.auth.logout()
-            navigate('/login')
-          }}
-        >
-          Keluar
-        </Button>
       </SidebarMenuItem>
     </SidebarMenu>
   )
