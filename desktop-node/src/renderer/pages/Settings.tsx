@@ -146,10 +146,20 @@ function PurgeToday() {
   const { confirm, ConfirmDialog } = useConfirm()
 
   async function purge() {
+    setError(null)
+    setMessage(null)
+
+    let scope = 'Semua transaksi hari ini'
+    try {
+      const salesToday = await window.api.kasir.listSalesToday()
+      scope = `${salesToday.length} transaksi hari ini`
+    } catch {
+      // Gagal mengambil jumlah transaksi - lanjutkan dengan teks generik.
+    }
+
     const ok = await confirm({
       title: 'Hapus Transaksi Hari Ini',
-      description:
-        'Semua transaksi hari ini akan dihapus permanen dan stok yang terjual dikembalikan. Transaksi Bon yang sudah ada pembayarannya akan dilewati. Tindakan ini tidak bisa dibatalkan.',
+      description: `${scope} akan dihapus permanen dan stok yang terjual dikembalikan, termasuk transaksi Bon yang belum ada pembayarannya. Transaksi Bon yang sudah ada pembayarannya akan dilewati. Tindakan ini tidak bisa dibatalkan.`,
       confirmLabel: 'Hapus Permanen',
       destructive: true,
     })
@@ -159,8 +169,6 @@ function PurgeToday() {
     }
 
     setProcessing(true)
-    setError(null)
-    setMessage(null)
 
     try {
       const result = await window.api.kasir.purgeTodaySales()
