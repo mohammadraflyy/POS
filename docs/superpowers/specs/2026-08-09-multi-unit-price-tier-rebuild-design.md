@@ -118,7 +118,7 @@ Each step is its own migration file so a failure partway through is easy to isol
 
 ## 3. `main/inventory-units.ts` — validation & resolution logic
 
-- `addProductUnit`/`updateProductUnit`: `satuan` input becomes `unitId` (selected from a `units` picker, not free text) — or, kept close to current UX, a "code" string that resolves to an existing `units` row or creates one on the fly (avoids forcing a separate "manage units" screen as a prerequisite; still backed by the shared table underneath). **Decision needed from user before implementation of this specific file** — see Open Question below.
+- `addProductUnit`/`updateProductUnit`: `satuan` text input is replaced by `unitId` (selected from the Master Satuan list via the new picker — see §6). The function signature changes from `{satuan, jumlahKemasan, hargaJual}` to `{unitId, jumlahKemasan, hargaJual}`; validation drops the satuan length/emptiness checks (now enforced by Master Satuan CRUD instead) and adds "unit must exist and be active" + "unit not already used by this product" (replacing the old satuan-string duplicate check).
 - `addPriceTier(db, productId, productUnitId, input: {minQty, maxQty, hargaJual})`:
   - `minQty > 0` (relaxed from the current `>= 2` floor — the spec's own examples start tiers at 1).
   - `maxQty === null || maxQty >= minQty`.
@@ -151,14 +151,15 @@ Every existing `UPDATE products SET stok = ...` gets a sibling `INSERT INTO stoc
 
 ## 6. UI changes
 
-- **`ProductDetailDialog.tsx`**: `PriceTiersManager` gains a unit selector (base unit + every derived unit, each a real `product_units` row now — no more special-casing "base" as a sentinel string), a Max Qty field (blank = unbounded), and displays each tier as a `Min – Max` range scoped to the selected unit. `UnitChainManager` gains a unit picker (from `units`, autocomplete/create-new) in place of the free-text satuan input.
+- **New page: Master Satuan** (`pages/MasterSatuan.tsx`, new sidebar entry under a suitable section, own IPC channels `master-satuan:list/create/update/deactivate`). Simple CRUD table: code, name, symbol, active toggle. Deactivating (not hard-deleting) a unit already referenced by any `product_units` row is blocked with a friendly error, matching this app's existing FK-restrict-with-friendly-message convention (`main/inventory.ts`).
+- **`ProductDetailDialog.tsx`**: `UnitChainManager`'s free-text satuan input becomes a `<select>`/combobox populated from active `units` rows (same "picked from a list" pattern as the Kasir satuan dropdown already shipped in `CartGrid.tsx`). `PriceTiersManager` gains a unit selector (base unit + every derived unit, each a real `product_units` row now — no more special-casing "base" as a sentinel string), a Max Qty field (blank = unbounded), and displays each tier as a `Min – Max` range scoped to the selected unit.
 - **`CartGrid.tsx` / `Kasir.tsx`**: small subtext under the Harga cell showing the matched tier's range when a tier (not the normal price) is active, e.g. "tier 5–9 Box → Rp42.000".
 
-## Open Questions (need your call before implementation starts)
+## Decisions (confirmed)
 
-1. **Unit picker UX**: should adding a product unit require first creating/selecting from a managed `units` list (a new "Master Satuan" screen), or should the existing free-text `satuan` input stay, silently upserting into `units` behind the scenes (create-if-not-exists by code)? The spec's diagram implies units are managed independently, but a dedicated management screen is itself a new piece of UI not otherwise specified. I'd default to **upsert-by-code from the existing input** (zero new screens, same UX, still backed by the shared table) unless you want a real Master Satuan page.
-2. **`products.hargaJual` mirroring**: confirms okay to keep it as a denormalized cache of the base unit's price (updated by app code) rather than rewriting every reporting/receipt call site to join through `product_units`? This is the single biggest scope-reduction in this plan relative to a maximally literal reading.
-3. Given the size, this will be executed as a dispatched, task-by-task implementation plan (`superpowers:writing-plans` → `superpowers:subagent-driven-development`) in an isolated git worktree, likely spanning many dispatch rounds across this and possibly future sessions — confirming that's the expected mode of work here, not a single inline patch.
+1. **Unit picker UX — dedicated Master Satuan page.** A new standalone screen (`pages/MasterSatuan.tsx` or similar, added to the sidebar) provides full CRUD over the global `units` table (code/name/symbol/isActive), independent of any product. Product-unit forms (`UnitChainManager` in `ProductDetailDialog.tsx`, and wherever a satuan is picked for sales/purchase) switch from a free-text input to a **select/autocomplete sourced from `units`** — no more ad hoc unit names typed per product. This is new UI surface, not a reuse of the existing free-text input.
+2. **`products.hargaJual` stays as a denormalized cache** of the base unit's `product_units.hargaJual`, synced by application code on every base-unit price edit. Reporting/receipt code (`rekap.ts`, `escpos.ts`, etc.) keeps reading `products.hargaJual` unchanged.
+3. **Execution mode: `superpowers:subagent-driven-development`.** This doc is followed by a `superpowers:writing-plans` pass producing a task-by-task implementation plan, executed in an isolated git worktree with a fresh implementer subagent + review per task. Expected to span many dispatch rounds, possibly across sessions.
 
 ## Out of scope (unchanged from the incremental proposal)
 
