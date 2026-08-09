@@ -235,12 +235,20 @@ function toRupiahExport(cents: number): number {
   return cents / 100
 }
 
+function computeColWidths(headers: string[], rows: Record<string, unknown>[]): { wch: number }[] {
+  return headers.map((header) => {
+    const maxRowLen = rows.reduce((max, row) => Math.max(max, String(row[header] ?? '').length), 0)
+    return { wch: Math.min(Math.max(header.length, maxRowLen) + 2, 40) }
+  })
+}
+
 export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
   const workbook = XLSX.utils.book_new()
 
-  const sheets: { name: string; rows: Record<string, unknown>[] }[] = [
+  const sheets: { name: string; headers: string[]; rows: Record<string, unknown>[] }[] = [
     {
       name: 'Riwayat Transaksi',
+      headers: ['Tanggal', 'Pelanggan', 'Metode', 'Status', 'Total', 'Dibayar'],
       rows: rekap.salesHistory.map((row) => ({
         Tanggal: new Date(row.createdAt).toLocaleString('id-ID'),
         Pelanggan: row.namaPelanggan ?? '-',
@@ -252,6 +260,7 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
     },
     {
       name: 'Laba per Kategori',
+      headers: ['Kategori', 'Omzet', 'Laba'],
       rows: rekap.labaPerKategori.map((row) => ({
         Kategori: row.categoryName,
         Omzet: toRupiahExport(row.omzet),
@@ -260,6 +269,7 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
     },
     {
       name: 'Laba per Hari',
+      headers: ['Tanggal', 'Omzet', 'Laba'],
       rows: rekap.labaPerHari.map((row) => ({
         Tanggal: row.tanggal,
         Omzet: toRupiahExport(row.omzet),
@@ -268,6 +278,7 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
     },
     {
       name: 'Produk Terlaris',
+      headers: ['Produk', 'Qty Terjual', 'Total Penjualan'],
       rows: rekap.produkTerlaris.map((row) => ({
         Produk: row.namaItem,
         'Qty Terjual': row.qtyTerjual,
@@ -276,6 +287,7 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
     },
     {
       name: 'Pembelian per Supplier',
+      headers: ['Supplier', 'Total Pembelian'],
       rows: rekap.pembelianPerSupplier.map((row) => ({
         Supplier: row.supplierName,
         'Total Pembelian': toRupiahExport(row.totalPembelian),
@@ -283,6 +295,7 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
     },
     {
       name: 'Nilai Stock',
+      headers: ['Kode Item', 'Produk', 'Stok', 'Harga Pokok', 'Nilai'],
       rows: rekap.stockValue.produk.map((row) => ({
         'Kode Item': row.kodeItem,
         Produk: row.namaItem,
@@ -294,7 +307,11 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
   ]
 
   for (const sheet of sheets) {
-    const worksheet = XLSX.utils.json_to_sheet(sheet.rows)
+    const worksheet: XLSX.WorkSheet = {}
+    XLSX.utils.sheet_add_json(worksheet, sheet.rows, { header: sheet.headers, origin: 'A2' })
+    XLSX.utils.sheet_add_aoa(worksheet, [[sheet.name]], { origin: 'A1' })
+    worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(sheet.headers.length - 1, 0) } }]
+    worksheet['!cols'] = computeColWidths(sheet.headers, sheet.rows)
     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31))
   }
 

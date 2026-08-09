@@ -247,10 +247,27 @@ describe('buildRekapWorkbook', () => {
     const rekap = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
     const workbook = buildRekapWorkbook(rekap)
     const sheet = workbook.Sheets['Nilai Stock']
-    const rows = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[]
+    const rows = XLSX.utils.sheet_to_json(sheet, { range: 1 }) as Record<string, unknown>[]
 
     const gula = rows.find((r) => r.Produk === 'Gula Pasir')
     expect(gula).toMatchObject({ 'Harga Pokok': 12000, Nilai: 1200000 })
+  })
+
+  it('writes a merged title row and auto-sized column widths on every sheet', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    const rekap = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    const workbook = buildRekapWorkbook(rekap)
+    const sheet = workbook.Sheets['Nilai Stock']
+
+    expect(sheet['A1'].v).toBe('Nilai Stock')
+    expect(sheet['!merges']).toEqual([{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }])
+    expect(sheet['!cols']).toHaveLength(5)
+    expect(sheet['!cols']?.every((col) => (col.wch ?? 0) > 0)).toBe(true)
+
+    // header row now starts at row 2 (index 1), not row 1
+    expect(sheet['A2'].v).toBe('Kode Item')
   })
 })
 
