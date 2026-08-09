@@ -4,7 +4,7 @@ import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
 import { users, products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings } from './db/schema'
-import { checkout, type CheckoutInput, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore } from './kasir'
+import { checkout, type CheckoutInput, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, purgeTodaySales } from './kasir'
 
 describe('priceForQty', () => {
   it('falls back to the base price when there are no tiers', () => {
@@ -1021,5 +1021,145 @@ describe('purgeSalesBefore', () => {
     expect(() => purgeSalesBefore(db, new Date('2099-01-01T00:00:00'))).toThrow()
 
     expect(db.select().from(sales).where(eq(sales.id, oldSaleId)).get()).toBeDefined()
+  })
+})
+
+describe('purgeTodaySales', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedProductAndUser(db: ReturnType<typeof createDb>) {
+    const now = new Date()
+
+    db.insert(users)
+      .values({ id: 1, username: 'kasir1', passwordHash: 'hash', name: 'Kasir Satu', createdAt: now, updatedAt: now })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        satuan: 'PCS',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 100,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+  }
+
+  function seedTodayAndYesterday() {
+    const db = createDb(':memory:', migrationsFolder)
+    seedProductAndUser(db)
+
+    const todaySale = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00 * 5,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 5 }],
+    })
+
+    const yesterdaySale = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00 * 2,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 2 }],
+    })
+    db.update(sales).set({ createdAt: new Date('2020-01-01T10:00:00') }).where(eq(sales.id, yesterdaySale.saleId)).run()
+
+    return { db, todaySaleId: todaySale.saleId, yesterdaySaleId: yesterdaySale.saleId }
+  }
+
+  it('deletes only sales created today, returns the count deleted, leaves older sales untouched', () => {
+    const { db, todaySaleId, yesterdaySaleId } = seedTodayAndYesterday()
+
+    const result = purgeTodaySales(db)
+
+    expect(result).toEqual({ deleted: 1, skipped: 0 })
+    expect(db.select().from(sales).where(eq(sales.id, todaySaleId)).get()).toBeUndefined()
+    expect(db.select().from(sales).where(eq(sales.id, yesterdaySaleId)).get()).toBeDefined()
+  })
+
+  it('restores stock for deleted sales, leaves stock for untouched older sales alone', () => {
+    const { db } = seedTodayAndYesterday()
+
+    purgeTodaySales(db)
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    // 100 - 5 (today) - 2 (yesterday) = 93, then +5 restored for today's deleted sale = 98
+    expect(product?.stok).toBe(98)
+  })
+
+  it('cascades to sale_items for deleted sales', () => {
+    const { db, todaySaleId } = seedTodayAndYesterday()
+
+    purgeTodaySales(db)
+
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, todaySaleId)).all()).toHaveLength(0)
+  })
+
+  it('does not double-restore stock for an already-dibatalkan sale', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedProductAndUser(db)
+
+    const sale = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00 * 5,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 5 }],
+    })
+
+    cancelSale(db, sale.saleId) // stok: 100 - 5 + 5 = 100
+
+    const result = purgeTodaySales(db)
+
+    expect(result).toEqual({ deleted: 1, skipped: 0 })
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(100) // not 105 - no double restore
+  })
+
+  it('skips a bon sale with existing payments, leaves it in the database, still deletes the rest', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedProductAndUser(db)
+    const now = new Date()
+
+    const bonSale = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Siti',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 3 }],
+    })
+
+    db.insert(bonPayments)
+      .values({ saleId: bonSale.saleId, jumlah: 10000_00, tanggal: '2026-01-01', createdAt: now, updatedAt: now })
+      .run()
+
+    const otherSale = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const result = purgeTodaySales(db)
+
+    expect(result).toEqual({ deleted: 1, skipped: 1 })
+    expect(db.select().from(sales).where(eq(sales.id, bonSale.saleId)).get()).toBeDefined()
+    expect(db.select().from(sales).where(eq(sales.id, otherSale.saleId)).get()).toBeUndefined()
+  })
+
+  it('returns zero deleted and skipped when there are no sales today', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedProductAndUser(db)
+
+    const result = purgeTodaySales(db)
+
+    expect(result).toEqual({ deleted: 0, skipped: 0 })
   })
 })

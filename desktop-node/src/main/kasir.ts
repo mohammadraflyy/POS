@@ -1,4 +1,4 @@
-import { eq, inArray, lt, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings } from './db/schema'
@@ -219,7 +219,19 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   })
 }
 
-export function cancelSale(db: BetterSQLite3Database<typeof schema>, saleId: number): void {
+type Db = BetterSQLite3Database<typeof schema>
+type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
+
+function restoreStockForItems(tx: Tx, items: { productId: number; qty: number; konversi: number }[]): void {
+  for (const item of items) {
+    tx.update(products)
+      .set({ stok: sql`${products.stok} + ${item.qty * item.konversi}` })
+      .where(eq(products.id, item.productId))
+      .run()
+  }
+}
+
+export function cancelSale(db: Db, saleId: number): void {
   const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
 
   if (!sale) {
@@ -239,15 +251,46 @@ export function cancelSale(db: BetterSQLite3Database<typeof schema>, saleId: num
   const items = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
 
   db.transaction((tx) => {
-    for (const item of items) {
-      tx.update(products)
-        .set({ stok: sql`${products.stok} + ${item.qty * item.konversi}` })
-        .where(eq(products.id, item.productId))
-        .run()
-    }
-
+    restoreStockForItems(tx, items)
     tx.update(sales).set({ status: 'dibatalkan' }).where(eq(sales.id, saleId)).run()
   })
+}
+
+export function purgeTodaySales(db: Db): { deleted: number; skipped: number } {
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const endOfToday = new Date()
+  endOfToday.setHours(23, 59, 59, 999)
+
+  const todaySales = db
+    .select()
+    .from(sales)
+    .where(and(gte(sales.createdAt, startOfToday), lte(sales.createdAt, endOfToday)))
+    .all()
+
+  let deleted = 0
+  let skipped = 0
+
+  db.transaction((tx) => {
+    for (const sale of todaySales) {
+      const hasBonPayment = tx.select().from(bonPayments).where(eq(bonPayments.saleId, sale.id)).get()
+
+      if (hasBonPayment) {
+        skipped++
+        continue
+      }
+
+      if (sale.status !== 'dibatalkan') {
+        const items = tx.select().from(saleItems).where(eq(saleItems.saleId, sale.id)).all()
+        restoreStockForItems(tx, items)
+      }
+
+      tx.delete(sales).where(eq(sales.id, sale.id)).run()
+      deleted++
+    }
+  })
+
+  return { deleted, skipped }
 }
 
 export function recordBonPayment(
