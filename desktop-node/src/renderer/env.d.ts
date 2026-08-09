@@ -105,6 +105,7 @@ declare global {
           receiptWidth: '58mm' | '80mm'
         }) => Promise<void>
         purgeSalesBefore: (before: string) => Promise<{ deleted: number }>
+        purgeTodaySales: () => Promise<{ deleted: number; skipped: number }>
       }
       inventory: {
         listProducts: (input: { search?: string; page: number; pageSize?: number }) => Promise<{

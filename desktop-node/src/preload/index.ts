@@ -47,6 +47,7 @@ const api = {
       receiptWidth: '58mm' | '80mm'
     }) => invoke('kasir:updateStoreSettings', input),
     purgeSalesBefore: (before: string) => invoke('kasir:purgeSalesBefore', before),
+    purgeTodaySales: () => invoke('kasir:purgeTodaySales'),
   },
   inventory: {
     listProducts: (input: { search?: string; page: number; pageSize?: number }) =>
