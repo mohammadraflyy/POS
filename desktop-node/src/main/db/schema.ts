@@ -36,7 +36,6 @@ export const products = sqliteTable('products', {
   barcode: text('barcode').unique(),
   namaItem: text('nama_item').notNull(),
   categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
-  satuan: text('satuan').notNull(),
   hargaPokok: integer('harga_pokok').notNull().default(0),
   hargaJual: integer('harga_jual').notNull().default(0),
   stok: integer('stok').notNull().default(0),
@@ -47,13 +46,16 @@ export const products = sqliteTable('products', {
 export const productUnits = sqliteTable('product_units', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
-  satuan: text('satuan').notNull(),
+  unitId: integer('unit_id').notNull().references(() => units.id, { onDelete: 'restrict' }),
   jumlahKemasan: integer('jumlah_kemasan').notNull(),
-  konversi: integer('konversi').notNull(),
+  conversionFactor: integer('conversion_factor').notNull(),
   hargaJual: integer('harga_jual').notNull(),
+  isBaseUnit: integer('is_base_unit', { mode: 'boolean' }).notNull().default(false),
+  isDefaultSalesUnit: integer('is_default_sales_unit', { mode: 'boolean' }).notNull().default(false),
+  isDefaultPurchaseUnit: integer('is_default_purchase_unit', { mode: 'boolean' }).notNull().default(false),
   ...timestamps(),
 }, (table) => ({
-  productSatuanUnique: uniqueIndex('product_units_product_id_satuan_unique').on(table.productId, table.satuan),
+  productUnitUnique: uniqueIndex('product_units_product_id_unit_id_unique').on(table.productId, table.unitId),
 }))
 
 export const productPriceTiers = sqliteTable('product_price_tiers', {
