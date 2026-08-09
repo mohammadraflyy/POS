@@ -43,6 +43,13 @@
       "when": 1786211862484,
       "tag": "0005_massive_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786292318303,
+      "tag": "0006_robust_daimon_hellstrom",
+      "breakpoints": true
     }
   ]
 }

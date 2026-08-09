@@ -21,6 +21,15 @@ export const categories = sqliteTable('categories', {
   ...timestamps(),
 })
 
+export const units = sqliteTable('units', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  symbol: text('symbol').notNull(),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  ...timestamps(),
+})
+
 export const products = sqliteTable('products', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   kodeItem: text('kode_item').notNull().unique(),
