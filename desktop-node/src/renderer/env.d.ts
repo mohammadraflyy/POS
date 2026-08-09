@@ -213,6 +213,13 @@ declare global {
           | { success: false; rowErrors: Record<string, Record<string, string>> }
         >
         importProducts: () => Promise<{ created: number; updated: number; unchanged: number; skipped: number } | null>
+        importSatuan: () => Promise<{
+          produkDiperbarui: number
+          satuanDitambahkan: number
+          dilewatiTidakDitemukan: number
+          dilewatiSatuanTidakCocok: number
+          dilewatiRantaiTidakValid: number
+        } | null>
       }
       supplier: {
         listSuppliers: (input: { search?: string; page: number; pageSize?: number }) => Promise<{

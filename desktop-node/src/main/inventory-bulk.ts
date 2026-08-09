@@ -478,3 +478,238 @@ export function importProducts(db: Db, filePath: string, userId: number | null):
 
   return { created, updated, unchanged, skipped }
 }
+
+const IMPORT_SATUAN_COLUMN_LABELS: Record<string, string[]> = {
+  kodeItem: ['kode item'],
+  satuan: ['satuan'],
+  jumlahKemasan: ['qty/paket', 'qty per paket'],
+  hargaJual: ['harga jual'],
+}
+
+const IMPORT_SATUAN_REQUIRED_COLUMNS = ['kodeItem', 'satuan', 'jumlahKemasan', 'hargaJual']
+
+function resolveImportSatuanColumns(sheetRow: unknown[]): Record<string, number> | null {
+  const found: Record<string, number> = {}
+
+  sheetRow.forEach((cell, index) => {
+    const text = String(cell ?? '').trim().toLowerCase()
+    if (!text) {
+      return
+    }
+
+    for (const [field, labels] of Object.entries(IMPORT_SATUAN_COLUMN_LABELS)) {
+      if (!(field in found) && labels.includes(text)) {
+        found[field] = index
+      }
+    }
+  })
+
+  const hasAllRequired = IMPORT_SATUAN_REQUIRED_COLUMNS.every((field) => field in found)
+  return hasAllRequired ? found : null
+}
+
+export interface ImportSatuanResult {
+  produkDiperbarui: number
+  satuanDitambahkan: number
+  dilewatiTidakDitemukan: number
+  dilewatiSatuanTidakCocok: number
+  dilewatiRantaiTidakValid: number
+}
+
+const EMPTY_IMPORT_SATUAN_RESULT: ImportSatuanResult = {
+  produkDiperbarui: 0,
+  satuanDitambahkan: 0,
+  dilewatiTidakDitemukan: 0,
+  dilewatiSatuanTidakCocok: 0,
+  dilewatiRantaiTidakValid: 0,
+}
+
+interface SatuanFileRow {
+  satuan: string
+  jumlahKemasan: number
+  relatifKe: string
+  hargaJual: number
+}
+
+/**
+ * Reads a report-style spreadsheet (a legacy POS's "DAFTAR ITEM" export: a title block,
+ * then a header row, then one or more rows per product - one per satuan tier, each row
+ * naming which other satuan its `jumlahKemasan` is relative to via the unlabeled column
+ * immediately after "Qty/Paket"). Matches products by kodeItem only - never creates new
+ * products, only fills in `product_units` (derived satuan) for products that already exist.
+ */
+export function importSatuan(db: Db, filePath: string): ImportSatuanResult {
+  const workbook = XLSX.readFile(filePath)
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return EMPTY_IMPORT_SATUAN_RESULT
+  }
+
+  const sheet = workbook.Sheets[sheetName]
+  const sheetRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+  let columns: Record<string, number> | null = null
+  let headerIndex = -1
+
+  for (let i = 0; i < sheetRows.length; i++) {
+    const resolved = resolveImportSatuanColumns(sheetRows[i])
+    if (resolved) {
+      columns = resolved
+      headerIndex = i
+      break
+    }
+  }
+
+  if (!columns) {
+    return EMPTY_IMPORT_SATUAN_RESULT
+  }
+
+  const resolvedColumns = columns
+  const relatifKeIndex = resolvedColumns.jumlahKemasan + 1
+  const dataRows = sheetRows.slice(headerIndex + 1)
+
+  const groups = new Map<string, SatuanFileRow[]>()
+
+  for (const sheetRow of dataRows) {
+    const kodeItem = String(sheetRow[resolvedColumns.kodeItem] ?? '').trim()
+    const satuan = String(sheetRow[resolvedColumns.satuan] ?? '').trim()
+    const relatifKe = String(sheetRow[relatifKeIndex] ?? '').trim()
+    const jumlahKemasan = parseImportNumber(sheetRow[resolvedColumns.jumlahKemasan])
+    const hargaJual = parseImportNumber(sheetRow[resolvedColumns.hargaJual])
+
+    if (!kodeItem || !satuan || !relatifKe || jumlahKemasan === null || jumlahKemasan <= 0 || hargaJual === null || hargaJual < 0) {
+      continue
+    }
+
+    const list = groups.get(kodeItem) ?? []
+    list.push({ satuan, jumlahKemasan, relatifKe, hargaJual })
+    groups.set(kodeItem, list)
+  }
+
+  const existingProducts = new Map(
+    db
+      .select({ id: products.id, kodeItem: products.kodeItem, satuan: products.satuan })
+      .from(products)
+      .all()
+      .map((p) => [p.kodeItem, p]),
+  )
+
+  const result = { ...EMPTY_IMPORT_SATUAN_RESULT }
+
+  db.transaction((tx) => {
+    for (const [kodeItem, rows] of groups) {
+      const product = existingProducts.get(kodeItem)
+
+      if (!product) {
+        result.dilewatiTidakDitemukan++
+        continue
+      }
+
+      const baseRow = rows.find((r) => r.satuan.toUpperCase() === r.relatifKe.toUpperCase())
+
+      if (!baseRow || baseRow.satuan.toUpperCase() !== product.satuan.trim().toUpperCase()) {
+        result.dilewatiSatuanTidakCocok++
+        continue
+      }
+
+      // Resolve every derived row's absolute conversion-to-base by following its "relatifKe"
+      // reference, which may point at the base row or at any other already-resolved row -
+      // not necessarily the tier directly below it (the source data does this, e.g. "DUS"
+      // relative to "PCS" while a "SLOP" tier sits in between).
+      const absKonversi = new Map<string, number>([[baseRow.satuan.toUpperCase(), 1]])
+      const derivedRows = rows.filter((r) => r !== baseRow)
+      let remaining = derivedRows
+      let progress = true
+
+      while (remaining.length > 0 && progress) {
+        progress = false
+        remaining = remaining.filter((r) => {
+          const relKey = r.relatifKe.toUpperCase()
+          const relKonversi = absKonversi.get(relKey)
+
+          if (relKonversi === undefined) {
+            return true
+          }
+
+          absKonversi.set(r.satuan.toUpperCase(), r.jumlahKemasan * relKonversi)
+          progress = true
+          return false
+        })
+      }
+
+      if (remaining.length > 0) {
+        result.dilewatiRantaiTidakValid++
+        continue
+      }
+
+      // The app's own satuan chain always stores jumlahKemasan relative to the tier directly
+      // below, so re-derive it from the absolute conversions above rather than trusting the
+      // file's own (possibly non-adjacent) jumlahKemasan values.
+      const sortedUnits = derivedRows
+        .map((r) => ({ ...r, absKonversi: absKonversi.get(r.satuan.toUpperCase()) as number }))
+        .sort((a, b) => a.absKonversi - b.absKonversi)
+
+      const finalUnits: { satuan: string; jumlahKemasan: number; konversi: number; hargaJual: number }[] = []
+      let prevKonversi = 1
+      let chainValid = true
+
+      for (const unit of sortedUnits) {
+        const ratio = unit.absKonversi / prevKonversi
+        const roundedRatio = Math.round(ratio)
+
+        if (unit.satuan.length > 20 || roundedRatio < 1 || Math.abs(ratio - roundedRatio) > 0.01) {
+          chainValid = false
+          break
+        }
+
+        finalUnits.push({ satuan: unit.satuan, jumlahKemasan: roundedRatio, konversi: unit.absKonversi, hargaJual: unit.hargaJual })
+        prevKonversi = unit.absKonversi
+      }
+
+      if (!chainValid) {
+        result.dilewatiRantaiTidakValid++
+        continue
+      }
+
+      if (finalUnits.length === 0) {
+        continue
+      }
+
+      const now = new Date()
+
+      for (const unit of finalUnits) {
+        const existingUnit = tx
+          .select({ id: productUnits.id })
+          .from(productUnits)
+          .where(and(eq(productUnits.productId, product.id), eq(productUnits.satuan, unit.satuan)))
+          .get()
+
+        if (existingUnit) {
+          tx.update(productUnits)
+            .set({ jumlahKemasan: unit.jumlahKemasan, konversi: unit.konversi, hargaJual: Math.round(unit.hargaJual * 100), updatedAt: now })
+            .where(eq(productUnits.id, existingUnit.id))
+            .run()
+        } else {
+          tx.insert(productUnits)
+            .values({
+              productId: product.id,
+              satuan: unit.satuan,
+              jumlahKemasan: unit.jumlahKemasan,
+              konversi: unit.konversi,
+              hargaJual: Math.round(unit.hargaJual * 100),
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run()
+        }
+
+        result.satuanDitambahkan++
+      }
+
+      result.produkDiperbarui++
+    }
+  })
+
+  return result
+}

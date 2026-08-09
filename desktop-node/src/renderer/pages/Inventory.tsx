@@ -90,6 +90,8 @@ export function Inventory() {
   const [detailProductId, setDetailProductId] = useState<number | null>(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<string | null>(null)
+  const [importingSatuan, setImportingSatuan] = useState(false)
+  const [importSatuanResult, setImportSatuanResult] = useState<string | null>(null)
 
   function runImport() {
     setImporting(true)
@@ -111,6 +113,31 @@ export function Inventory() {
         setImportResult(err instanceof Error ? err.message : 'Gagal mengimpor')
       })
       .finally(() => setImporting(false))
+  }
+
+  function runImportSatuan() {
+    setImportingSatuan(true)
+    setImportSatuanResult(null)
+
+    window.api.inventory
+      .importSatuan()
+      .then((result) => {
+        if (result === null) {
+          return
+        }
+
+        setImportSatuanResult(
+          `${result.produkDiperbarui} produk diperbarui satuannya (${result.satuanDitambahkan} satuan turunan), ` +
+            `${result.dilewatiTidakDitemukan} dilewati (produk tidak ditemukan), ` +
+            `${result.dilewatiSatuanTidakCocok} dilewati (satuan dasar tidak cocok), ` +
+            `${result.dilewatiRantaiTidakValid} dilewati (rantai satuan tidak valid).`,
+        )
+        loadPage(currentPage)
+      })
+      .catch((err) => {
+        setImportSatuanResult(err instanceof Error ? err.message : 'Gagal mengimpor')
+      })
+      .finally(() => setImportingSatuan(false))
   }
 
   const { confirm, ConfirmDialog } = useConfirm()
@@ -428,6 +455,11 @@ export function Inventory() {
             {importResult}
           </p>
         )}
+        {importSatuanResult && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {importSatuanResult}
+          </p>
+        )}
         {errorSummary.length > 0 && (
           <div className="space-y-1 text-sm text-destructive">
             {errorSummary.map((message, i) => (
@@ -456,6 +488,9 @@ export function Inventory() {
           <div className="flex gap-2">
             <Button type="button" variant="outline" disabled={importing} onClick={runImport}>
               {importing ? 'Mengimpor...' : 'Import Excel'}
+            </Button>
+            <Button type="button" variant="outline" disabled={importingSatuan} onClick={runImportSatuan}>
+              {importingSatuan ? 'Mengimpor...' : 'Import Satuan'}
             </Button>
             <Button
               type="button"

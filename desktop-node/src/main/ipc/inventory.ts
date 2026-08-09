@@ -12,7 +12,7 @@ import {
   deletePriceTier,
   type ProductUnitRow,
 } from '../inventory-units'
-import { getProductsByIds, bulkSaveProducts, importProducts, type BulkSaveRow } from '../inventory-bulk'
+import { getProductsByIds, bulkSaveProducts, importProducts, importSatuan, type BulkSaveRow } from '../inventory-bulk'
 import { getCurrentUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -297,5 +297,27 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     return importProducts(db, result.filePaths[0], user.id)
+  })
+
+  ipcMain.handle('inventory:importSatuan', async () => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    const window = getMainWindow()
+    if (!window) {
+      throw new Error('Jendela aplikasi tidak ditemukan.')
+    }
+
+    const result = await dialog.showOpenDialog(window, {
+      filters: [{ name: 'Spreadsheet', extensions: ['xlsx', 'xls', 'csv'] }],
+      properties: ['openFile'],
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+
+    return importSatuan(db, result.filePaths[0])
   })
 }

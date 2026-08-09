@@ -5,13 +5,14 @@ import { tmpdir } from 'node:os'
 import * as XLSX from 'xlsx'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { categories, products, productPriceHistories, stockAdjustments, users } from './db/schema'
+import { categories, products, productPriceHistories, productUnits, stockAdjustments, users } from './db/schema'
 import {
   getProductsByIds,
   saveProductRows,
   validateBulkRows,
   bulkSaveProducts,
   importProducts,
+  importSatuan,
   type BulkSaveRow,
 } from './inventory-bulk'
 
@@ -429,3 +430,163 @@ describe('importProducts', () => {
     expect(result).toEqual({ created: 0, updated: 0, unchanged: 0, skipped: 0 })
   })
 })
+
+describe('importSatuan', () => {
+  // The unlabeled column right after "Qty/Paket" is the "relative to which satuan" reference -
+  // matching the real legacy report's layout (a blank header cell at that position).
+  const SATUAN_HEADER = ['Kode Item', 'Satuan', 'Qty/Paket', '', 'Harga Jual']
+
+  it('creates a derived unit relative to the base satuan', () => {
+    const db = seedDb() // BRS5, satuan PCS
+    const filePath = writeTestSheet([
+      SATUAN_HEADER,
+      ['BRS5', 'PCS', 1, 'PCS', 1500],
+      ['BRS5', 'DUS', 12, 'PCS', 17000],
+    ])
+
+    const result = importSatuan(db, filePath)
+    expect(result).toEqual({
+      produkDiperbarui: 1,
+      satuanDitambahkan: 1,
+      dilewatiTidakDitemukan: 0,
+      dilewatiSatuanTidakCocok: 0,
+      dilewatiRantaiTidakValid: 0,
+    })
+
+    const unit = db.select().from(productUnits).where(eq(productUnits.productId, 1)).get()
+    expect(unit).toMatchObject({ satuan: 'DUS', jumlahKemasan: 12, konversi: 12, hargaJual: 17000_00 })
+  })
+
+  it('resolves a non-adjacent relative reference (e.g. DUS relative to PCS, skipping SLOP)', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      SATUAN_HEADER,
+      ['BRS5', 'PCS', 1, 'PCS', 1500],
+      ['BRS5', 'SLOP', 10, 'PCS', 14000],
+      ['BRS5', 'DUS', 50, 'PCS', 65000], // relative to PCS, not SLOP - 50 PCS = 5 SLOP
+    ])
+
+    const result = importSatuan(db, filePath)
+    expect(result.produkDiperbarui).toBe(1)
+    expect(result.satuanDitambahkan).toBe(2)
+
+    const units = db.select().from(productUnits).where(eq(productUnits.productId, 1)).all()
+    const bySatuan = Object.fromEntries(units.map((u) => [u.satuan, u]))
+    expect(bySatuan.SLOP).toMatchObject({ jumlahKemasan: 10, konversi: 10 })
+    expect(bySatuan.DUS).toMatchObject({ jumlahKemasan: 5, konversi: 50 }) // re-derived relative to SLOP, not PCS
+  })
+
+  it('skips a kodeItem with no matching product', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([SATUAN_HEADER, ['GHOST', 'PCS', 1, 'PCS', 1500], ['GHOST', 'DUS', 12, 'PCS', 17000]])
+
+    const result = importSatuan(db, filePath)
+    expect(result).toEqual({ ...emptySatuanResult(), dilewatiTidakDitemukan: 1 })
+  })
+
+  it('skips when the file base satuan does not match the product current satuan', () => {
+    const db = seedDb() // BRS5, satuan PCS
+    const filePath = writeTestSheet([SATUAN_HEADER, ['BRS5', 'KG', 1, 'KG', 1500], ['BRS5', 'DUS', 12, 'KG', 17000]])
+
+    const result = importSatuan(db, filePath)
+    expect(result).toEqual({ ...emptySatuanResult(), dilewatiSatuanTidakCocok: 1 })
+
+    expect(db.select().from(productUnits).all()).toHaveLength(0)
+  })
+
+  it('skips when a relative reference cannot be resolved', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      SATUAN_HEADER,
+      ['BRS5', 'PCS', 1, 'PCS', 1500],
+      ['BRS5', 'DUS', 12, 'ENTAH', 17000], // "ENTAH" is never defined for this product
+    ])
+
+    const result = importSatuan(db, filePath)
+    expect(result).toEqual({ ...emptySatuanResult(), dilewatiRantaiTidakValid: 1 })
+  })
+
+  it('skips when a re-derived ratio is not a clean whole number', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      SATUAN_HEADER,
+      ['BRS5', 'PCS', 1, 'PCS', 1500],
+      ['BRS5', 'SLOP', 10, 'PCS', 14000],
+      ['BRS5', 'DUS', 25, 'PCS', 65000], // 25 PCS / 10 PCS-per-SLOP = 2.5 SLOP, not a whole number
+    ])
+
+    const result = importSatuan(db, filePath)
+    expect(result).toEqual({ ...emptySatuanResult(), dilewatiRantaiTidakValid: 1 })
+  })
+
+  it('is a no-op for a kodeItem with only a base row (nothing to add)', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([SATUAN_HEADER, ['BRS5', 'PCS', 1, 'PCS', 1500]])
+
+    const result = importSatuan(db, filePath)
+    expect(result).toEqual(emptySatuanResult())
+    expect(db.select().from(productUnits).all()).toHaveLength(0)
+  })
+
+  it('is idempotent: re-running updates the existing unit instead of duplicating it', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([SATUAN_HEADER, ['BRS5', 'PCS', 1, 'PCS', 1500], ['BRS5', 'DUS', 12, 'PCS', 17000]])
+
+    importSatuan(db, filePath)
+
+    const filePath2 = writeTestSheet([SATUAN_HEADER, ['BRS5', 'PCS', 1, 'PCS', 1500], ['BRS5', 'DUS', 12, 'PCS', 18000]])
+    const result = importSatuan(db, filePath2)
+
+    expect(result.satuanDitambahkan).toBe(1)
+    const units = db.select().from(productUnits).where(eq(productUnits.productId, 1)).all()
+    expect(units).toHaveLength(1)
+    expect(units[0]).toMatchObject({ hargaJual: 18000_00 })
+  })
+
+  it('locates the header row even when preceded by a title block', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['DAFTAR ITEM', '', '', '', ''],
+      ['TOKO SEMBAKO', '', '', '', ''],
+      SATUAN_HEADER,
+      ['BRS5', 'PCS', 1, 'PCS', 1500],
+      ['BRS5', 'DUS', 12, 'PCS', 17000],
+    ])
+
+    const result = importSatuan(db, filePath)
+    expect(result.produkDiperbarui).toBe(1)
+  })
+
+  it('finds headers regardless of column order', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Harga Jual', 'Qty/Paket', '', 'Satuan', 'Kode Item'],
+      [1500, 1, 'PCS', 'PCS', 'BRS5'],
+      [17000, 12, 'PCS', 'DUS', 'BRS5'],
+    ])
+
+    const result = importSatuan(db, filePath)
+    expect(result.produkDiperbarui).toBe(1)
+  })
+
+  it('returns all-zero counts when no header row is found', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Ini', 'Bukan', 'Header', 'Yang', 'Valid'],
+      ['a', 'b', 'c', 'd', 'e'],
+    ])
+
+    const result = importSatuan(db, filePath)
+    expect(result).toEqual(emptySatuanResult())
+  })
+})
+
+function emptySatuanResult() {
+  return {
+    produkDiperbarui: 0,
+    satuanDitambahkan: 0,
+    dilewatiTidakDitemukan: 0,
+    dilewatiSatuanTidakCocok: 0,
+    dilewatiRantaiTidakValid: 0,
+  }
+}
