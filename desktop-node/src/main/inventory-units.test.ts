@@ -309,6 +309,18 @@ describe('updateProductUnit', () => {
     )
   })
 
+  it('throws a friendly error (not a raw SQLite constraint error) when changing a derived unit to match the base unit', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnit } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
+
+    const [renteng] = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    expect(() =>
+      updateProductUnit(db, productId, renteng.id, { unitId: baseUnit.unitId, jumlahKemasan: 12, hargaJual: 15000_00 }),
+    ).toThrow('Satuan ini sudah dipakai untuk produk ini.')
+  })
+
   it('allows re-saving a derived unit with its own unchanged unitId', () => {
     const db = createDb(':memory:', migrationsFolder)
     const { productId } = seedProductWithUnits(db)

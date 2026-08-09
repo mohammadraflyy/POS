@@ -132,7 +132,7 @@ export function updateProductUnit(
   const derivedChain = chain.filter((u) => !u.isBaseUnit)
   const derivedIdx = derivedChain.findIndex((u) => u.id === unitRowId)
 
-  if (derivedChain.some((u, i) => i !== derivedIdx && u.unitId === input.unitId)) {
+  if (chain.some((u) => u.id !== unitRowId && u.unitId === input.unitId)) {
     throw new Error('Satuan ini sudah dipakai untuk produk ini.')
   }
 
