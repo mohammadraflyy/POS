@@ -1,82 +1,100 @@
 import { and, eq, inArray, desc } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { productUnits, productPriceTiers, productPriceHistories, users } from './db/schema'
+import { productUnits, productPriceTiers, productPriceHistories, units, users, products } from './db/schema'
 
 export interface ProductUnitRow {
   id: number
-  satuan: string
+  unitId: number
+  unitCode: string
+  unitName: string
+  unitSymbol: string
   jumlahKemasan: number
-  konversi: number
+  conversionFactor: number
   hargaJual: number
+  isBaseUnit: boolean
+  isDefaultSalesUnit: boolean
+  isDefaultPurchaseUnit: boolean
 }
 
 function unitRowSelect(db: BetterSQLite3Database<typeof schema>) {
-  return db.select({
-    id: productUnits.id,
-    satuan: productUnits.satuan,
-    jumlahKemasan: productUnits.jumlahKemasan,
-    konversi: productUnits.konversi,
-    hargaJual: productUnits.hargaJual,
-  }).from(productUnits)
+  return db
+    .select({
+      id: productUnits.id,
+      unitId: productUnits.unitId,
+      unitCode: units.code,
+      unitName: units.name,
+      unitSymbol: units.symbol,
+      jumlahKemasan: productUnits.jumlahKemasan,
+      conversionFactor: productUnits.conversionFactor,
+      hargaJual: productUnits.hargaJual,
+      isBaseUnit: productUnits.isBaseUnit,
+      isDefaultSalesUnit: productUnits.isDefaultSalesUnit,
+      isDefaultPurchaseUnit: productUnits.isDefaultPurchaseUnit,
+      productId: productUnits.productId,
+    })
+    .from(productUnits)
+    .innerJoin(units, eq(productUnits.unitId, units.id))
 }
 
 export function listProductUnits(db: BetterSQLite3Database<typeof schema>, productId: number): ProductUnitRow[] {
-  return unitRowSelect(db).where(eq(productUnits.productId, productId)).orderBy(productUnits.konversi, productUnits.id).all()
+  return unitRowSelect(db)
+    .where(eq(productUnits.productId, productId))
+    .orderBy(productUnits.conversionFactor, productUnits.id)
+    .all()
+}
+
+export function getBaseProductUnit(db: BetterSQLite3Database<typeof schema>, productId: number): ProductUnitRow {
+  const row = unitRowSelect(db).where(and(eq(productUnits.productId, productId), eq(productUnits.isBaseUnit, true))).get()
+  if (!row) {
+    throw new Error(`Produk ${productId} tidak memiliki satuan dasar.`)
+  }
+  return row
 }
 
 export interface UpsertProductUnitInput {
-  satuan: string
+  unitId: number
   jumlahKemasan: number
   hargaJual: number
 }
 
 function validateUnitInput(input: UpsertProductUnitInput): void {
-  if (!input.satuan.trim()) {
-    throw new Error('Satuan wajib diisi.')
-  }
-
-  if (input.satuan.length > 20) {
-    throw new Error('Satuan maksimal 20 karakter.')
-  }
-
-  if (!Number.isFinite(input.jumlahKemasan)) {
-    throw new Error('Jumlah kemasan wajib diisi.')
-  }
-
-  if (!Number.isInteger(input.jumlahKemasan) || input.jumlahKemasan < 1) {
+  if (!Number.isFinite(input.jumlahKemasan) || !Number.isInteger(input.jumlahKemasan) || input.jumlahKemasan < 1) {
     throw new Error('Jumlah kemasan minimal 1.')
   }
-
-  if (!Number.isFinite(input.hargaJual)) {
-    throw new Error('Harga jual wajib diisi.')
-  }
-
-  if (input.hargaJual < 0) {
-    throw new Error('Harga jual tidak boleh negatif.')
+  if (!Number.isFinite(input.hargaJual) || input.hargaJual < 0) {
+    throw new Error('Harga jual wajib diisi dan tidak boleh negatif.')
   }
 }
 
 export function addProductUnit(db: BetterSQLite3Database<typeof schema>, productId: number, input: UpsertProductUnitInput): void {
   validateUnitInput(input)
 
-  const chain = listProductUnits(db, productId)
-
-  if (chain.some((u) => u.satuan === input.satuan)) {
-    throw new Error(`Satuan "${input.satuan}" sudah ada.`)
+  const unit = db.select({ id: units.id, isActive: units.isActive }).from(units).where(eq(units.id, input.unitId)).get()
+  if (!unit || !unit.isActive) {
+    throw new Error('Satuan tidak ditemukan atau tidak aktif.')
   }
 
-  const prevKonversi = chain.length > 0 ? chain[chain.length - 1].konversi : 1
-  const konversi = input.jumlahKemasan * prevKonversi
+  const chain = listProductUnits(db, productId)
+  if (chain.some((u) => u.unitId === input.unitId)) {
+    throw new Error('Satuan ini sudah dipakai untuk produk ini.')
+  }
+
+  const derivedChain = chain.filter((u) => !u.isBaseUnit)
+  const prevConversion = derivedChain.length > 0 ? derivedChain[derivedChain.length - 1].conversionFactor : 1
+  const conversionFactor = input.jumlahKemasan * prevConversion
   const now = new Date()
 
   db.insert(productUnits)
     .values({
       productId,
-      satuan: input.satuan,
+      unitId: input.unitId,
       jumlahKemasan: input.jumlahKemasan,
-      konversi,
+      conversionFactor,
       hargaJual: input.hargaJual,
+      isBaseUnit: false,
+      isDefaultSalesUnit: false,
+      isDefaultPurchaseUnit: false,
       createdAt: now,
       updatedAt: now,
     })
@@ -86,49 +104,68 @@ export function addProductUnit(db: BetterSQLite3Database<typeof schema>, product
 export function updateProductUnit(
   db: BetterSQLite3Database<typeof schema>,
   productId: number,
-  unitId: number,
+  unitRowId: number,
   input: UpsertProductUnitInput,
 ): void {
-  validateUnitInput(input)
-
   const chain = listProductUnits(db, productId)
-  const idx = chain.findIndex((u) => u.id === unitId)
-
+  const idx = chain.findIndex((u) => u.id === unitRowId)
   if (idx === -1) {
     throw new Error('Satuan tidak ditemukan.')
   }
 
-  if (chain.some((u) => u.id !== unitId && u.satuan === input.satuan)) {
-    throw new Error(`Satuan "${input.satuan}" sudah ada.`)
-  }
-
   const now = new Date()
-  let prevKonversi = idx === 0 ? 1 : chain[idx - 1].konversi
 
-  for (let i = idx; i < chain.length; i++) {
-    const jumlahKemasan = i === idx ? input.jumlahKemasan : chain[i].jumlahKemasan
-    const satuan = i === idx ? input.satuan : chain[i].satuan
-    const hargaJual = i === idx ? input.hargaJual : chain[i].hargaJual
-    const konversi = jumlahKemasan * prevKonversi
-
-    db.update(productUnits)
-      .set({ satuan, jumlahKemasan, konversi, hargaJual, updatedAt: now })
-      .where(eq(productUnits.id, chain[i].id))
-      .run()
-
-    prevKonversi = konversi
-  }
-}
-
-export function deleteProductUnit(db: BetterSQLite3Database<typeof schema>, productId: number, unitId: number): void {
-  const chain = listProductUnits(db, productId)
-  const idx = chain.findIndex((u) => u.id === unitId)
-
-  if (idx === -1) {
+  if (chain[idx].isBaseUnit) {
+    // base unit's identity/conversion is fixed - only hargaJual can change, and it must
+    // stay mirrored onto products.hargaJual (design spec decision 2: hargaJual is a cache)
+    if (!Number.isFinite(input.hargaJual) || input.hargaJual < 0) {
+      throw new Error('Harga jual wajib diisi dan tidak boleh negatif.')
+    }
+    db.transaction((tx) => {
+      tx.update(productUnits).set({ hargaJual: input.hargaJual, updatedAt: now }).where(eq(productUnits.id, unitRowId)).run()
+      tx.update(products).set({ hargaJual: input.hargaJual, updatedAt: now }).where(eq(products.id, productId)).run()
+    })
     return
   }
 
-  const idsToDelete = chain.slice(idx).map((u) => u.id)
+  validateUnitInput(input)
+  const derivedChain = chain.filter((u) => !u.isBaseUnit)
+  const derivedIdx = derivedChain.findIndex((u) => u.id === unitRowId)
+
+  if (derivedChain.some((u, i) => i !== derivedIdx && u.unitId === input.unitId)) {
+    throw new Error('Satuan ini sudah dipakai untuk produk ini.')
+  }
+
+  let prevConversion = derivedIdx === 0 ? 1 : derivedChain[derivedIdx - 1].conversionFactor
+
+  for (let i = derivedIdx; i < derivedChain.length; i++) {
+    const jumlahKemasan = i === derivedIdx ? input.jumlahKemasan : derivedChain[i].jumlahKemasan
+    const unitId = i === derivedIdx ? input.unitId : derivedChain[i].unitId
+    const hargaJual = i === derivedIdx ? input.hargaJual : derivedChain[i].hargaJual
+    const conversionFactor = jumlahKemasan * prevConversion
+
+    db.update(productUnits)
+      .set({ unitId, jumlahKemasan, conversionFactor, hargaJual, updatedAt: now })
+      .where(eq(productUnits.id, derivedChain[i].id))
+      .run()
+
+    prevConversion = conversionFactor
+  }
+}
+
+export function deleteProductUnit(db: BetterSQLite3Database<typeof schema>, productId: number, unitRowId: number): void {
+  const chain = listProductUnits(db, productId)
+  const target = chain.find((u) => u.id === unitRowId)
+  if (!target) {
+    return
+  }
+  if (target.isBaseUnit) {
+    throw new Error('Satuan dasar tidak bisa dihapus.')
+  }
+
+  const derivedChain = chain.filter((u) => !u.isBaseUnit)
+  const idx = derivedChain.findIndex((u) => u.id === unitRowId)
+  const idsToDelete = derivedChain.slice(idx).map((u) => u.id)
   db.delete(productUnits).where(inArray(productUnits.id, idsToDelete)).run()
 }
 

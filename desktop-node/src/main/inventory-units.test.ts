@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
+import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { products, productPriceHistories, users } from './db/schema'
+import { products, productPriceHistories, users, units, productUnits } from './db/schema'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import type * as schema from './db/schema'
 import {
   listProductUnits,
+  getBaseProductUnit,
   addProductUnit,
   updateProductUnit,
   deleteProductUnit,
@@ -27,7 +31,6 @@ function seedProduct() {
       barcode: null,
       namaItem: 'Rokok A',
       categoryId: null,
-      satuan: 'Pcs',
       hargaPokok: 1000_00,
       hargaJual: 1500_00,
       stok: 100,
@@ -40,170 +43,357 @@ function seedProduct() {
   return db
 }
 
+let unitSeq = 0
+
+/** Seeds a `units` row with a unique code/name/symbol and returns its id. */
+function seedUnit(db: BetterSQLite3Database<typeof schema>, overrides: Partial<{ code: string; name: string; symbol: string }> = {}) {
+  unitSeq += 1
+  const now = new Date()
+  const unit = db
+    .insert(units)
+    .values({
+      code: overrides.code ?? `UNIT${unitSeq}`,
+      name: overrides.name ?? `Unit ${unitSeq}`,
+      symbol: overrides.symbol ?? `u${unitSeq}`,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get()
+  return unit.id
+}
+
+/**
+ * Seeds a product with a base-unit product_units row (isBaseUnit=true, conversionFactor=1),
+ * mirroring what the post-migration schema guarantees for every real product.
+ */
+function seedProductWithUnits(db: BetterSQLite3Database<typeof schema>) {
+  const now = new Date()
+  const baseUnitId = seedUnit(db, { code: 'PCS', name: 'Pcs', symbol: 'pcs' })
+
+  const product = db
+    .insert(products)
+    .values({
+      kodeItem: 'RKK1',
+      barcode: null,
+      namaItem: 'Rokok A',
+      categoryId: null,
+      hargaPokok: 1000_00,
+      hargaJual: 1500_00,
+      stok: 100,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get()
+
+  const baseRow = db
+    .insert(productUnits)
+    .values({
+      productId: product.id,
+      unitId: baseUnitId,
+      jumlahKemasan: 1,
+      conversionFactor: 1,
+      hargaJual: 1500_00,
+      isBaseUnit: true,
+      isDefaultSalesUnit: true,
+      isDefaultPurchaseUnit: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get()
+
+  const baseUnit = listProductUnits(db, product.id)[0]
+
+  return { productId: product.id, baseUnitRowId: baseRow.id, baseUnit }
+}
+
+describe('getBaseProductUnit', () => {
+  it('returns the row with isBaseUnit = true', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    const base = getBaseProductUnit(db, productId)
+    expect(base.id).toBe(baseUnitRowId)
+    expect(base.conversionFactor).toBe(1)
+  })
+
+  it('throws when the product has no base unit row', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    expect(() => getBaseProductUnit(db, 999)).toThrow('tidak memiliki satuan dasar')
+  })
+})
+
 describe('listProductUnits', () => {
-  it('returns an empty array when no derived units exist', () => {
-    const db = seedProduct()
-    expect(listProductUnits(db, 1)).toEqual([])
+  it('includes the base unit row when no derived units exist', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    const rows = listProductUnits(db, productId)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe(baseUnitRowId)
+    expect(rows[0].isBaseUnit).toBe(true)
   })
 })
 
 describe('addProductUnit', () => {
-  const validInput = { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 }
+  it('appends the first derived unit with conversionFactor equal to jumlahKemasan', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
 
-  it('appends the first unit with konversi equal to jumlahKemasan', () => {
-    const db = seedProduct()
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
 
-    addProductUnit(db, 1, validInput)
-
-    const units = listProductUnits(db, 1)
-    expect(units).toEqual([
-      { id: expect.any(Number), satuan: 'Renteng', jumlahKemasan: 12, konversi: 12, hargaJual: 15000_00 },
+    const derived = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    expect(derived).toEqual([
+      expect.objectContaining({ unitId: rentengId, jumlahKemasan: 12, conversionFactor: 12, hargaJual: 15000_00, isBaseUnit: false }),
     ])
   })
 
-  it('supports a chain longer than 2 derived units, each konversi cumulative from the one below it', () => {
-    const db = seedProduct()
+  it('supports a chain longer than 2 derived units, each conversionFactor cumulative from the one below it', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const dusId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    const pakId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
 
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 }) // 12
-    addProductUnit(db, 1, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 }) // 10 * 12 = 120
-    addProductUnit(db, 1, { satuan: 'Pak', jumlahKemasan: 5, hargaJual: 650000_00 }) // 5 * 120 = 600
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 }) // 12
+    addProductUnit(db, productId, { unitId: dusId, jumlahKemasan: 10, hargaJual: 140000_00 }) // 10 * 12 = 120
+    addProductUnit(db, productId, { unitId: pakId, jumlahKemasan: 5, hargaJual: 650000_00 }) // 5 * 120 = 600
 
-    const units = listProductUnits(db, 1)
-    expect(units.map((u) => ({ satuan: u.satuan, konversi: u.konversi }))).toEqual([
-      { satuan: 'Renteng', konversi: 12 },
-      { satuan: 'Dus', konversi: 120 },
-      { satuan: 'Pak', konversi: 600 },
+    const derived = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    expect(derived.map((u) => ({ unitId: u.unitId, conversionFactor: u.conversionFactor }))).toEqual([
+      { unitId: rentengId, conversionFactor: 12 },
+      { unitId: dusId, conversionFactor: 120 },
+      { unitId: pakId, conversionFactor: 600 },
     ])
   })
 
-  it('breaks konversi ties deterministically by insertion order (id) when jumlahKemasan is 1', () => {
-    const db = seedProduct()
+  it('breaks conversionFactor ties deterministically by insertion order (id) when jumlahKemasan is 1', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const altId = seedUnit(db, { code: 'ALT', name: 'Alt', symbol: 'alt' })
 
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 }) // konversi 12
-    addProductUnit(db, 1, { satuan: 'Alt', jumlahKemasan: 1, hargaJual: 15000_00 }) // konversi 12, ties with Renteng
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 }) // conversionFactor 12
+    addProductUnit(db, productId, { unitId: altId, jumlahKemasan: 1, hargaJual: 15000_00 }) // conversionFactor 12, ties with Renteng
 
-    const units = listProductUnits(db, 1)
-    expect(units.map((u) => u.satuan)).toEqual(['Renteng', 'Alt'])
+    const derived = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    expect(derived.map((u) => u.unitId)).toEqual([rentengId, altId])
   })
 
-  it('throws when satuan already exists for the product', () => {
-    const db = seedProduct()
-    addProductUnit(db, 1, validInput)
+  it('throws when the unit is already used for the product', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
 
-    expect(() => addProductUnit(db, 1, { ...validInput, hargaJual: 16000_00 })).toThrow('Satuan "Renteng" sudah ada.')
+    expect(() => addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 6, hargaJual: 16000_00 })).toThrow(
+      'Satuan ini sudah dipakai untuk produk ini.',
+    )
   })
 
-  it('throws when satuan is empty', () => {
-    const db = seedProduct()
-    expect(() => addProductUnit(db, 1, { ...validInput, satuan: '' })).toThrow('Satuan wajib diisi.')
+  it('throws when the unit does not exist', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    expect(() => addProductUnit(db, productId, { unitId: 999, jumlahKemasan: 12, hargaJual: 15000_00 })).toThrow(
+      'Satuan tidak ditemukan atau tidak aktif.',
+    )
   })
 
-  it('throws when satuan exceeds 20 characters', () => {
-    const db = seedProduct()
-    expect(() => addProductUnit(db, 1, { ...validInput, satuan: 'a'.repeat(21) })).toThrow('Satuan maksimal 20 karakter.')
+  it('throws when the unit is inactive', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const now = new Date()
+    const inactiveUnit = db
+      .insert(units)
+      .values({ code: 'OLD', name: 'Old', symbol: 'old', isActive: false, createdAt: now, updatedAt: now })
+      .returning()
+      .get()
+
+    expect(() => addProductUnit(db, productId, { unitId: inactiveUnit.id, jumlahKemasan: 12, hargaJual: 15000_00 })).toThrow(
+      'Satuan tidak ditemukan atau tidak aktif.',
+    )
   })
 
   it('throws when jumlahKemasan is not finite', () => {
-    const db = seedProduct()
-    expect(() => addProductUnit(db, 1, { ...validInput, jumlahKemasan: NaN })).toThrow('Jumlah kemasan wajib diisi.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    expect(() => addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: NaN, hargaJual: 15000_00 })).toThrow(
+      'Jumlah kemasan minimal 1.',
+    )
   })
 
   it('throws when jumlahKemasan is less than 1', () => {
-    const db = seedProduct()
-    expect(() => addProductUnit(db, 1, { ...validInput, jumlahKemasan: 0 })).toThrow('Jumlah kemasan minimal 1.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    expect(() => addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 0, hargaJual: 15000_00 })).toThrow(
+      'Jumlah kemasan minimal 1.',
+    )
   })
 
   it('throws when jumlahKemasan is not an integer', () => {
-    const db = seedProduct()
-    expect(() => addProductUnit(db, 1, { ...validInput, jumlahKemasan: 1.5 })).toThrow('Jumlah kemasan minimal 1.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    expect(() => addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 1.5, hargaJual: 15000_00 })).toThrow(
+      'Jumlah kemasan minimal 1.',
+    )
   })
 
   it('throws when hargaJual is not finite', () => {
-    const db = seedProduct()
-    expect(() => addProductUnit(db, 1, { ...validInput, hargaJual: NaN })).toThrow('Harga jual wajib diisi.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    expect(() => addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: NaN })).toThrow(
+      'Harga jual wajib diisi dan tidak boleh negatif.',
+    )
   })
 
   it('throws when hargaJual is negative', () => {
-    const db = seedProduct()
-    expect(() => addProductUnit(db, 1, { ...validInput, hargaJual: -1 })).toThrow('Harga jual tidak boleh negatif.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    expect(() => addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: -1 })).toThrow(
+      'Harga jual wajib diisi dan tidak boleh negatif.',
+    )
   })
 })
 
 describe('updateProductUnit', () => {
-  it('recomputes konversi for the edited unit and every unit above it, leaving units below untouched', () => {
-    const db = seedProduct()
+  it('recomputes conversionFactor for the edited unit and every unit above it, leaving units below untouched', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const dusId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    const pakId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
 
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 }) // 12
-    addProductUnit(db, 1, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 }) // 120
-    addProductUnit(db, 1, { satuan: 'Pak', jumlahKemasan: 5, hargaJual: 650000_00 }) // 600
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 }) // 12
+    addProductUnit(db, productId, { unitId: dusId, jumlahKemasan: 10, hargaJual: 140000_00 }) // 120
+    addProductUnit(db, productId, { unitId: pakId, jumlahKemasan: 5, hargaJual: 650000_00 }) // 600
 
-    const [renteng, dus] = listProductUnits(db, 1)
-    updateProductUnit(db, 1, renteng.id, { satuan: 'Renteng', jumlahKemasan: 24, hargaJual: 15000_00 })
+    const [renteng, dus] = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    updateProductUnit(db, productId, renteng.id, { unitId: rentengId, jumlahKemasan: 24, hargaJual: 15000_00 })
 
-    const units = listProductUnits(db, 1)
-    expect(units.map((u) => u.konversi)).toEqual([24, 240, 1200])
-    expect(units[1].id).toBe(dus.id)
-    expect(units[1].jumlahKemasan).toBe(10) // unchanged relative quantity
+    const derived = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    expect(derived.map((u) => u.conversionFactor)).toEqual([24, 240, 1200])
+    expect(derived[1].id).toBe(dus.id)
+    expect(derived[1].jumlahKemasan).toBe(10) // unchanged relative quantity
   })
 
   it('throws when the unit does not belong to the product', () => {
-    const db = seedProduct()
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
 
-    expect(() => updateProductUnit(db, 1, 999, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })).toThrow(
-      'Satuan tidak ditemukan.',
+    expect(() =>
+      updateProductUnit(db, productId, 999, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 }),
+    ).toThrow('Satuan tidak ditemukan.')
+  })
+
+  it('throws when changing to a unit already used by another derived row of the same product', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const dusId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
+    addProductUnit(db, productId, { unitId: dusId, jumlahKemasan: 10, hargaJual: 140000_00 })
+
+    const [renteng] = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    expect(() => updateProductUnit(db, productId, renteng.id, { unitId: dusId, jumlahKemasan: 12, hargaJual: 15000_00 })).toThrow(
+      'Satuan ini sudah dipakai untuk produk ini.',
     )
   })
 
-  it('throws when renaming to a satuan already used by another unit of the same product', () => {
-    const db = seedProduct()
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
-    addProductUnit(db, 1, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 })
+  it('allows re-saving a derived unit with its own unchanged unitId', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
 
-    const [renteng] = listProductUnits(db, 1)
-    expect(() => updateProductUnit(db, 1, renteng.id, { satuan: 'Dus', jumlahKemasan: 12, hargaJual: 15000_00 })).toThrow(
-      'Satuan "Dus" sudah ada.',
-    )
+    const [renteng] = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    expect(() =>
+      updateProductUnit(db, productId, renteng.id, { unitId: rentengId, jumlahKemasan: 20, hargaJual: 16000_00 }),
+    ).not.toThrow()
+    const derived = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    expect(derived[0]).toMatchObject({ jumlahKemasan: 20, conversionFactor: 20, hargaJual: 16000_00 })
   })
 
-  it('allows re-saving a unit with its own unchanged satuan', () => {
-    const db = seedProduct()
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
+  it('updates only hargaJual on the base unit row and syncs products.hargaJual', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId, baseUnit } = seedProductWithUnits(db)
 
-    const [renteng] = listProductUnits(db, 1)
-    expect(() => updateProductUnit(db, 1, renteng.id, { satuan: 'Renteng', jumlahKemasan: 20, hargaJual: 16000_00 })).not.toThrow()
-    expect(listProductUnits(db, 1)[0]).toMatchObject({ jumlahKemasan: 20, konversi: 20, hargaJual: 16000_00 })
+    updateProductUnit(db, productId, baseUnitRowId, { unitId: baseUnit.unitId, jumlahKemasan: 1, hargaJual: 99900 })
+
+    const base = getBaseProductUnit(db, productId)
+    expect(base.hargaJual).toBe(99900)
+    expect(base.jumlahKemasan).toBe(1)
+    expect(base.conversionFactor).toBe(1)
+    expect(base.unitId).toBe(baseUnit.unitId)
+  })
+
+  it('syncs products.hargaJual when the base unit price changes', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId, baseUnit } = seedProductWithUnits(db)
+    updateProductUnit(db, productId, baseUnitRowId, { unitId: baseUnit.unitId, jumlahKemasan: 1, hargaJual: 99900 })
+    const product = db.select().from(products).where(eq(products.id, productId)).get()
+    expect(product?.hargaJual).toBe(99900)
+  })
+
+  it('throws when updating the base unit with a negative hargaJual', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId, baseUnit } = seedProductWithUnits(db)
+    expect(() =>
+      updateProductUnit(db, productId, baseUnitRowId, { unitId: baseUnit.unitId, jumlahKemasan: 1, hargaJual: -1 }),
+    ).toThrow('Harga jual wajib diisi dan tidak boleh negatif.')
   })
 })
 
 describe('deleteProductUnit', () => {
-  it('deletes a unit with nothing above it', () => {
-    const db = seedProduct()
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
+  it('deletes a derived unit with nothing above it', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
 
-    const [renteng] = listProductUnits(db, 1)
-    deleteProductUnit(db, 1, renteng.id)
+    const [renteng] = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    deleteProductUnit(db, productId, renteng.id)
 
-    expect(listProductUnits(db, 1)).toEqual([])
+    expect(listProductUnits(db, productId).filter((u) => !u.isBaseUnit)).toEqual([])
   })
 
   it('cascades: deleting a middle unit also deletes every unit above it, leaving units below untouched', () => {
-    const db = seedProduct()
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
-    addProductUnit(db, 1, { satuan: 'Dus', jumlahKemasan: 10, hargaJual: 140000_00 })
-    addProductUnit(db, 1, { satuan: 'Pak', jumlahKemasan: 5, hargaJual: 650000_00 })
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const dusId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    const pakId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
+    addProductUnit(db, productId, { unitId: dusId, jumlahKemasan: 10, hargaJual: 140000_00 })
+    addProductUnit(db, productId, { unitId: pakId, jumlahKemasan: 5, hargaJual: 650000_00 })
 
-    const [renteng, dus] = listProductUnits(db, 1)
-    deleteProductUnit(db, 1, dus.id)
+    const [renteng, dus] = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
+    deleteProductUnit(db, productId, dus.id)
 
-    const remaining = listProductUnits(db, 1)
+    const remaining = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)
     expect(remaining).toHaveLength(1)
     expect(remaining[0].id).toBe(renteng.id)
   })
 
   it('is a no-op when the unit does not exist', () => {
-    const db = seedProduct()
-    expect(() => deleteProductUnit(db, 1, 999)).not.toThrow()
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    expect(() => deleteProductUnit(db, productId, 999)).not.toThrow()
+  })
+
+  it('throws when deleting the base unit', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    expect(() => deleteProductUnit(db, productId, baseUnitRowId)).toThrow('Satuan dasar tidak bisa dihapus.')
   })
 })
 
@@ -273,7 +463,6 @@ describe('deletePriceTier', () => {
         barcode: null,
         namaItem: 'Rokok B',
         categoryId: null,
-        satuan: 'Pcs',
         hargaPokok: 1000_00,
         hargaJual: 1500_00,
         stok: 50,
@@ -344,15 +533,18 @@ describe('listPriceHistory', () => {
 })
 
 describe('getProductDetail', () => {
-  it('bundles units, price tiers, and price history', () => {
-    const db = seedProduct()
+  it('bundles units (including the base row), price tiers, and price history', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId } = seedProductWithUnits(db)
+    const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
 
-    addProductUnit(db, 1, { satuan: 'Renteng', jumlahKemasan: 12, hargaJual: 15000_00 })
-    addPriceTier(db, 1, { minQty: 6, hargaJual: 1400_00 })
+    addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
+    addPriceTier(db, productId, { minQty: 6, hargaJual: 1400_00 })
 
-    const detail = getProductDetail(db, 1)
-    expect(detail.units).toHaveLength(1)
-    expect(detail.units[0]).toMatchObject({ satuan: 'Renteng', konversi: 12 })
+    const detail = getProductDetail(db, productId)
+    expect(detail.units).toHaveLength(2)
+    expect(detail.units.some((u) => u.isBaseUnit)).toBe(true)
+    expect(detail.units.find((u) => !u.isBaseUnit)).toMatchObject({ unitId: rentengId, conversionFactor: 12 })
     expect(detail.priceTiers).toHaveLength(1)
     expect(detail.priceHistory).toEqual([])
   })
