@@ -7,6 +7,7 @@ import { Settings } from './pages/Settings'
 import { Inventory } from './pages/Inventory'
 import { MassInput } from './pages/inventory/MassInput'
 import { Supplier } from './pages/Supplier'
+import { MasterSatuan } from './pages/MasterSatuan'
 import { Purchase } from './pages/Purchase'
 import { StockOpname } from './pages/StockOpname'
 import { Rekap } from './pages/Rekap'
@@ -25,6 +26,7 @@ export function App() {
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/inventory/mass-input" element={<MassInput />} />
         <Route path="/supplier" element={<Supplier />} />
+        <Route path="/master-satuan" element={<MasterSatuan />} />
         <Route path="/purchase" element={<Purchase />} />
         <Route path="/stock-opname" element={<StockOpname />} />
         <Route path="/rekap" element={<Rekap />} />
