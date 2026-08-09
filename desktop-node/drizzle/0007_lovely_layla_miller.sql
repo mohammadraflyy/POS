@@ -36,21 +36,26 @@ CREATE TABLE `__new_product_units` (
 INSERT INTO `__new_product_units` (`id`, `product_id`, `unit_id`, `jumlah_kemasan`, `conversion_factor`, `harga_jual`, `is_base_unit`, `is_default_sales_unit`, `is_default_purchase_unit`, `created_at`, `updated_at`)
 SELECT pu.id, pu.product_id, u.id, pu.jumlah_kemasan, pu.konversi, pu.harga_jual, 0, 0, 0, pu.created_at, pu.updated_at
 FROM product_units pu
-JOIN units u ON u.code = UPPER(TRIM(pu.satuan));--> statement-breakpoint
+LEFT JOIN units u ON u.code = UPPER(TRIM(pu.satuan));--> statement-breakpoint
 -- A derived row may already use the product's own base satuan (the old (product_id, satuan)
 -- unique index never prevented it). Promote it instead of inserting a colliding base row,
--- which would violate the new (product_id, unit_id) unique index.
+-- which would violate the new (product_id, unit_id) unique index. harga_jual has to be reset to
+-- the product's own price too: the derived row was priced per konversi units, not per base unit.
 UPDATE `__new_product_units`
-SET `is_base_unit` = 1, `is_default_sales_unit` = 1, `is_default_purchase_unit` = 1, `jumlah_kemasan` = 1, `conversion_factor` = 1
+SET `is_base_unit` = 1, `is_default_sales_unit` = 1, `is_default_purchase_unit` = 1, `jumlah_kemasan` = 1, `conversion_factor` = 1,
+    `harga_jual` = (SELECT p.harga_jual FROM products p WHERE p.id = `__new_product_units`.`product_id`)
 WHERE `unit_id` = (
   SELECT u.id FROM products p JOIN units u ON u.code = UPPER(TRIM(p.satuan))
   WHERE p.id = `__new_product_units`.`product_id`
 );--> statement-breakpoint
 -- One base-unit row per product (conversion_factor = 1), for every product not already covered above.
+-- Both inserts LEFT JOIN on purpose: a satuan with no units row yields NULL unit_id and aborts the
+-- transaction on the NOT NULL constraint, rather than silently dropping (and losing the id of) a row
+-- that sale_items/purchase_items may still reference.
 INSERT INTO `__new_product_units` (`product_id`, `unit_id`, `jumlah_kemasan`, `conversion_factor`, `harga_jual`, `is_base_unit`, `is_default_sales_unit`, `is_default_purchase_unit`, `created_at`, `updated_at`)
 SELECT p.id, u.id, 1, 1, p.harga_jual, 1, 1, 1, unixepoch(), unixepoch()
 FROM products p
-JOIN units u ON u.code = UPPER(TRIM(p.satuan))
+LEFT JOIN units u ON u.code = UPPER(TRIM(p.satuan))
 WHERE NOT EXISTS (
   SELECT 1 FROM `__new_product_units` n WHERE n.product_id = p.id AND n.unit_id = u.id
 );--> statement-breakpoint

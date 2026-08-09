@@ -184,8 +184,34 @@ describe('createDb', () => {
       [2, 'KG', 1, 1], // whitespace/case variant resolves to the same units row
       [3, 'PAK', 1, 1], // pre-existing derived row promoted to base
     ])
-    // Base rows carry the product's harga_jual; promoted rows keep their own price.
+    // Every base row is priced per base unit, i.e. products.harga_jual — including the promoted
+    // row, whose old price (4000000) was for a pack of 6, not for one base unit.
     expect(rows.find((r) => r.product_id === 1 && r.is_base_unit === 1)?.harga_jual).toBe(150000)
+    expect(rows.find((r) => r.product_id === 3 && r.is_base_unit === 1)?.harga_jual).toBe(700000)
     expect(rows.find((r) => r.product_id === 3)?.id).toBe(3)
+  })
+
+  it('aborts rather than silently dropping a product_units row whose satuan resolves to no unit', () => {
+    // No cleanup() here: createDb throws before it can return the handle, so the sqlite file stays
+    // open and Windows refuses to remove the directory. The OS temp dir takes care of it.
+    const { partialFolder, dbFile } = partialMigrationsBefore('0007_lovely_layla_miller')
+
+    const partialDb = createDb(dbFile, partialFolder)
+    partialDb.run(sql`INSERT INTO products (id, kode_item, nama_item, satuan, harga_pokok, harga_jual, stok, is_active, created_at, updated_at)
+      VALUES (1, 'P1', 'Rokok A', 'Pcs', 100000, 150000, 100, 1, unixepoch(), unixepoch())`)
+    // Blank satuan never gets a units row (0006/0007 skip it), so the backfill must fail loudly:
+    // silently dropping this row would free its id for reuse and re-attach stale sale_items to it.
+    partialDb.run(sql`INSERT INTO product_units (id, product_id, satuan, jumlah_kemasan, konversi, harga_jual, created_at, updated_at)
+      VALUES (1, 1, '   ', 12, 12, 1500000, unixepoch(), unixepoch())`)
+    partialDb.$client.close()
+
+    let cause = ''
+    try {
+      createDb(dbFile, migrationsFolder)
+    } catch (error) {
+      cause = String((error as { cause?: Error }).cause?.message ?? error)
+    }
+
+    expect(cause).toMatch(/NOT NULL constraint failed: __new_product_units.unit_id/)
   })
 })
