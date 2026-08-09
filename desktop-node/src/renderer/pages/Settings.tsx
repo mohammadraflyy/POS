@@ -7,10 +7,31 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Heading } from '@/components/heading'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useAppearance, type Appearance as AppearanceMode } from '@/hooks/use-appearance'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Pengaturan' }]
+
+function AppearanceSetting() {
+  const { appearance, updateAppearance } = useAppearance()
+
+  return (
+    <div className="grid max-w-lg gap-2">
+      <Label htmlFor="appearance">Tema</Label>
+      <Select value={appearance} onValueChange={(v) => updateAppearance(v as AppearanceMode)}>
+        <SelectTrigger id="appearance" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="light">Terang</SelectItem>
+          <SelectItem value="dark">Gelap</SelectItem>
+          <SelectItem value="system">Ikuti Sistem</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
 
 function TestScan() {
   const [lastScan, setLastScan] = useState<{ code: string; at: string } | null>(null)
@@ -114,6 +135,66 @@ function TestPrint() {
         <Printer className="size-4" />
         Test Print
       </Button>
+    </div>
+  )
+}
+
+function PurgeToday() {
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const { confirm, ConfirmDialog } = useConfirm()
+
+  async function purge() {
+    const ok = await confirm({
+      title: 'Hapus Transaksi Hari Ini',
+      description:
+        'Semua transaksi hari ini akan dihapus permanen dan stok yang terjual dikembalikan. Transaksi Bon yang sudah ada pembayarannya akan dilewati. Tindakan ini tidak bisa dibatalkan.',
+      confirmLabel: 'Hapus Permanen',
+      destructive: true,
+    })
+
+    if (!ok) {
+      return
+    }
+
+    setProcessing(true)
+    setError(null)
+    setMessage(null)
+
+    try {
+      const result = await window.api.kasir.purgeTodaySales()
+      setMessage(
+        result.skipped > 0
+          ? `${result.deleted} transaksi dihapus, ${result.skipped} dilewati (sudah ada pembayaran bon).`
+          : `${result.deleted} transaksi dihapus.`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menghapus transaksi')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-destructive/50 p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Hapus Transaksi Hari Ini</p>
+        <p className="text-sm text-muted-foreground">
+          Hapus permanen semua transaksi hari ini dan kembalikan stoknya - cocok buat bersihkan transaksi tes atau salah
+          input. Transaksi Bon yang sudah dibayar sebagian dilewati.
+        </p>
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {message && <p className="text-sm text-muted-foreground">{message}</p>}
+      <Button type="button" variant="destructive" disabled={processing} onClick={purge}>
+        Hapus Transaksi Hari Ini
+      </Button>
+      {ConfirmDialog}
     </div>
   )
 }
@@ -251,6 +332,11 @@ export function Settings() {
         <h1 className="text-xl font-semibold">Pengaturan</h1>
 
         <div className="space-y-6">
+          <Heading variant="small" title="Tampilan" description="Pilih tema terang, gelap, atau ikuti pengaturan sistem" />
+          <AppearanceSetting />
+        </div>
+
+        <div className="space-y-6">
           <Heading variant="small" title="Toko" description="Nama, alamat, dan pesan yang tampil di struk serta sidebar aplikasi" />
 
           <form onSubmit={submit} className="max-w-lg space-y-4">
@@ -321,6 +407,7 @@ export function Settings() {
 
         <div className="space-y-6">
           <Heading variant="small" title="Zona Berbahaya" description="Tindakan permanen yang tidak bisa dibatalkan" />
+          <PurgeToday />
           <PurgeHistory />
         </div>
       </div>
