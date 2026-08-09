@@ -343,6 +343,12 @@ declare global {
           }[]
         }>
       }
+      masterSatuan: {
+        list: () => Promise<{ id: number; code: string; name: string; symbol: string; isActive: boolean }[]>
+        create: (input: { code: string; name: string; symbol: string }) => Promise<void>
+        update: (id: number, input: { code: string; name: string; symbol: string; isActive: boolean }) => Promise<void>
+        deactivate: (id: number) => Promise<void>
+      }
     }
   }
 }

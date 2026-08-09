@@ -129,6 +129,13 @@ const api = {
   dashboard: {
     getDashboard: () => invoke('dashboard:getDashboard'),
   },
+  masterSatuan: {
+    list: () => invoke('master-satuan:list'),
+    create: (input: { code: string; name: string; symbol: string }) => invoke('master-satuan:create', input),
+    update: (id: number, input: { code: string; name: string; symbol: string; isActive: boolean }) =>
+      invoke('master-satuan:update', id, input),
+    deactivate: (id: number) => invoke('master-satuan:deactivate', id),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

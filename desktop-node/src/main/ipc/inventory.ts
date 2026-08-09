@@ -13,6 +13,7 @@ import {
   type ProductUnitRow,
 } from '../inventory-units'
 import { getProductsByIds, bulkSaveProducts, importProducts, importSatuan, type BulkSaveRow } from '../inventory-bulk'
+import { listUnits, createUnit, updateUnit, deactivateUnit } from '../master-satuan'
 import { getCurrentUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -319,5 +320,40 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     return importSatuan(db, result.filePaths[0])
+  })
+
+  ipcMain.handle('master-satuan:list', () => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    return listUnits(db)
+  })
+
+  ipcMain.handle('master-satuan:create', (_event, input: { code: string; name: string; symbol: string }) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    createUnit(db, input)
+  })
+
+  ipcMain.handle(
+    'master-satuan:update',
+    (_event, id: number, input: { code: string; name: string; symbol: string; isActive: boolean }) => {
+      if (!getCurrentUser()) {
+        throw new Error('Silakan login terlebih dahulu.')
+      }
+
+      updateUnit(db, id, input)
+    },
+  )
+
+  ipcMain.handle('master-satuan:deactivate', (_event, id: number) => {
+    if (!getCurrentUser()) {
+      throw new Error('Silakan login terlebih dahulu.')
+    }
+
+    deactivateUnit(db, id)
   })
 }
