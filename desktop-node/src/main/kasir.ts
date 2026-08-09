@@ -1,10 +1,11 @@
 import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings } from './db/schema'
+import { products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, storeSettings } from './db/schema'
 
 export interface PriceTier {
   minQty: number
+  maxQty: number | null
   hargaJual: number
 }
 
@@ -19,7 +20,6 @@ export function priceForQty(priceTiers: PriceTier[], hargaJualDasar: number, qty
 export interface ProductRow {
   id: number
   namaItem: string
-  satuan: string
   hargaJual: number
   hargaPokok: number
   stok: number
@@ -27,46 +27,36 @@ export interface ProductRow {
 
 export interface ProductUnitRow {
   id: number
-  satuan: string
-  konversi: number
+  unitId: number
+  unitCode: string
+  conversionFactor: number
   hargaJual: number
 }
 
 export interface ResolvedItem {
   productId: number
-  productUnitId: number | null
+  productUnitId: number
   satuan: string
   konversi: number
   hargaJual: number
   hargaPokok: number
   qty: number
   qtyDasar: number
+  priceSource: 'normal' | 'price_tier'
 }
 
 export function resolveCartItem(
   product: ProductRow,
-  productUnit: ProductUnitRow | null,
+  productUnit: ProductUnitRow,
   priceTiers: PriceTier[],
   qty: number,
 ): ResolvedItem {
-  let satuan: string
-  let konversi: number
-  let hargaJual: number
-  let productUnitId: number | null
+  const normalPrice = productUnit.hargaJual
+  const tier = priceTiers.find((t) => qty >= t.minQty && (t.maxQty === null || qty <= t.maxQty))
+  const hargaJual = tier?.hargaJual ?? normalPrice
+  const priceSource: 'normal' | 'price_tier' = tier ? 'price_tier' : 'normal'
 
-  if (productUnit) {
-    satuan = productUnit.satuan
-    konversi = productUnit.konversi
-    hargaJual = productUnit.hargaJual
-    productUnitId = productUnit.id
-  } else {
-    satuan = product.satuan
-    konversi = 1
-    hargaJual = priceForQty(priceTiers, product.hargaJual, qty)
-    productUnitId = null
-  }
-
-  const qtyDasar = qty * konversi
+  const qtyDasar = qty * productUnit.conversionFactor
 
   if (product.stok < qtyDasar) {
     throw new Error(`Stok ${product.namaItem} tidak cukup.`)
@@ -74,13 +64,14 @@ export function resolveCartItem(
 
   return {
     productId: product.id,
-    productUnitId,
-    satuan,
-    konversi,
+    productUnitId: productUnit.id,
+    satuan: productUnit.unitCode,
+    konversi: productUnit.conversionFactor,
     hargaJual,
     hargaPokok: product.hargaPokok,
     qty,
     qtyDasar,
+    priceSource,
   }
 }
 
@@ -122,7 +113,20 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   const productRows = db.select().from(products).where(inArray(products.id, productIds)).all()
   const productsById = new Map(productRows.map((product) => [product.id, product]))
 
-  const unitRows = db.select().from(productUnits).where(inArray(productUnits.productId, productIds)).all()
+  const unitRows = db
+    .select({
+      id: productUnits.id,
+      productId: productUnits.productId,
+      unitId: productUnits.unitId,
+      unitCode: units.code,
+      conversionFactor: productUnits.conversionFactor,
+      hargaJual: productUnits.hargaJual,
+      isBaseUnit: productUnits.isBaseUnit,
+    })
+    .from(productUnits)
+    .innerJoin(units, eq(productUnits.unitId, units.id))
+    .where(inArray(productUnits.productId, productIds))
+    .all()
   const tierRows = db
     .select()
     .from(productPriceTiers)
@@ -139,18 +143,23 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
       throw new Error('Produk tidak ditemukan.')
     }
 
-    let unit: ProductUnitRow | null = null
-    if (item.productUnitId) {
-      const found = unitRows.find((row) => row.id === item.productUnitId && row.productId === product.id)
-      if (!found) {
-        throw new Error(`Satuan tidak valid untuk ${product.namaItem}.`)
-      }
-      unit = { id: found.id, satuan: found.satuan, konversi: found.konversi, hargaJual: found.hargaJual }
+    const unit = item.productUnitId
+      ? unitRows.find((row) => row.id === item.productUnitId && row.productId === product.id)
+      : unitRows.find((row) => row.productId === product.id && row.isBaseUnit)
+
+    if (!unit) {
+      throw new Error(`Satuan tidak valid untuk ${product.namaItem}.`)
     }
 
-    const tiers: PriceTier[] = tierRows
-      .filter((row) => row.productId === product.id)
-      .map((row) => ({ minQty: row.minQty, hargaJual: row.hargaJual }))
+    // ponytail: product_price_tiers still keys off productId with no maxQty, so tiers
+    // are base-unit-only open-ended ranges and the highest satisfied minQty must win.
+    // Task 7 adds productUnitId/maxQty; this becomes `.filter(row => row.productUnitId === unit.id)`.
+    const tiers: PriceTier[] = unit.isBaseUnit
+      ? tierRows
+          .filter((row) => row.productId === product.id)
+          .map((row) => ({ minQty: row.minQty, maxQty: null, hargaJual: row.hargaJual }))
+          .sort((a, b) => b.minQty - a.minQty)
+      : []
 
     const resolved = resolveCartItem(product, unit, tiers, item.qty)
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
