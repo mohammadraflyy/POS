@@ -104,13 +104,101 @@ describe('createDb', () => {
     expect(row?.productUnitId).toBe(1)
   })
 
-  it('seeds the units table from every distinct satuan string already in products/product_units', () => {
+  it('seeds the units table from every distinct satuan string already in products/product_units, deduping case/whitespace variants', () => {
     const migrationsFolder = path.resolve(__dirname, '../../../drizzle')
-    const db = createDb(':memory:', migrationsFolder)
-    const seeded = db.select().from(units).all()
-    const codes = seeded.map((u) => u.code)
-    // dev fixtures / prior migrations seed at least PCS via products.satuan in other tests -
-    // assert the table exists and dedup works, not exact contents (varies by fixture data)
-    expect(new Set(codes).size).toBe(codes.length)
+
+    // Migration 0006 backfills units from products/product_units satuan.
+    // To exercise backfill logic, seed data on a database migrated only up to 0005,
+    // then reopen it through the full migrations folder so 0006 runs against a database
+    // that already has product/product_units rows with case/whitespace variants in satuan.
+    const journal = JSON.parse(fs.readFileSync(path.join(migrationsFolder, 'meta/_journal.json'), 'utf-8')) as {
+      entries: { tag: string }[]
+    }
+    const backfillIndex = journal.entries.findIndex((e) => e.tag === '0006_robust_daimon_hellstrom')
+    const priorEntries = journal.entries.slice(0, backfillIndex)
+
+    const partialFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'pos-units-backfill-partial-'))
+    fs.mkdirSync(path.join(partialFolder, 'meta'))
+    fs.writeFileSync(path.join(partialFolder, 'meta/_journal.json'), JSON.stringify({ ...journal, entries: priorEntries }))
+    for (const entry of priorEntries) {
+      fs.copyFileSync(path.join(migrationsFolder, `${entry.tag}.sql`), path.join(partialFolder, `${entry.tag}.sql`))
+    }
+
+    const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pos-units-backfill-db-'))
+    const dbFile = path.join(dbDir, 'test.db')
+    const now = new Date()
+
+    // Seed products and product_units with case/whitespace variants
+    const partialDb = createDb(dbFile, partialFolder)
+    partialDb
+      .insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'TEST1',
+        barcode: null,
+        namaItem: 'Test Product 1',
+        categoryId: null,
+        satuan: 'Pcs',
+        hargaPokok: 1000_00,
+        hargaJual: 1500_00,
+        stok: 100,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+    partialDb
+      .insert(productUnits)
+      .values({
+        id: 1,
+        productId: 1,
+        satuan: 'PCS',
+        jumlahKemasan: 12,
+        konversi: 12,
+        hargaJual: 15000_00,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+    partialDb
+      .insert(products)
+      .values({
+        id: 2,
+        kodeItem: 'TEST2',
+        barcode: null,
+        namaItem: 'Test Product 2',
+        categoryId: null,
+        satuan: '  BOX  ',
+        hargaPokok: 2000_00,
+        hargaJual: 3000_00,
+        stok: 50,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+    partialDb.$client.close()
+
+    // Reopen with full migrations; 0006 backfill runs against existing product data
+    const fullDb = createDb(dbFile, migrationsFolder)
+    const rows = fullDb.select().from(units).all()
+    const rowsByCode = rows.reduce(
+      (acc, row) => {
+        acc[row.code] = row
+        return acc
+      },
+      {} as Record<string, (typeof rows)[0]>,
+    )
+    fullDb.$client.close()
+
+    fs.rmSync(partialFolder, { recursive: true, force: true })
+    fs.rmSync(dbDir, { recursive: true, force: true })
+
+    // Assert dedup: PCS (from case variants) and BOX (from whitespace variant) both exist and are unique
+    expect(Object.keys(rowsByCode).sort()).toEqual(['BOX', 'PCS'])
+    expect(rowsByCode['PCS']?.name).toBe('PCS') // MIN(TRIM) picks lexicographically first
+    expect(rowsByCode['PCS']?.symbol).toBe('pcs')
+    expect(rowsByCode['BOX']?.name).toBe('BOX')
+    expect(rowsByCode['BOX']?.symbol).toBe('box')
   })
 })

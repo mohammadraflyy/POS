@@ -11,11 +11,12 @@ CREATE TABLE `units` (
 CREATE UNIQUE INDEX `units_code_unique` ON `units` (`code`);
 --> statement-breakpoint
 INSERT INTO units (code, name, symbol, is_active, created_at, updated_at)
-SELECT DISTINCT UPPER(TRIM(satuan)), TRIM(satuan), LOWER(TRIM(satuan)), 1, unixepoch(), unixepoch()
+SELECT UPPER(TRIM(satuan)), MIN(TRIM(satuan)), LOWER(MIN(TRIM(satuan))), 1, unixepoch(), unixepoch()
 FROM (
   SELECT satuan FROM products
   UNION
   SELECT satuan FROM product_units
 ) AS all_satuan
 WHERE TRIM(satuan) != ''
-  AND UPPER(TRIM(satuan)) NOT IN (SELECT code FROM units);
+GROUP BY UPPER(TRIM(satuan))
+HAVING UPPER(TRIM(satuan)) NOT IN (SELECT code FROM units);
