@@ -195,8 +195,12 @@ export function PaymentDialog({
             <Input
               id="nama_pelanggan"
               autoFocus={metode === 'bon'}
+              placeholder={metode === 'bon' ? 'Wajib diisi' : undefined}
               value={namaPelanggan}
               disabled={processing || printing}
+              // the field arrives prefilled with the walk-in default, so typing
+              // should replace it instead of appending to it
+              onFocus={(e) => e.target.select()}
               onChange={(e) => setNamaPelanggan(e.target.value)}
               className="h-16 text-xl"
             />

@@ -47,7 +47,16 @@ interface KasirDraft {
   jumlah: string
 }
 
-const EMPTY_DRAFT: KasirDraft = { cart: [], metode: 'tunai', namaPelanggan: '', dibayar: '', jumlah: '1.00' }
+/** walk-in customer - stands in whenever the cashier does not type a name */
+const DEFAULT_PELANGGAN = 'UMUM'
+
+const EMPTY_DRAFT: KasirDraft = {
+  cart: [],
+  metode: 'tunai',
+  namaPelanggan: DEFAULT_PELANGGAN,
+  dibayar: '',
+  jumlah: '1.00',
+}
 
 function readStoredDraft(): KasirDraft {
   try {
@@ -62,7 +71,7 @@ function readStoredDraft(): KasirDraft {
     return {
       cart: Array.isArray(parsed.cart) ? parsed.cart : [],
       metode: parsed.metode === 'bon' ? 'bon' : 'tunai',
-      namaPelanggan: typeof parsed.namaPelanggan === 'string' ? parsed.namaPelanggan : '',
+      namaPelanggan: typeof parsed.namaPelanggan === 'string' ? parsed.namaPelanggan : DEFAULT_PELANGGAN,
       dibayar: typeof parsed.dibayar === 'string' ? parsed.dibayar : '',
       jumlah: typeof parsed.jumlah === 'string' ? parsed.jumlah : EMPTY_DRAFT.jumlah,
     }
@@ -295,10 +304,23 @@ export function Kasir() {
     }
   }
 
+  // Bon debt is collected per person, so it must not be filed under the
+  // walk-in name. Switching to bon clears the default (but never a name the
+  // cashier actually typed); switching back to tunai restores it.
+  function changeMetode(next: 'tunai' | 'bon') {
+    setMetode(next)
+
+    if (next === 'bon' && namaPelanggan.trim() === DEFAULT_PELANGGAN) {
+      setNamaPelanggan('')
+    } else if (next === 'tunai' && !namaPelanggan.trim()) {
+      setNamaPelanggan(DEFAULT_PELANGGAN)
+    }
+  }
+
   function resetAfterCheckout() {
     setPaymentOpen(false)
     setCart([])
-    setNamaPelanggan('')
+    setNamaPelanggan(DEFAULT_PELANGGAN)
     setDibayar('')
   }
 
@@ -310,8 +332,10 @@ export function Kasir() {
     try {
       const sale = await window.api.kasir.checkout({
         metodePembayaran: metode,
-        // kept for tunai too - optional there, but it has to reach the struk
-        namaPelanggan: namaPelanggan.trim() || null,
+        // tunai falls back to the walk-in name so the struk is never nameless;
+        // bon must not, or an unnamed debt would silently be filed under it and
+        // the main process could never reject it
+        namaPelanggan: metode === 'bon' ? namaPelanggan.trim() || null : namaPelanggan.trim() || DEFAULT_PELANGGAN,
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
         items: cart.map((line) => ({
           productId: line.product.id,
@@ -542,7 +566,7 @@ export function Kasir() {
         onOpenChange={setPaymentOpen}
         total={total}
         metode={metode}
-        setMetode={setMetode}
+        setMetode={changeMetode}
         namaPelanggan={namaPelanggan}
         setNamaPelanggan={setNamaPelanggan}
         dibayar={dibayar}
