@@ -29,3 +29,4 @@ yarn-error.log
 /.zed
 /.superpowers
 /.playwright-mcp
+.code-graph/
