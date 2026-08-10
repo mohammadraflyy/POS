@@ -148,6 +148,11 @@
   --rdg-checkbox-focus-color: var(--ring);
   --rdg-summary-border-color: var(--border);
   --rdg-font-size: 0.875rem;
+
+  /* digits line up between rows - money, qty, stock and dates alike. Set on
+     the grid rather than per column: it only affects numerals, and every
+     money cell would otherwise need the class repeated by hand. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* the inline cell editor hardcodes #ccc / #999, the only spots the grid does

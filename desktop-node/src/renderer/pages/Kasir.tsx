@@ -549,7 +549,7 @@ export function Kasir() {
 
       <div className="flex items-center justify-between rounded-xl border p-4">
         <span className="text-muted-foreground">Total</span>
-        <span className="text-2xl font-bold">{formatRupiah(total)}</span>
+        <span className="text-3xl font-bold tabular-nums">{formatRupiah(total)}</span>
         <Button
           type="button"
           size="lg"
