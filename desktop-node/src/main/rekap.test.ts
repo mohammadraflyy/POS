@@ -123,8 +123,8 @@ describe('getStockValue', () => {
     const result = getStockValue(db)
     // Kopi: 100 * 1000_00 = 100000_00; Gula: 100 * 12000_00 = 1200000_00
     expect(result.produk).toEqual([
-      { namaItem: 'Gula Pasir', kodeItem: 'GULA1', stok: 100, hargaPokok: 12000_00, nilai: 1200000_00 },
-      { namaItem: 'Kopi Kapal Api', kodeItem: 'KOPI1', stok: 100, hargaPokok: 1000_00, nilai: 100000_00 },
+      { namaItem: 'Gula Pasir', kodeItem: 'GULA1', satuan: 'KG', stok: 100, hargaPokok: 12000_00, nilai: 1200000_00 },
+      { namaItem: 'Kopi Kapal Api', kodeItem: 'KOPI1', satuan: 'PCS', stok: 100, hargaPokok: 1000_00, nilai: 100000_00 },
     ])
     expect(result.totalNilai).toBe(1300000_00)
   })
@@ -250,7 +250,7 @@ describe('buildRekapWorkbook', () => {
     const rows = XLSX.utils.sheet_to_json(sheet, { range: 1 }) as Record<string, unknown>[]
 
     const gula = rows.find((r) => r.Produk === 'Gula Pasir')
-    expect(gula).toMatchObject({ 'Harga Pokok': 12000, Nilai: 1200000 })
+    expect(gula).toMatchObject({ Satuan: 'KG', 'Harga Pokok': 12000, Nilai: 1200000 })
   })
 
   it('writes a merged title row and auto-sized column widths on every sheet', () => {
@@ -262,8 +262,8 @@ describe('buildRekapWorkbook', () => {
     const sheet = workbook.Sheets['Nilai Stock']
 
     expect(sheet['A1'].v).toBe('Nilai Stock')
-    expect(sheet['!merges']).toEqual([{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }])
-    expect(sheet['!cols']).toHaveLength(5)
+    expect(sheet['!merges']).toEqual([{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }])
+    expect(sheet['!cols']).toHaveLength(6)
     expect(sheet['!cols']?.every((col) => (col.wch ?? 0) > 0)).toBe(true)
 
     // header row now starts at row 2 (index 1), not row 1

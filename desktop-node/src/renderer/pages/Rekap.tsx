@@ -43,6 +43,7 @@ interface PembelianPerSupplierRow {
 interface StockValueRow {
   namaItem: string
   kodeItem: string
+  satuan: string
   stok: number
   hargaPokok: number
   nilai: number
@@ -180,6 +181,7 @@ export function Rekap() {
     { key: 'kodeItem', name: 'Kode', width: 100 },
     { key: 'namaItem', name: 'Produk' },
     { key: 'stok', name: 'Stok', width: 90 },
+    { key: 'satuan', name: 'Satuan', width: 90 },
     {
       key: 'hargaPokok',
       name: 'Harga Pokok',

@@ -37,6 +37,7 @@ export interface PembelianPerSupplierRow {
 export interface StockValueRow {
   namaItem: string
   kodeItem: string
+  satuan: string
   stok: number
   hargaPokok: number
   nilai: number
@@ -191,6 +192,7 @@ export function getStockValue(db: BetterSQLite3Database<typeof schema>): StockVa
     .select({
       namaItem: products.namaItem,
       kodeItem: products.kodeItem,
+      satuan: products.satuan,
       stok: products.stok,
       hargaPokok: products.hargaPokok,
     })
@@ -295,11 +297,12 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
     },
     {
       name: 'Nilai Stock',
-      headers: ['Kode Item', 'Produk', 'Stok', 'Harga Pokok', 'Nilai'],
+      headers: ['Kode Item', 'Produk', 'Stok', 'Satuan', 'Harga Pokok', 'Nilai'],
       rows: rekap.stockValue.produk.map((row) => ({
         'Kode Item': row.kodeItem,
         Produk: row.namaItem,
         Stok: row.stok,
+        Satuan: row.satuan,
         'Harga Pokok': toRupiahExport(row.hargaPokok),
         Nilai: toRupiahExport(row.nilai),
       })),

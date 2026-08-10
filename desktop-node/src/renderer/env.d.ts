@@ -308,7 +308,7 @@ declare global {
           pembelianPerSupplier: { supplierName: string; totalPembelian: number }[]
           stockValue: {
             totalNilai: number
-            produk: { namaItem: string; kodeItem: string; stok: number; hargaPokok: number; nilai: number }[]
+            produk: { namaItem: string; kodeItem: string; satuan: string; stok: number; hargaPokok: number; nilai: number }[]
           }
           salesHistory: {
             id: number
