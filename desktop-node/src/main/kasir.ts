@@ -256,6 +256,31 @@ export function cancelSale(db: Db, saleId: number): void {
   })
 }
 
+export function deleteSale(db: Db, saleId: number): void {
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  const hasBonPayment = db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).get()
+
+  if (hasBonPayment) {
+    throw new Error('Tidak bisa menghapus, bon sudah ada pembayaran.')
+  }
+
+  const items = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+
+  db.transaction((tx) => {
+    // a cancelled sale already gave its stock back
+    if (sale.status !== 'dibatalkan') {
+      restoreStockForItems(tx, items)
+    }
+
+    tx.delete(sales).where(eq(sales.id, saleId)).run()
+  })
+}
+
 export function purgeTodaySales(db: Db): { deleted: number; skipped: number } {
   const startOfToday = new Date()
   startOfToday.setHours(0, 0, 0, 0)

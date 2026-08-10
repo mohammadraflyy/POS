@@ -31,7 +31,7 @@ interface SaleHistoryRow {
   items: SaleHistoryItem[]
 }
 
-const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 300
+const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 380
 const MIN_ITEM_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -99,6 +99,26 @@ export function KasirHistory() {
     }
   }
 
+  async function deleteSale(sale: SaleHistoryRow) {
+    const warning =
+      sale.status === 'dibatalkan'
+        ? 'Hapus permanen transaksi ini? Data tidak bisa dikembalikan.'
+        : 'Hapus permanen transaksi ini? Stok akan dikembalikan dan data tidak bisa dikembalikan.'
+
+    if (!confirm(warning)) {
+      return
+    }
+
+    setError(null)
+
+    try {
+      await window.api.kasir.deleteSale(sale.id)
+      loadPage(currentPage)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menghapus')
+    }
+  }
+
   async function printSale(saleId: number) {
     setError(null)
 
@@ -163,7 +183,7 @@ export function KasirHistory() {
     {
       key: 'aksi',
       name: '',
-      width: 300,
+      width: 380,
       renderCell: ({ row }) => (
         <div className="flex items-center gap-2">
           {row.metodePembayaran === 'bon' && row.status === 'selesai' && row.total - row.dibayar > 0 && (
@@ -178,6 +198,9 @@ export function KasirHistory() {
           )}
           <Button variant="outline" size="sm" onClick={() => printSale(row.id)}>
             Cetak
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => deleteSale(row)}>
+            Hapus
           </Button>
         </div>
       ),

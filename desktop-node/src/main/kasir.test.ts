@@ -4,7 +4,7 @@ import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
 import { users, products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings } from './db/schema'
-import { checkout, type CheckoutInput, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, purgeTodaySales } from './kasir'
+import { checkout, type CheckoutInput, cancelSale, deleteSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, purgeTodaySales } from './kasir'
 
 describe('priceForQty', () => {
   it('falls back to the base price when there are no tiers', () => {
@@ -553,6 +553,89 @@ describe('cancelSale', () => {
   it('throws when the sale does not exist', () => {
     const { db } = seedDbWithOneSale()
     expect(() => cancelSale(db, 999)).toThrow('Transaksi tidak ditemukan.')
+  })
+})
+
+describe('deleteSale', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedDbWithOneSale() {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({
+        id: 1,
+        username: 'kasir1',
+        passwordHash: 'hash',
+        name: 'Kasir Satu',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        satuan: 'PCS',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 5,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 400000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 5 }],
+    })
+
+    return { db, saleId: result.saleId }
+  }
+
+  it('restores stock and removes the sale with its items', () => {
+    const { db, saleId } = seedDbWithOneSale()
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(0)
+
+    deleteSale(db, saleId)
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(5)
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeUndefined()
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(0)
+  })
+
+  it('does not restore stock twice when the sale was already cancelled', () => {
+    const { db, saleId } = seedDbWithOneSale()
+
+    cancelSale(db, saleId)
+    deleteSale(db, saleId)
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(5)
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeUndefined()
+  })
+
+  it('throws when the sale has bon payments recorded', () => {
+    const { db, saleId } = seedDbWithOneSale()
+    const now = new Date()
+
+    db.insert(bonPayments)
+      .values({ saleId, jumlah: 10000_00, tanggal: '2026-08-06', createdAt: now, updatedAt: now })
+      .run()
+
+    expect(() => deleteSale(db, saleId)).toThrow('Tidak bisa menghapus, bon sudah ada pembayaran.')
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeDefined()
+  })
+
+  it('throws when the sale does not exist', () => {
+    const { db } = seedDbWithOneSale()
+    expect(() => deleteSale(db, 999)).toThrow('Transaksi tidak ditemukan.')
   })
 })
 

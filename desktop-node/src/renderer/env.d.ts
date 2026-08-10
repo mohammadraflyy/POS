@@ -51,6 +51,7 @@ declare global {
           items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
         }>
         cancelSale: (saleId: number) => Promise<void>
+        deleteSale: (saleId: number) => Promise<void>
         getStoreSettings: () => Promise<{
           namaToko: string
           alamat: string | null
