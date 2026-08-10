@@ -60,7 +60,7 @@ function toDraftRow(product: ProductRow): DraftRow {
   }
 }
 
-const OTHER_COLUMNS_WIDTH = 50 + 110 + 130 + 130 + 90 + 110 + 110 + 90 + 90 + 170 + 70
+const OTHER_COLUMNS_WIDTH = 50 + 60 + 110 + 130 + 130 + 90 + 110 + 110 + 90 + 90 + 170 + 70
 const MIN_NAMA_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Katalog Produk', href: '/inventory' }]
@@ -367,6 +367,15 @@ export function Inventory() {
 
   const columns: Column<DraftRow>[] = [
     SelectColumn,
+    {
+      key: 'no',
+      name: 'No',
+      width: 60,
+      // numbering runs across pages, so page 2 of 20 starts at 21
+      renderCell: ({ rowIdx }) => (
+        <span className="text-muted-foreground">{(currentPage - 1) * Number(pageSize) + rowIdx + 1}</span>
+      ),
+    },
     textColumn('kodeItem', 'Kode Item', 110),
     textColumn('barcode', 'Barcode', 130),
     textColumn('namaItem', 'Nama', namaWidth),
