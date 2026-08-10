@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { addLine, applyQty, changeUnit, lineKey, unitKonversi, unitPrice, type CartLine, type Product } from './cart-logic'
+import {
+  addLine,
+  applyQty,
+  changeUnit,
+  lineKey,
+  restoreCart,
+  toStoredCart,
+  unitKonversi,
+  unitPrice,
+  type CartLine,
+  type Product,
+} from './cart-logic'
 
 const product: Product = {
   id: 1,
@@ -68,6 +79,48 @@ describe('addLine', () => {
   it('falls back to 1 for a zero or negative qty', () => {
     expect(addLine([], product, 0)).toEqual([{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }])
     expect(addLine([], product, -3)).toEqual([{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }])
+  })
+})
+
+describe('toStoredCart / restoreCart', () => {
+  it('round-trips a cart through the stored shape', () => {
+    const cart: CartLine[] = [
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 0.25 },
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2 },
+    ]
+
+    expect(restoreCart(toStoredCart(cart), [product])).toEqual(cart)
+  })
+
+  it('rebuilds satuan and product from the catalog rather than the stored line', () => {
+    const renamed: Product = {
+      ...product,
+      namaItem: 'Beras 5kg Premium',
+      hargaJual: 70000,
+      productUnits: [{ id: 9, satuan: 'KARTON', konversi: 12, hargaJual: 750000 }],
+    }
+
+    const result = restoreCart([{ productId: 1, productUnitId: 9, qty: 2 }], [renamed])
+
+    expect(result).toEqual([{ key: lineKey(1, 9), product: renamed, productUnitId: 9, satuan: 'KARTON', qty: 2 }])
+  })
+
+  it('drops lines whose product, satuan or qty is no longer valid', () => {
+    const withoutUnits: Product = { ...product, productUnits: [] }
+
+    const result = restoreCart(
+      [
+        { productId: 2, productUnitId: null, qty: 1 },
+        { productId: 1, productUnitId: 9, qty: 1 },
+        { productId: 1, productUnitId: null, qty: 0 },
+        { productId: 1, productUnitId: null, qty: 3 },
+      ],
+      [withoutUnits],
+    )
+
+    expect(result).toEqual([
+      { key: lineKey(1, null), product: withoutUnits, productUnitId: null, satuan: 'PCS', qty: 3 },
+    ])
   })
 })
 

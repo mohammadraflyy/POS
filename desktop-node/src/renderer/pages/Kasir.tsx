@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
@@ -12,7 +13,17 @@ import type { BreadcrumbItem } from '../types'
 import { CartGrid } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
-import { addLine, applyQty, changeUnit, unitPrice, type CartLine, type Product } from './kasir/cart-logic'
+import {
+  addLine,
+  applyQty,
+  changeUnit,
+  restoreCart,
+  toStoredCart,
+  unitPrice,
+  type CartLine,
+  type Product,
+  type StoredCartLine,
+} from './kasir/cart-logic'
 
 interface SaleDto {
   id: number
@@ -25,14 +36,51 @@ interface SaleDto {
 
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Penjualan', href: '/kasir' }]
 
+const DRAFT_STORAGE_KEY = 'kasir:draft'
+
+/** the whole in-progress sale, kept across navigation and app restarts */
+interface KasirDraft {
+  cart: StoredCartLine[]
+  metode: 'tunai' | 'bon'
+  namaPelanggan: string
+  dibayar: string
+  jumlah: string
+}
+
+const EMPTY_DRAFT: KasirDraft = { cart: [], metode: 'tunai', namaPelanggan: '', dibayar: '', jumlah: '1.00' }
+
+function readStoredDraft(): KasirDraft {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY)
+
+    if (!raw) {
+      return EMPTY_DRAFT
+    }
+
+    const parsed = JSON.parse(raw) as Partial<KasirDraft>
+
+    return {
+      cart: Array.isArray(parsed.cart) ? parsed.cart : [],
+      metode: parsed.metode === 'bon' ? 'bon' : 'tunai',
+      namaPelanggan: typeof parsed.namaPelanggan === 'string' ? parsed.namaPelanggan : '',
+      dibayar: typeof parsed.dibayar === 'string' ? parsed.dibayar : '',
+      jumlah: typeof parsed.jumlah === 'string' ? parsed.jumlah : EMPTY_DRAFT.jumlah,
+    }
+  } catch {
+    return EMPTY_DRAFT
+  }
+}
+
 export function Kasir() {
+  // read once, before any effect can overwrite the stored draft
+  const [initialDraft] = useState(readStoredDraft)
   const [products, setProducts] = useState<Product[]>([])
   const [salesToday, setSalesToday] = useState<SaleDto[]>([])
   const [cart, setCart] = useState<CartLine[]>([])
   const [scanError, setScanError] = useState('')
-  const [metode, setMetode] = useState<'tunai' | 'bon'>('tunai')
-  const [namaPelanggan, setNamaPelanggan] = useState('')
-  const [dibayar, setDibayar] = useState('')
+  const [metode, setMetode] = useState<'tunai' | 'bon'>(initialDraft.metode)
+  const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
+  const [dibayar, setDibayar] = useState(initialDraft.dibayar)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
@@ -41,11 +89,15 @@ export function Kasir() {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
-  const [jumlah, setJumlah] = useState('1.00')
+  const [jumlah, setJumlah] = useState(initialDraft.jumlah)
   const { resolvedAppearance } = useAppearance()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [cartWidthRef, cartGridWidth] = useElementWidth<HTMLDivElement>()
   const cartGridRef = useRef<DataGridHandle>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // the cart can only be rebuilt once the catalog is loaded, so it waits here
+  // while the rest of the draft is restored straight into state above
+  const pendingRestoreRef = useRef<StoredCartLine[]>(initialDraft.cart)
 
   useEffect(() => {
     refreshProducts()
@@ -53,10 +105,23 @@ export function Kasir() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah }
+
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
+  }, [cart, metode, namaPelanggan, dibayar, jumlah])
+
   function refreshProducts() {
     window.api.kasir
       .listProducts()
-      .then(setProducts)
+      .then((list) => {
+        setProducts(list)
+
+        if (pendingRestoreRef.current.length > 0) {
+          setCart(restoreCart(pendingRestoreRef.current, list))
+          pendingRestoreRef.current = []
+        }
+      })
       .catch(() => setError('Gagal memuat data.'))
   }
 
@@ -185,16 +250,21 @@ export function Kasir() {
     setCart((prev) => prev.filter((i) => i.key !== key))
   }
 
-  function clearCart() {
+  async function clearCart() {
     if (cart.length === 0) {
       return
     }
 
-    if (!confirm('Kosongkan keranjang?')) {
-      return
-    }
+    const confirmed = await confirm({
+      title: 'Kosongkan keranjang?',
+      description: `${cart.length} baris di keranjang akan dibuang.`,
+      confirmLabel: 'Kosongkan',
+      destructive: true,
+    })
 
-    setCart([])
+    if (confirmed) {
+      setCart([])
+    }
   }
 
   function handleCartRowsChange(newRows: CartLine[], { indexes }: RowsChangeData<CartLine>) {
@@ -240,7 +310,8 @@ export function Kasir() {
     try {
       const sale = await window.api.kasir.checkout({
         metodePembayaran: metode,
-        namaPelanggan: metode === 'bon' ? namaPelanggan : null,
+        // kept for tunai too - optional there, but it has to reach the struk
+        namaPelanggan: namaPelanggan.trim() || null,
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
         items: cart.map((line) => ({
           productId: line.product.id,
@@ -310,6 +381,17 @@ export function Kasir() {
   }, [printingSaleId])
 
   async function handleCancel(saleId: number) {
+    const confirmed = await confirm({
+      title: 'Batalkan transaksi?',
+      description: `Transaksi #${saleId} akan ditandai dibatalkan dan stoknya dikembalikan.`,
+      confirmLabel: 'Batalkan',
+      destructive: true,
+    })
+
+    if (!confirmed) {
+      return
+    }
+
     setError(null)
     setMessage(null)
 
@@ -519,6 +601,7 @@ export function Kasir() {
       </section>
       </div>
       </AppShell>
+      {ConfirmDialog}
     </>
   )
 }

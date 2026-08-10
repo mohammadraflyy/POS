@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAppearance } from '@/hooks/use-appearance'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
@@ -42,6 +43,7 @@ const BREADCRUMBS: BreadcrumbItem[] = [
 export function KasirHistory() {
   const navigate = useNavigate()
   const { resolvedAppearance } = useAppearance()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(56)
 
@@ -85,7 +87,14 @@ export function KasirHistory() {
   }
 
   async function cancelSale(sale: SaleHistoryRow) {
-    if (!confirm('Batalkan transaksi ini? Stok akan dikembalikan.')) {
+    const confirmed = await confirm({
+      title: 'Batalkan transaksi?',
+      description: `Transaksi #${sale.id} akan ditandai dibatalkan dan stoknya dikembalikan.`,
+      confirmLabel: 'Batalkan',
+      destructive: true,
+    })
+
+    if (!confirmed) {
       return
     }
 
@@ -100,12 +109,17 @@ export function KasirHistory() {
   }
 
   async function deleteSale(sale: SaleHistoryRow) {
-    const warning =
-      sale.status === 'dibatalkan'
-        ? 'Hapus permanen transaksi ini? Data tidak bisa dikembalikan.'
-        : 'Hapus permanen transaksi ini? Stok akan dikembalikan dan data tidak bisa dikembalikan.'
+    const confirmed = await confirm({
+      title: 'Hapus transaksi?',
+      description:
+        sale.status === 'dibatalkan'
+          ? `Transaksi #${sale.id} dihapus permanen dan datanya tidak bisa dikembalikan.`
+          : `Transaksi #${sale.id} dihapus permanen, stoknya dikembalikan, dan datanya tidak bisa dikembalikan.`,
+      confirmLabel: 'Hapus',
+      destructive: true,
+    })
 
-    if (!confirm(warning)) {
+    if (!confirmed) {
       return
     }
 
@@ -120,6 +134,16 @@ export function KasirHistory() {
   }
 
   async function printSale(saleId: number) {
+    const confirmed = await confirm({
+      title: 'Cetak struk?',
+      description: `Struk transaksi #${saleId} akan dicetak ulang ke printer.`,
+      confirmLabel: 'Cetak',
+    })
+
+    if (!confirmed) {
+      return
+    }
+
     setError(null)
 
     try {
@@ -304,6 +328,7 @@ export function KasirHistory() {
         </div>
       </div>
       </AppShell>
+      {ConfirmDialog}
     </>
   )
 }

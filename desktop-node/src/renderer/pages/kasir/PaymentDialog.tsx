@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { useConfirm } from '@/hooks/use-confirm'
 import { cn, formatRupiah } from '@/lib/utils'
 
 const actions = ['cetak', 'simpan', 'batal'] as const
@@ -52,6 +53,7 @@ export function PaymentDialog({
   // into focused inputs, so those work regardless of what's focused too.
   const [selectedAction, setSelectedAction] = useState<Action>('cetak')
   const [prevOpen, setPrevOpen] = useState(open)
+  const { confirm, ConfirmDialog } = useConfirm()
 
   if (open !== prevOpen) {
     setPrevOpen(open)
@@ -61,9 +63,24 @@ export function PaymentDialog({
     }
   }
 
+  // Printing is the one action that reaches hardware and wastes paper when
+  // fired by accident - and it sits on Enter, the fastest key to hit twice.
+  async function submitWithPrint() {
+    const confirmed = await confirm({
+      title: 'Cetak struk?',
+      description: `Transaksi ${formatRupiah(total)} akan disimpan dan struknya langsung dicetak.`,
+      confirmLabel: 'Simpan + Cetak',
+      cancelLabel: 'Batal',
+    })
+
+    if (confirmed) {
+      onSubmit(true)
+    }
+  }
+
   function runAction(action: Action) {
     if (action === 'cetak') {
-      onSubmit(true)
+      submitWithPrint()
     } else if (action === 'simpan') {
       onSubmit(false)
     } else {
@@ -113,6 +130,7 @@ export function PaymentDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[46rem]">
         <DialogHeader>
@@ -121,7 +139,7 @@ export function PaymentDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            onSubmit(true)
+            submitWithPrint()
           }}
           onKeyDown={handleShortcut}
           className="space-y-5"
@@ -154,7 +172,7 @@ export function PaymentDialog({
             <span className="text-4xl font-bold text-background tabular-nums">{formatRupiah(total)}</span>
           </div>
 
-          {metode === 'tunai' ? (
+          {metode === 'tunai' && (
             <div className="grid gap-2">
               <Label htmlFor="dibayar">Uang Tunai</Label>
               <Input
@@ -168,19 +186,21 @@ export function PaymentDialog({
                 className="h-16 text-right text-2xl font-semibold tabular-nums"
               />
             </div>
-          ) : (
-            <div className="grid gap-2">
-              <Label htmlFor="nama_pelanggan">Nama Pelanggan</Label>
-              <Input
-                id="nama_pelanggan"
-                autoFocus
-                value={namaPelanggan}
-                disabled={processing || printing}
-                onChange={(e) => setNamaPelanggan(e.target.value)}
-                className="h-16 text-xl"
-              />
-            </div>
           )}
+
+          <div className="grid gap-2">
+            <Label htmlFor="nama_pelanggan">
+              Nama Pelanggan {metode === 'tunai' && <span className="text-muted-foreground">(opsional)</span>}
+            </Label>
+            <Input
+              id="nama_pelanggan"
+              autoFocus={metode === 'bon'}
+              value={namaPelanggan}
+              disabled={processing || printing}
+              onChange={(e) => setNamaPelanggan(e.target.value)}
+              className="h-16 text-xl"
+            />
+          </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-xl bg-green-500/15 px-5 py-3.5 dark:bg-green-500/20">
@@ -279,5 +299,7 @@ export function PaymentDialog({
         </form>
       </DialogContent>
     </Dialog>
+    {ConfirmDialog}
+    </>
   )
 }

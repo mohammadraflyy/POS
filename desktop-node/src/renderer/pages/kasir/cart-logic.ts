@@ -61,6 +61,50 @@ export function unitKonversi(line: CartLine): number {
   return line.product.productUnits.find((u) => u.id === line.productUnitId)?.konversi ?? 1
 }
 
+/**
+ * The cart survives navigating away from the Kasir page, so lines are
+ * persisted by id only - product name, price and stock are re-read from the
+ * freshly loaded catalog on the way back instead of being cached.
+ */
+export interface StoredCartLine {
+  productId: number
+  productUnitId: number | null
+  qty: number
+}
+
+export function toStoredCart(cart: CartLine[]): StoredCartLine[] {
+  return cart.map((line) => ({ productId: line.product.id, productUnitId: line.productUnitId, qty: line.qty }))
+}
+
+/** rebuilds cart lines against the current catalog, dropping products or satuan that no longer exist */
+export function restoreCart(stored: StoredCartLine[], products: Product[]): CartLine[] {
+  const cart: CartLine[] = []
+
+  for (const line of stored) {
+    const product = products.find((p) => p.id === line.productId)
+
+    if (!product || !(line.qty > 0)) {
+      continue
+    }
+
+    const unit = line.productUnitId === null ? null : product.productUnits.find((u) => u.id === line.productUnitId)
+
+    if (line.productUnitId !== null && !unit) {
+      continue
+    }
+
+    cart.push({
+      key: lineKey(product.id, line.productUnitId),
+      product,
+      productUnitId: line.productUnitId,
+      satuan: unit?.satuan ?? product.satuan,
+      qty: line.qty,
+    })
+  }
+
+  return cart
+}
+
 /** avoids floating-point drift (e.g. 0.1 + 0.2) accumulating in displayed/stored qty */
 function roundQty(qty: number): number {
   return Math.round(qty * 1000) / 1000
