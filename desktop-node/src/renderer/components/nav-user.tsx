@@ -1,4 +1,4 @@
-import { Settings, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
@@ -29,10 +29,6 @@ export function NavUser({ user }: { user: AuthUser }) {
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="w-56">
-            <DropdownMenuItem onClick={() => navigate('/settings')}>
-              <Settings className="size-4" />
-              Pengaturan
-            </DropdownMenuItem>
             <DropdownMenuItem 
               onClick={async () => {
               await window.api.auth.logout()
