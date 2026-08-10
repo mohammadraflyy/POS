@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import type { Column, RowsChangeData } from 'react-data-grid'
 import { DataGrid, SelectColumn, renderTextEditor } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -69,7 +70,7 @@ export function Inventory() {
   const navigate = useNavigate()
   const { resolvedAppearance } = useAppearance()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
-  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(72)
+  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<DraftRow[]>([])
@@ -452,7 +453,8 @@ export function Inventory() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <Page>
+        <PageHeader title="Katalog Produk" />
         {deleteError && (
           <p role="alert" className="text-sm text-destructive">
             {deleteError}
@@ -572,7 +574,7 @@ export function Inventory() {
             <span>dari {total} produk</span>
           </div>
         </div>
-      </div>
+      </Page>
 
       <CommandDialog open={paletteOpen} onOpenChange={setPaletteOpen} title="Cari Produk" description="Cari kode, nama, atau barcode produk" shouldFilter={false}>
         <CommandInput value={paletteQuery} onValueChange={setPaletteQuery} placeholder="Cari kode / nama / barcode produk..." />

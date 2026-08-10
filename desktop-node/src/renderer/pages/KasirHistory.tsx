@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
 import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -45,7 +46,7 @@ export function KasirHistory() {
   const { resolvedAppearance } = useAppearance()
   const { confirm, ConfirmDialog } = useConfirm()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
-  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(56)
+  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(64)
 
   const [search, setSearch] = useState('')
   const [dari, setDari] = useState('')
@@ -234,8 +235,8 @@ export function KasirHistory() {
   return (
     <>
       <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <h1 className="text-xl font-semibold">Riwayat Transaksi</h1>
+      <Page>
+        <PageHeader title="Riwayat Transaksi" />
 
         {error && (
           <p role="alert" className="text-sm text-destructive">
@@ -326,7 +327,7 @@ export function KasirHistory() {
             Berikutnya
           </Button>
         </div>
-      </div>
+      </Page>
       </AppShell>
       {ConfirmDialog}
     </>

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import type { Column, RowsChangeData } from 'react-data-grid'
 import { DataGrid, renderTextEditor } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -64,7 +65,7 @@ const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Supplier', href: '/supplier' }]
 export function Supplier() {
   const { resolvedAppearance } = useAppearance()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
-  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(72)
+  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<DraftRow[]>([])
@@ -223,7 +224,8 @@ export function Supplier() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <Page>
+        <PageHeader title="Supplier" />
         {deleteError && (
           <p role="alert" className="text-sm text-destructive">
             {deleteError}
@@ -307,7 +309,7 @@ export function Supplier() {
             <span>dari {total} supplier</span>
           </div>
         </div>
-      </div>
+      </Page>
 
       {ConfirmDialog}
     </AppShell>

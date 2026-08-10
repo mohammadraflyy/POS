@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
 import { DataGrid, renderTextEditor } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import { Page, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAppearance } from '@/hooks/use-appearance'
@@ -57,7 +58,7 @@ export function MassInput() {
   const [searchParams] = useSearchParams()
   const { resolvedAppearance } = useAppearance()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
-  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(72)
+  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
   const [rows, setRows] = useState<DraftRow[]>([emptyRow()])
   const [rowErrors, setRowErrors] = useState<Record<string, Record<string, string>>>({})
@@ -297,8 +298,8 @@ export function MassInput() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <h1 className="text-xl font-semibold">Input Massal Produk</h1>
+      <Page>
+        <PageHeader title="Input Massal Produk" />
 
         <div
           ref={(node) => {
@@ -346,7 +347,7 @@ export function MassInput() {
             Batal
           </Button>
         </div>
-      </div>
+      </Page>
 
       <ProductDetailDialog
         productId={detailProductId}
