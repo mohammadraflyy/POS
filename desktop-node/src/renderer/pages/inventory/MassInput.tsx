@@ -59,7 +59,7 @@ export function MassInput() {
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(72)
 
-  const [rows, setRows] = useState<DraftRow[]>([emptyRow(), emptyRow(), emptyRow()])
+  const [rows, setRows] = useState<DraftRow[]>([emptyRow()])
   const [rowErrors, setRowErrors] = useState<Record<string, Record<string, string>>>({})
   const [formError, setFormError] = useState<string | undefined>()
   const [processing, setProcessing] = useState(false)
@@ -298,12 +298,7 @@ export function MassInput() {
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
       <div className="flex flex-1 flex-col gap-4 p-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Input Massal Produk</h1>
-          <Button variant="outline" size="sm" onClick={addRow}>
-            + Tambah Baris
-          </Button>
-        </div>
+        <h1 className="text-xl font-semibold">Input Massal Produk</h1>
 
         <div
           ref={(node) => {
@@ -322,6 +317,12 @@ export function MassInput() {
               style={{ blockSize: gridHeight, minHeight: 300 }}
             />
           )}
+        </div>
+
+        <div>
+          <Button variant="outline" size="sm" onClick={addRow}>
+            + Tambah Baris
+          </Button>
         </div>
 
         {errorSummary.length > 0 && (
