@@ -370,10 +370,9 @@ export function Inventory() {
     {
       key: 'no',
       name: 'No',
-      width: 60,
       // numbering runs across pages, so page 2 of 20 starts at 21
       renderCell: ({ rowIdx }) => (
-        <span className="text-muted-foreground">{(currentPage - 1) * Number(pageSize) + rowIdx + 1}</span>
+        <span className="text-muted-foreground text-left">{(currentPage - 1) * Number(pageSize) + rowIdx + 1}</span>
       ),
     },
     textColumn('kodeItem', 'Kode Item', 110),
