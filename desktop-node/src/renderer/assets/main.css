@@ -123,9 +123,41 @@
   }
 }
 
-/* react-data-grid: stronger, more visible cell borders + more breathing room.
+/* react-data-grid theming. Every colour the grid uses is a --rdg-* variable
+   declared inside its own @layer rdg.Root, and unlayered rules like these win
+   over any layer, so pointing them at the app tokens is all it takes for the
+   grids to follow the app theme - including the .dark class, which the grid's
+   own light-dark() defaults cannot see.
+
    Applies globally to every grid in the app (Kasir, KasirHistory, Inventory,
-   MassInput, ReportTable, CartGrid all share the .rdg-light/.rdg-dark classes). */
+   MassInput, ReportTable, CartGrid). */
+.rdg {
+  --rdg-color: var(--foreground);
+  --rdg-background-color: var(--card);
+  --rdg-header-background-color: var(--muted);
+  --rdg-header-draggable-background-color: var(--accent);
+  --rdg-row-hover-background-color: var(--accent);
+  --rdg-row-selected-background-color: color-mix(in oklch, var(--primary) 16%, var(--background));
+  --rdg-row-selected-hover-background-color: color-mix(in oklch, var(--primary) 24%, var(--background));
+  /* --ring is too faint to read as a selection outline in the light theme */
+  --rdg-selection-color: var(--primary);
+  --rdg-checkbox-focus-color: var(--ring);
+  --rdg-summary-border-color: var(--border);
+  --rdg-font-size: 0.875rem;
+}
+
+/* the inline cell editor hardcodes #ccc / #999, the only spots the grid does
+   not route through a variable */
+.rdg-text-editor {
+  border-color: var(--border);
+}
+
+.rdg-text-editor::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* deliberately stronger than --border: at 1px the app's own border token
+   disappears between dense grid cells */
 .rdg-light,
 .rdg-dark {
   --rdg-border-color: light-dark(oklch(0.82 0 0), oklch(0.4 0 0));
