@@ -313,7 +313,7 @@ describe('checkout', () => {
       items: [{ productId: 1, productUnitId: null, qty: -1 }],
     }
 
-    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+    expect(() => checkout(db, input)).toThrow('Qty harus lebih dari 0.')
     expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
@@ -328,23 +328,29 @@ describe('checkout', () => {
       items: [{ productId: 1, productUnitId: null, qty: 0 }],
     }
 
-    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+    expect(() => checkout(db, input)).toThrow('Qty harus lebih dari 0.')
     expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
-  it('throws when qty is not an integer', () => {
+  it('allows a fractional qty, deducting stock and rounding the subtotal to the nearest cent', () => {
     const db = seedDb()
 
     const input: CheckoutInput = {
       metodePembayaran: 'tunai',
       namaPelanggan: null,
-      dibayar: 100_00,
+      dibayar: 2_000_000,
       userId: 1,
-      items: [{ productId: 1, productUnitId: null, qty: 1.5 }],
+      items: [{ productId: 1, productUnitId: null, qty: 0.25 }],
     }
 
-    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
-    expect(db.select().from(sales).all()).toHaveLength(0)
+    const result = checkout(db, input)
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+
+    expect(items[0].qty).toBe(0.25)
+    expect(items[0].subtotal).toBe(Math.round(0.25 * items[0].hargaJual))
+    expect(result.total).toBe(items[0].subtotal)
+    expect(product?.stok).toBe(10 - 0.25)
   })
 
   it('throws when bon has an empty customer name', () => {

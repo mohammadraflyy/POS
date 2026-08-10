@@ -61,58 +61,22 @@ export function unitKonversi(line: CartLine): number {
   return line.product.productUnits.find((u) => u.id === line.productUnitId)?.konversi ?? 1
 }
 
-export const QTY_EPSILON = 1e-6
-
-/**
- * Picks the cleanest satuan for a quantity expressed in the product's base
- * unit: the one with the largest konversi that still divides evenly, so
- * typing e.g. 0.1 DUS (= 1 RNTNG at the base) resolves to "1 RNTNG" rather
- * than staying "0.1 DUS", and typing 10 RNTNG while on the base unit
- * resolves up to "1 DUS". Falls back to rounding at the base unit when
- * nothing divides evenly (a true fractional amount with no matching unit).
- */
-export function pickUnitForBaseQty(
-  product: Product,
-  baseQty: number,
-): { productUnitId: number | null; qty: number; satuan: string } {
-  const candidates = [
-    { id: null as number | null, satuan: product.satuan, konversi: 1 },
-    ...product.productUnits.map((u) => ({ id: u.id as number | null, satuan: u.satuan, konversi: u.konversi })),
-  ]
-
-  const exact = candidates
-    .filter((c) => {
-      const q = baseQty / c.konversi
-      return Math.abs(q - Math.round(q)) < QTY_EPSILON
-    })
-    .sort((a, b) => b.konversi - a.konversi)
-
-  const best = exact[0] ?? candidates[0]
-  const resolvedBaseQty = exact[0] ? baseQty : Math.max(1, Math.round(baseQty))
-
-  return {
-    productUnitId: best.id,
-    qty: Math.max(1, Math.round(resolvedBaseQty / best.konversi)),
-    satuan: best.satuan,
-  }
+/** avoids floating-point drift (e.g. 0.1 + 0.2) accumulating in displayed/stored qty */
+function roundQty(qty: number): number {
+  return Math.round(qty * 1000) / 1000
 }
 
-/** typedQty is in whatever satuan the line currently has selected */
-export function resolveLineQty(line: CartLine, typedQty: number) {
-  const baseQty = typedQty * unitKonversi(line)
-  return pickUnitForBaseQty(line.product, baseQty)
-}
-
-/** adds one base-unit qty for product, merging into the existing base-unit line if present */
-export function addLine(cart: CartLine[], product: Product): CartLine[] {
+/** adds `qty` base-unit qty for product (default 1), merging into the existing base-unit line if present */
+export function addLine(cart: CartLine[], product: Product, qty = 1): CartLine[] {
   const key = lineKey(product.id, null)
   const existing = cart.find((i) => i.key === key)
+  const addedQty = qty > 0 ? roundQty(qty) : 1
 
   if (existing) {
-    return cart.map((i) => (i.key === key ? { ...i, qty: i.qty + 1 } : i))
+    return cart.map((i) => (i.key === key ? { ...i, qty: roundQty(i.qty + addedQty) } : i))
   }
 
-  return [...cart, { key, product, productUnitId: null, satuan: product.satuan, qty: 1 }]
+  return [...cart, { key, product, productUnitId: null, satuan: product.satuan, qty: addedQty }]
 }
 
 /** moves line onto productUnitId, merging into an existing line for that unit if one exists */
@@ -126,7 +90,7 @@ export function changeUnit(cart: CartLine[], line: CartLine, productUnitId: numb
   if (cart.some((i) => i.key === newKey)) {
     return cart
       .filter((i) => i.key !== line.key)
-      .map((i) => (i.key === newKey ? { ...i, qty: i.qty + line.qty } : i))
+      .map((i) => (i.key === newKey ? { ...i, qty: roundQty(i.qty + line.qty) } : i))
   }
 
   const unit = line.product.productUnits.find((u) => u.id === productUnitId)
@@ -138,26 +102,9 @@ export function changeUnit(cart: CartLine[], line: CartLine, productUnitId: numb
   )
 }
 
-/** resolves rawQty to the cleanest satuan and merges into an existing line for that satuan if one exists */
+/** sets the qty for a line in its currently selected satuan, taken literally (decimals allowed) */
 export function applyQty(cart: CartLine[], key: string, rawQty: number): CartLine[] {
-  const line = cart.find((i) => i.key === key)
+  const qty = rawQty > 0 ? roundQty(rawQty) : 1
 
-  if (!line) {
-    return cart
-  }
-
-  const resolved = resolveLineQty(line, rawQty > 0 ? rawQty : 1)
-  const newKey = lineKey(line.product.id, resolved.productUnitId)
-
-  if (cart.some((i) => i.key === newKey && i.key !== line.key)) {
-    return cart
-      .filter((i) => i.key !== line.key)
-      .map((i) => (i.key === newKey ? { ...i, qty: i.qty + resolved.qty } : i))
-  }
-
-  return cart.map((i) =>
-    i.key === line.key
-      ? { ...i, key: newKey, productUnitId: resolved.productUnitId, satuan: resolved.satuan, qty: resolved.qty }
-      : i,
-  )
+  return cart.map((i) => (i.key === key ? { ...i, qty } : i))
 }

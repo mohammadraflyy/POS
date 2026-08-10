@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CellKeyboardEvent, CellKeyDownArgs, DataGridHandle, RowsChangeData } from 'react-data-grid'
-import { Search, ShoppingCart, Trash2 } from 'lucide-react'
+import { ShoppingCart, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
-import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
+import { CartGrid } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
-import { addLine, applyQty, changeUnit, lineKey, unitPrice, type CartLine, type Product } from './kasir/cart-logic'
+import { addLine, applyQty, changeUnit, unitPrice, type CartLine, type Product } from './kasir/cart-logic'
 
 interface SaleDto {
   id: number
@@ -40,10 +41,11 @@ export function Kasir() {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
+  const [jumlah, setJumlah] = useState('1.00')
   const { resolvedAppearance } = useAppearance()
   const [cartWidthRef, cartGridWidth] = useElementWidth<HTMLDivElement>()
   const cartGridRef = useRef<DataGridHandle>(null)
-  const lastTouchedKeyRef = useRef<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     refreshProducts()
@@ -80,9 +82,8 @@ export function Kasir() {
       .slice(0, 50)
   }, [products, paletteQuery])
 
-  function addProductToCart(product: Product) {
-    lastTouchedKeyRef.current = lineKey(product.id, null)
-    setCart((prev) => addLine(prev, product))
+  function addProductToCart(product: Product, qty = 1) {
+    setCart((prev) => addLine(prev, product, qty))
   }
 
   function changeLineUnit(line: CartLine, productUnitId: number | null) {
@@ -110,8 +111,8 @@ export function Kasir() {
 
       if (e.key === '/' && scanBuffer.current === '') {
         e.preventDefault()
-        setPaletteQuery('')
-        setPaletteOpen(true)
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
 
         return
       }
@@ -222,20 +223,6 @@ export function Kasir() {
       event.preventDefault()
       clearCart()
     }
-  }
-
-  function focusCartQty(key: string | null) {
-    if (!key) {
-      return
-    }
-
-    const rowIdx = cart.findIndex((line) => line.key === key)
-
-    if (rowIdx === -1) {
-      return
-    }
-
-    cartGridRef.current?.setActivePosition({ rowIdx, idx: QTY_COLUMN_IDX }, { shouldFocus: true })
   }
 
   function resetAfterCheckout() {
@@ -371,17 +358,43 @@ export function Kasir() {
               <kbd className="ml-1 rounded border px-1.5 py-0.5 text-xs">Alt+K</kbd>
             </Button>
           )}
-          <Button
-            type="button"
-            onClick={() => {
-              setPaletteQuery('')
-              setPaletteOpen(true)
-            }}
-          >
-            <Search className="size-4" />
-            Cari / Tambah Produk
-            <kbd className="ml-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-xs">/</kbd>
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="kasir-jumlah" className="text-xs text-muted-foreground">
+              Jumlah
+            </label>
+            <Input
+              id="kasir-jumlah"
+              type="text"
+              inputMode="decimal"
+              value={jumlah}
+              onChange={(e) => setJumlah(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  setPaletteOpen(true)
+                }
+              }}
+              className="w-16 text-center"
+            />
+          </div>
+          <div className="relative w-64">
+            <Input
+              ref={searchInputRef}
+              value={paletteQuery}
+              onChange={(e) => setPaletteQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  setPaletteOpen(true)
+                }
+              }}
+              placeholder="Cari nama / kode produk..."
+              className="pr-8"
+            />
+            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+              /
+            </kbd>
+          </div>
         </div>
       </div>
 
@@ -400,9 +413,8 @@ export function Kasir() {
         </span>
         <span className="flex items-center gap-1">
           <kbd className="rounded border bg-muted px-1.5 py-0.5">F2</kbd>
-          Edit Qty
+          Edit Qty / Satuan
         </span>
-        <span>Klik pill satuan untuk ganti satuan</span>
       </div>
 
       <div className="overflow-hidden rounded-xl border">
@@ -466,13 +478,16 @@ export function Kasir() {
         onQueryChange={setPaletteQuery}
         results={paletteResults}
         products={products}
+        jumlah={jumlah}
         onSelect={(product) => {
-          addProductToCart(product)
+          addProductToCart(product, Number(jumlah) || 1)
           setPaletteQuery('')
+          setJumlah('1.00')
         }}
         onCloseAutoFocus={(e) => {
           e.preventDefault()
-          focusCartQty(lastTouchedKeyRef.current)
+          searchInputRef.current?.focus()
+          searchInputRef.current?.select()
         }}
       />
 

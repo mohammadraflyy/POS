@@ -109,8 +109,8 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   }
 
   for (const item of input.items) {
-    if (!Number.isInteger(item.qty) || item.qty < 1) {
-      throw new Error('Qty harus bilangan bulat minimal 1.')
+    if (!(item.qty > 0)) {
+      throw new Error('Qty harus lebih dari 0.')
     }
   }
 
@@ -184,7 +184,8 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     let total = 0
 
     for (const line of resolvedItems) {
-      const subtotal = line.qty * line.hargaJual
+      // qty may be fractional (e.g. 0.25 kg) - hargaJual is stored in integer cents
+      const subtotal = Math.round(line.qty * line.hargaJual)
       total += subtotal
 
       tx.insert(saleItems)
