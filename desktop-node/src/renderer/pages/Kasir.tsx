@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CellKeyboardEvent, CellKeyDownArgs, DataGridHandle, RowsChangeData } from 'react-data-grid'
 import { ShoppingCart, Trash2 } from 'lucide-react'
+import { Page, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -431,7 +432,52 @@ export function Kasir() {
   return (
     <>
       <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex-1 space-y-4 p-4 sm:p-6 print:hidden">
+      <Page className="print:hidden">
+      <PageHeader
+        title="Penjualan"
+        actions={
+          <>
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="kasir-jumlah" className="text-xs text-muted-foreground">
+                Jumlah
+              </label>
+              <Input
+                id="kasir-jumlah"
+                type="text"
+                inputMode="decimal"
+                value={jumlah}
+                onChange={(e) => setJumlah(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    setPaletteOpen(true)
+                  }
+                }}
+                className="w-16 text-center tabular-nums"
+              />
+            </div>
+            <div className="relative w-72">
+              <Input
+                ref={searchInputRef}
+                value={paletteQuery}
+                onChange={(e) => setPaletteQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    setPaletteOpen(true)
+                  }
+                }}
+                placeholder="Cari nama / kode produk..."
+                className="pr-8"
+              />
+              <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                /
+              </kbd>
+            </div>
+          </>
+        }
+      />
+
       {scanError && (
         <p role="alert" className="text-sm text-destructive">
           {scanError}
@@ -444,121 +490,117 @@ export function Kasir() {
       )}
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 font-semibold">
-          <ShoppingCart className="size-4" />
-          Keranjang
-          {cartItemCount > 0 && <Badge variant="secondary">{cartItemCount}</Badge>}
-        </h2>
-        <div className="flex items-center gap-2">
-          {cart.length > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-destructive"
-              onClick={clearCart}
-            >
-              <Trash2 className="size-3.5" />
-              Kosongkan
-              <kbd className="ml-1 rounded border px-1.5 py-0.5 text-xs">Alt+K</kbd>
-            </Button>
-          )}
-          <div className="flex items-center gap-1.5">
-            <label htmlFor="kasir-jumlah" className="text-xs text-muted-foreground">
-              Jumlah
-            </label>
-            <Input
-              id="kasir-jumlah"
-              type="text"
-              inputMode="decimal"
-              value={jumlah}
-              onChange={(e) => setJumlah(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  setPaletteOpen(true)
-                }
-              }}
-              className="w-16 text-center"
-            />
-          </div>
-          <div className="relative w-64">
-            <Input
-              ref={searchInputRef}
-              value={paletteQuery}
-              onChange={(e) => setPaletteQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  setPaletteOpen(true)
-                }
-              }}
-              placeholder="Cari nama / kode produk..."
-              className="pr-8"
-            />
-            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-              /
-            </kbd>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5">/</kbd>
-          Cari Produk
-        </span>
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd>
-          Bayar
-        </span>
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5">Alt+K</kbd>
-          Kosongkan
-        </span>
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5">F2</kbd>
-          Edit Qty / Satuan
-        </span>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border">
-        {cart.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 p-12 text-center text-sm text-muted-foreground">
-            <ShoppingCart className="size-8 opacity-40" />
-            Keranjang kosong. Scan barcode atau cari produk untuk mulai.
-          </div>
-        ) : (
-          <div ref={cartWidthRef}>
-            {cartGridWidth > 0 && (
-              <CartGrid
-                cart={cart}
-                width={cartGridWidth}
-                resolvedAppearance={resolvedAppearance}
-                gridRef={cartGridRef}
-                onRowsChange={handleCartRowsChange}
-                onCellKeyDown={handleCartCellKeyDown}
-                onChangeUnit={changeLineUnit}
-                onRemoveLine={removeFromCart}
-              />
+      <div className="grid flex-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <ShoppingCart className="size-4" />
+              Keranjang
+              {cartItemCount > 0 && <Badge variant="secondary">{cartItemCount}</Badge>}
+            </h2>
+            {cart.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={clearCart}
+              >
+                <Trash2 className="size-3.5" />
+                Kosongkan
+                <kbd className="ml-1 rounded border px-1.5 py-0.5 text-xs">Alt+K</kbd>
+              </Button>
             )}
           </div>
-        )}
-      </div>
 
-      <div className="flex items-center justify-between rounded-xl border p-4">
-        <span className="text-muted-foreground">Total</span>
-        <span className="text-3xl font-bold tabular-nums">{formatRupiah(total)}</span>
-        <Button
-          type="button"
-          size="lg"
-          className="h-14 px-10 text-lg"
-          disabled={cart.length === 0}
-          onClick={() => setPaymentOpen(true)}
-        >
-          Bayar
-        </Button>
+          <div className="overflow-hidden rounded-xl border">
+            {cart.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 p-12 text-center text-sm text-muted-foreground">
+                <ShoppingCart className="size-8 opacity-40" />
+                Keranjang kosong. Scan barcode atau cari produk untuk mulai.
+              </div>
+            ) : (
+              <div ref={cartWidthRef}>
+                {cartGridWidth > 0 && (
+                  <CartGrid
+                    cart={cart}
+                    width={cartGridWidth}
+                    resolvedAppearance={resolvedAppearance}
+                    gridRef={cartGridRef}
+                    onRowsChange={handleCartRowsChange}
+                    onCellKeyDown={handleCartCellKeyDown}
+                    onChangeUnit={changeLineUnit}
+                    onRemoveLine={removeFromCart}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">/</kbd>
+              Cari Produk
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd>
+              Bayar
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">Alt+K</kbd>
+              Kosongkan
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">F2</kbd>
+              Edit Qty / Satuan
+            </span>
+          </div>
+        </div>
+
+        {/* stays put while the cart scrolls, so the total and Bayar never
+            leave the screen on a long transaction */}
+        <aside className="flex flex-col gap-4 xl:sticky xl:top-6">
+          <div className="rounded-xl border p-5">
+            <span className="text-sm text-muted-foreground">Total</span>
+            <p className="mt-1 text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
+            <Button
+              type="button"
+              size="lg"
+              className="mt-4 h-14 w-full text-lg"
+              disabled={cart.length === 0}
+              onClick={() => setPaymentOpen(true)}
+            >
+              Bayar
+            </Button>
+          </div>
+
+          <section className="space-y-2">
+            <h2 className="text-sm font-medium text-muted-foreground">Transaksi Hari Ini</h2>
+            <div className="max-h-80 overflow-y-auto rounded-xl border">
+              {salesToday.length === 0 ? (
+                <p className="p-4 text-center text-sm text-muted-foreground">Belum ada transaksi.</p>
+              ) : (
+                salesToday.map((sale) => (
+                  <div key={sale.id} className="flex items-center justify-between gap-2 border-b p-2.5 last:border-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium tabular-nums">{formatRupiah(sale.total)}</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        #{sale.id} &middot; {sale.metodePembayaran}
+                      </p>
+                    </div>
+                    {sale.status === 'selesai' ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => handleCancel(sale.id)}>
+                        Batal
+                      </Button>
+                    ) : (
+                      <Badge variant="outline">Dibatalkan</Badge>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </aside>
       </div>
 
       <PaymentDialog
@@ -597,33 +639,7 @@ export function Kasir() {
         }}
       />
 
-      <section className="space-y-2">
-        <h2 className="font-semibold">Transaksi Hari Ini</h2>
-        <div className="overflow-hidden rounded-xl border">
-          <table className="w-full text-sm">
-            <tbody>
-              {salesToday.map((sale) => (
-                <tr key={sale.id} className="border-b last:border-0">
-                  <td className="p-2">#{sale.id}</td>
-                  <td className="p-2 capitalize">{sale.metodePembayaran}</td>
-                  <td className="p-2">
-                    <Badge variant={sale.status === 'selesai' ? 'secondary' : 'outline'}>{sale.status}</Badge>
-                  </td>
-                  <td className="p-2 text-right font-medium">{formatRupiah(sale.total)}</td>
-                  <td className="p-2 text-right">
-                    {sale.status === 'selesai' && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => handleCancel(sale.id)}>
-                        Batal
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      </div>
+      </Page>
       </AppShell>
       {ConfirmDialog}
     </>
