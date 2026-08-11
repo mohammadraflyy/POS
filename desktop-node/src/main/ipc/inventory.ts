@@ -10,6 +10,7 @@ import {
   deleteProductUnit,
   addPriceTier,
   deletePriceTier,
+  getBaseProductUnit,
   type ProductUnitRow,
 } from '../inventory-units'
 import { getProductsByIds, bulkSaveProducts, importProducts, importSatuan, type BulkSaveRow } from '../inventory-bulk'
@@ -204,13 +205,29 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     deleteProductUnit(db, productId, unitId)
   })
 
-  ipcMain.handle('inventory:addPriceTier', (_event, productId: number, input: { minQty: number; hargaJual: number }) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+  ipcMain.handle(
+    'inventory:addPriceTier',
+    (
+      _event,
+      productId: number,
+      input: { minQty: number; maxQty?: number | null; hargaJual: number; productUnitId?: number },
+    ) => {
+      if (!getCurrentUser()) {
+        throw new Error('Silakan login terlebih dahulu.')
+      }
 
-    addPriceTier(db, productId, { minQty: input.minQty, hargaJual: toCents(input.hargaJual) })
-  })
+      // The tier form is still product-scoped and open-ended, so an omitted unit
+      // means the base one and an omitted maxQty means unbounded - the behaviour
+      // tiers have always had. Task 16 adds the per-unit, ranged form.
+      const productUnitId = input.productUnitId ?? getBaseProductUnit(db, productId).id
+
+      addPriceTier(db, productId, productUnitId, {
+        minQty: input.minQty,
+        maxQty: input.maxQty ?? null,
+        hargaJual: toCents(input.hargaJual),
+      })
+    },
+  )
 
   ipcMain.handle('inventory:deletePriceTier', (_event, productId: number, tierId: number) => {
     if (!getCurrentUser()) {

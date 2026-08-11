@@ -74,8 +74,10 @@ const api = {
     updateProductUnit: (productId: number, unitId: number, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) =>
       invoke('inventory:updateProductUnit', productId, unitId, input),
     deleteProductUnit: (productId: number, unitId: number) => invoke('inventory:deleteProductUnit', productId, unitId),
-    addPriceTier: (productId: number, input: { minQty: number; hargaJual: number }) =>
-      invoke('inventory:addPriceTier', productId, input),
+    addPriceTier: (
+      productId: number,
+      input: { minQty: number; maxQty?: number | null; hargaJual: number; productUnitId?: number },
+    ) => invoke('inventory:addPriceTier', productId, input),
     deletePriceTier: (productId: number, tierId: number) => invoke('inventory:deletePriceTier', productId, tierId),
     getProductsByIds: (ids: number[]) => invoke('inventory:getProductsByIds', ids),
     bulkSaveProducts: (

@@ -434,67 +434,152 @@ describe('deleteProductUnit', () => {
 })
 
 describe('addPriceTier', () => {
-  it('adds a price tier', () => {
-    const db = seedProduct()
+  it('adds a price tier scoped to a unit', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
 
-    addPriceTier(db, 1, { minQty: 6, hargaJual: 1400_00 })
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 6, maxQty: null, hargaJual: 1400_00 })
 
-    const tiers = listPriceTiers(db, 1)
-    expect(tiers).toEqual([{ id: expect.any(Number), minQty: 6, hargaJual: 1400_00 }])
+    expect(listPriceTiers(db, productId)).toEqual([
+      { id: expect.any(Number), productUnitId: baseUnitRowId, minQty: 6, maxQty: null, hargaJual: 1400_00 },
+    ])
   })
 
   it('throws when minQty is not finite', () => {
-    const db = seedProduct()
-    expect(() => addPriceTier(db, 1, { minQty: NaN, hargaJual: 1400_00 })).toThrow('Qty minimal wajib diisi.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    expect(() => addPriceTier(db, productId, baseUnitRowId, { minQty: NaN, maxQty: null, hargaJual: 1400_00 })).toThrow(
+      'Qty minimal wajib diisi.',
+    )
   })
 
-  it('throws when minQty is less than 2', () => {
-    const db = seedProduct()
-    expect(() => addPriceTier(db, 1, { minQty: 1, hargaJual: 1400_00 })).toThrow('Qty minimal harus 2 atau lebih.')
+  it('throws when minQty is not greater than 0', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    expect(() => addPriceTier(db, productId, baseUnitRowId, { minQty: 0, maxQty: null, hargaJual: 5000 })).toThrow(
+      'Qty minimal harus lebih dari 0.',
+    )
   })
 
   it('throws when minQty is not an integer', () => {
-    const db = seedProduct()
-    expect(() => addPriceTier(db, 1, { minQty: 2.5, hargaJual: 1400_00 })).toThrow('Qty minimal harus 2 atau lebih.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    expect(() => addPriceTier(db, productId, baseUnitRowId, { minQty: 2.5, maxQty: null, hargaJual: 5000 })).toThrow(
+      'Qty minimal harus lebih dari 0.',
+    )
+  })
+
+  it('throws when maxQty is less than minQty', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    expect(() => addPriceTier(db, productId, baseUnitRowId, { minQty: 10, maxQty: 5, hargaJual: 5000 })).toThrow(
+      'Qty maksimal harus lebih besar atau sama dengan qty minimal.',
+    )
+  })
+
+  it('allows a single-qty range where maxQty equals minQty', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 10, maxQty: 10, hargaJual: 5000 })
+
+    expect(listPriceTiers(db, productId, baseUnitRowId)).toHaveLength(1)
   })
 
   it('throws when hargaJual is not finite', () => {
-    const db = seedProduct()
-    expect(() => addPriceTier(db, 1, { minQty: 6, hargaJual: NaN })).toThrow('Harga jual wajib diisi.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    expect(() => addPriceTier(db, productId, baseUnitRowId, { minQty: 6, maxQty: null, hargaJual: NaN })).toThrow(
+      'Harga jual wajib diisi.',
+    )
   })
 
   it('throws when hargaJual is negative', () => {
-    const db = seedProduct()
-    expect(() => addPriceTier(db, 1, { minQty: 6, hargaJual: -1 })).toThrow('Harga jual tidak boleh negatif.')
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    expect(() => addPriceTier(db, productId, baseUnitRowId, { minQty: 6, maxQty: null, hargaJual: -1 })).toThrow(
+      'Harga jual tidak boleh negatif.',
+    )
   })
 
-  it('throws a friendly message when minQty already exists for the product', () => {
-    const db = seedProduct()
+  it('throws when the new range overlaps an existing tier', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
 
-    addPriceTier(db, 1, { minQty: 6, hargaJual: 1400_00 })
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 1, maxQty: 10, hargaJual: 5000 })
 
-    expect(() => addPriceTier(db, 1, { minQty: 6, hargaJual: 1300_00 })).toThrow('Harga bertingkat untuk qty 6 sudah ada.')
+    expect(() => addPriceTier(db, productId, baseUnitRowId, { minQty: 8, maxQty: 20, hargaJual: 4500 })).toThrow(
+      'Rentang qty tumpang tindih dengan tier yang sudah ada.',
+    )
+  })
+
+  it('allows adjacent non-overlapping ranges', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 1, maxQty: 9, hargaJual: 5000 })
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 10, maxQty: 49, hargaJual: 4500 })
+
+    expect(listPriceTiers(db, productId, baseUnitRowId)).toHaveLength(2)
+  })
+
+  it('allows a second, unbounded tier after a bounded one', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 1, maxQty: 9, hargaJual: 5000 })
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 10, maxQty: null, hargaJual: 4500 })
+
+    expect(listPriceTiers(db, productId, baseUnitRowId)).toHaveLength(2)
+  })
+
+  it('rejects a bounded tier that would start inside an existing unbounded tier', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 10, maxQty: null, hargaJual: 4000 })
+
+    expect(() => addPriceTier(db, productId, baseUnitRowId, { minQty: 15, maxQty: 20, hargaJual: 3900 })).toThrow(
+      'Rentang qty tumpang tindih dengan tier yang sudah ada.',
+    )
+  })
+
+  it('scopes overlap checks per product_unit - the same range is fine on a different unit', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    const boxUnitId = seedUnit(db, { code: 'BOX', name: 'Box', symbol: 'box' })
+    addProductUnit(db, productId, { unitId: boxUnitId, jumlahKemasan: 10, hargaJual: 14000_00 })
+    const derivedRowId = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)[0].id
+
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 1, maxQty: 10, hargaJual: 1400_00 })
+    addPriceTier(db, productId, derivedRowId, { minQty: 1, maxQty: 10, hargaJual: 13000_00 })
+
+    expect(listPriceTiers(db, productId, baseUnitRowId)).toHaveLength(1)
+    expect(listPriceTiers(db, productId, derivedRowId)).toHaveLength(1)
+    expect(listPriceTiers(db, productId)).toHaveLength(2)
   })
 })
 
 describe('deletePriceTier', () => {
   it('deletes a tier belonging to the product', () => {
-    const db = seedProduct()
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
 
-    addPriceTier(db, 1, { minQty: 6, hargaJual: 1400_00 })
-    const [tier] = listPriceTiers(db, 1)
-    deletePriceTier(db, 1, tier.id)
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 6, maxQty: null, hargaJual: 1400_00 })
+    const [tier] = listPriceTiers(db, productId)
+    deletePriceTier(db, productId, tier.id)
 
-    expect(listPriceTiers(db, 1)).toEqual([])
+    expect(listPriceTiers(db, productId)).toEqual([])
   })
 
   it('throws when the tier does not belong to the product', () => {
-    const db = seedProduct()
+    const db = createDb(':memory:', migrationsFolder)
+    const first = seedProductWithUnits(db)
     const now = new Date()
 
-    db.insert(products)
+    const second = db
+      .insert(products)
       .values({
-        id: 2,
         kodeItem: 'RKK2',
         barcode: null,
         namaItem: 'Rokok B',
@@ -506,26 +591,57 @@ describe('deletePriceTier', () => {
         createdAt: now,
         updatedAt: now,
       })
-      .run()
+      .returning()
+      .get()
 
-    seedBaseUnit(db, 2, 1500_00)
+    seedBaseUnit(db, second.id, 1500_00)
+    const secondBaseRowId = listProductUnits(db, second.id)[0].id
 
-    addPriceTier(db, 2, { minQty: 6, hargaJual: 1400_00 })
-    const [tier] = listPriceTiers(db, 2)
+    addPriceTier(db, second.id, secondBaseRowId, { minQty: 6, maxQty: null, hargaJual: 1400_00 })
+    const [tier] = listPriceTiers(db, second.id)
 
-    expect(() => deletePriceTier(db, 1, tier.id)).toThrow('Harga bertingkat tidak ditemukan.')
+    expect(() => deletePriceTier(db, first.productId, tier.id)).toThrow('Harga bertingkat tidak ditemukan.')
+  })
+
+  // Acceptance criterion: a tier prices a sale at checkout time and is snapshotted
+  // onto sale_items there, so removing one must never reach back into history.
+  // deletePriceTier's own query is what is pinned here - it names only
+  // product_price_tiers.
+  it('deleting a price tier does not touch any existing sale_items row', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 1, maxQty: null, hargaJual: 4200 })
+    const tier = listPriceTiers(db, productId, baseUnitRowId)[0]
+    deletePriceTier(db, productId, tier.id)
+
+    expect(listPriceTiers(db, productId, baseUnitRowId)).toHaveLength(0)
   })
 })
 
 describe('listPriceTiers', () => {
-  it('returns tiers sorted by minQty ascending', () => {
-    const db = seedProduct()
+  it('returns tiers sorted by unit then minQty ascending', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
 
-    addPriceTier(db, 1, { minQty: 12, hargaJual: 1300_00 })
-    addPriceTier(db, 1, { minQty: 6, hargaJual: 1400_00 })
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 12, maxQty: null, hargaJual: 1300_00 })
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 6, maxQty: 11, hargaJual: 1400_00 })
 
-    const tiers = listPriceTiers(db, 1)
-    expect(tiers.map((t) => t.minQty)).toEqual([6, 12])
+    expect(listPriceTiers(db, productId).map((t) => t.minQty)).toEqual([6, 12])
+  })
+
+  it('returns every unit tier for the product when no unit is given', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
+    const boxUnitId = seedUnit(db, { code: 'BOX', name: 'Box', symbol: 'box' })
+    addProductUnit(db, productId, { unitId: boxUnitId, jumlahKemasan: 10, hargaJual: 14000_00 })
+    const derivedRowId = listProductUnits(db, productId).filter((u) => !u.isBaseUnit)[0].id
+
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 6, maxQty: null, hargaJual: 1400_00 })
+    addPriceTier(db, productId, derivedRowId, { minQty: 2, maxQty: null, hargaJual: 13000_00 })
+
+    const unitIds = listPriceTiers(db, productId).map((t) => t.productUnitId)
+    expect([...unitIds].sort()).toEqual([baseUnitRowId, derivedRowId].sort())
   })
 })
 
@@ -573,11 +689,11 @@ describe('listPriceHistory', () => {
 describe('getProductDetail', () => {
   it('bundles units (including the base row), price tiers, and price history', () => {
     const db = createDb(':memory:', migrationsFolder)
-    const { productId } = seedProductWithUnits(db)
+    const { productId, baseUnitRowId } = seedProductWithUnits(db)
     const rentengId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
 
     addProductUnit(db, productId, { unitId: rentengId, jumlahKemasan: 12, hargaJual: 15000_00 })
-    addPriceTier(db, productId, { minQty: 6, hargaJual: 1400_00 })
+    addPriceTier(db, productId, baseUnitRowId, { minQty: 6, maxQty: null, hargaJual: 1400_00 })
 
     const detail = getProductDetail(db, productId)
     expect(detail.units).toHaveLength(2)

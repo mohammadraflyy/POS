@@ -222,22 +222,42 @@ export function deleteProductUnit(db: BetterSQLite3Database<typeof schema>, prod
 
 export interface PriceTierRow {
   id: number
+  productUnitId: number
   minQty: number
+  /** null means the range runs open-ended above minQty */
+  maxQty: number | null
   hargaJual: number
 }
 
 export interface AddPriceTierInput {
   minQty: number
+  maxQty: number | null
   hargaJual: number
 }
 
-export function addPriceTier(db: BetterSQLite3Database<typeof schema>, productId: number, input: AddPriceTierInput): void {
+/** closed [min, max] ranges, with null max reading as unbounded above */
+function rangesOverlap(aMin: number, aMax: number | null, bMin: number, bMax: number | null): boolean {
+  return aMin <= (bMax ?? Infinity) && bMin <= (aMax ?? Infinity)
+}
+
+export function addPriceTier(
+  db: BetterSQLite3Database<typeof schema>,
+  productId: number,
+  productUnitId: number,
+  input: AddPriceTierInput,
+): void {
   if (!Number.isFinite(input.minQty)) {
     throw new Error('Qty minimal wajib diisi.')
   }
 
-  if (!Number.isInteger(input.minQty) || input.minQty < 2) {
-    throw new Error('Qty minimal harus 2 atau lebih.')
+  if (!Number.isInteger(input.minQty) || input.minQty <= 0) {
+    throw new Error('Qty minimal harus lebih dari 0.')
+  }
+
+  if (input.maxQty !== null) {
+    if (!Number.isFinite(input.maxQty) || !Number.isInteger(input.maxQty) || input.maxQty < input.minQty) {
+      throw new Error('Qty maksimal harus lebih besar atau sama dengan qty minimal.')
+    }
   }
 
   if (!Number.isFinite(input.hargaJual)) {
@@ -248,30 +268,36 @@ export function addPriceTier(db: BetterSQLite3Database<typeof schema>, productId
     throw new Error('Harga jual tidak boleh negatif.')
   }
 
-  const existing = db
-    .select({ id: productPriceTiers.id })
-    .from(productPriceTiers)
-    .where(and(eq(productPriceTiers.productId, productId), eq(productPriceTiers.minQty, input.minQty)))
+  const unit = db
+    .select({ id: productUnits.id })
+    .from(productUnits)
+    .where(and(eq(productUnits.id, productUnitId), eq(productUnits.productId, productId)))
     .get()
 
-  if (existing) {
-    throw new Error(`Harga bertingkat untuk qty ${input.minQty} sudah ada.`)
+  if (!unit) {
+    throw new Error('Satuan tidak ditemukan.')
+  }
+
+  // Overlap is checked per unit, not per product: 1-10 PCS and 1-10 DUS are
+  // different prices for different things, so both are legal side by side.
+  const existing = db
+    .select({ minQty: productPriceTiers.minQty, maxQty: productPriceTiers.maxQty })
+    .from(productPriceTiers)
+    .where(eq(productPriceTiers.productUnitId, productUnitId))
+    .all()
+
+  if (existing.some((tier) => rangesOverlap(input.minQty, input.maxQty, tier.minQty, tier.maxQty))) {
+    throw new Error('Rentang qty tumpang tindih dengan tier yang sudah ada.')
   }
 
   const now = new Date()
 
-  // Tiers are per-unit rows now, but the CRUD surface is still the old
-  // product-scoped one, so every tier lands on the base unit - which is exactly
-  // what these tiers have always meant. Task 8 opens this up to any unit and to
-  // closed [minQty, maxQty] ranges.
-  const baseUnit = getBaseProductUnit(db, productId)
-
   db.insert(productPriceTiers)
     .values({
       productId,
-      productUnitId: baseUnit.id,
+      productUnitId,
       minQty: input.minQty,
-      maxQty: null,
+      maxQty: input.maxQty,
       hargaJual: input.hargaJual,
       createdAt: now,
       updatedAt: now,
@@ -293,12 +319,27 @@ export function deletePriceTier(db: BetterSQLite3Database<typeof schema>, produc
   db.delete(productPriceTiers).where(eq(productPriceTiers.id, tierId)).run()
 }
 
-export function listPriceTiers(db: BetterSQLite3Database<typeof schema>, productId: number): PriceTierRow[] {
+/** omit `productUnitId` to get every unit's tiers, as the product detail view does */
+export function listPriceTiers(
+  db: BetterSQLite3Database<typeof schema>,
+  productId: number,
+  productUnitId?: number,
+): PriceTierRow[] {
+  const conditions = productUnitId
+    ? and(eq(productPriceTiers.productId, productId), eq(productPriceTiers.productUnitId, productUnitId))
+    : eq(productPriceTiers.productId, productId)
+
   return db
-    .select({ id: productPriceTiers.id, minQty: productPriceTiers.minQty, hargaJual: productPriceTiers.hargaJual })
+    .select({
+      id: productPriceTiers.id,
+      productUnitId: productPriceTiers.productUnitId,
+      minQty: productPriceTiers.minQty,
+      maxQty: productPriceTiers.maxQty,
+      hargaJual: productPriceTiers.hargaJual,
+    })
     .from(productPriceTiers)
-    .where(eq(productPriceTiers.productId, productId))
-    .orderBy(productPriceTiers.minQty)
+    .where(conditions)
+    .orderBy(productPriceTiers.productUnitId, productPriceTiers.minQty)
     .all()
 }
 

@@ -160,7 +160,7 @@ declare global {
         >
         getProductDetail: (productId: number) => Promise<{
           units: { id: number; satuan: string; jumlahKemasan: number; konversi: number; hargaJual: number }[]
-          priceTiers: { id: number; minQty: number; hargaJual: number }[]
+          priceTiers: { id: number; productUnitId: number; minQty: number; maxQty: number | null; hargaJual: number }[]
           priceHistory: {
             id: number
             hargaPokokLama: number
@@ -178,7 +178,10 @@ declare global {
           input: { satuan: string; jumlahKemasan: number; hargaJual: number },
         ) => Promise<void>
         deleteProductUnit: (productId: number, unitId: number) => Promise<void>
-        addPriceTier: (productId: number, input: { minQty: number; hargaJual: number }) => Promise<void>
+        addPriceTier: (
+          productId: number,
+          input: { minQty: number; maxQty?: number | null; hargaJual: number; productUnitId?: number },
+        ) => Promise<void>
         deletePriceTier: (productId: number, tierId: number) => Promise<void>
         getProductsByIds: (ids: number[]) => Promise<
           {
