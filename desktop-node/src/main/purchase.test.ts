@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { products, productUnits, purchases, purchaseItems, suppliers, users } from './db/schema'
+import { products, productUnits, purchases, purchaseItems, suppliers, units, users } from './db/schema'
 import { recordPurchase, listPurchases, searchProductsForPurchase, type PurchaseItemInput } from './purchase'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+const PCS_UNIT_ID = 1
+const KG_UNIT_ID = 2
+const RENTENG_UNIT_ID = 3
 
 function seedDb() {
   const db = createDb(':memory:', migrationsFolder)
@@ -27,7 +31,6 @@ function seedDb() {
         barcode: null,
         namaItem: 'Kopi Kapal Api',
         categoryId: null,
-        satuan: 'PCS',
         hargaPokok: 1500_00,
         hargaJual: 2000_00,
         stok: 10,
@@ -41,7 +44,6 @@ function seedDb() {
         barcode: null,
         namaItem: 'Gula Pasir',
         categoryId: null,
-        satuan: 'KG',
         hargaPokok: 12000_00,
         hargaJual: 14000_00,
         stok: 5,
@@ -52,17 +54,52 @@ function seedDb() {
     ])
     .run()
 
+  db.insert(units)
+    .values([
+      { id: PCS_UNIT_ID, code: 'PCS', name: 'Pieces', symbol: 'pcs', createdAt: now, updatedAt: now },
+      { id: KG_UNIT_ID, code: 'KG', name: 'Kilogram', symbol: 'kg', createdAt: now, updatedAt: now },
+      { id: RENTENG_UNIT_ID, code: 'Renteng', name: 'Renteng', symbol: 'rtg', createdAt: now, updatedAt: now },
+    ])
+    .run()
+
+  // every product needs exactly one base product_units row now - base is no
+  // longer implied by a null productUnitId at the storage level
   db.insert(productUnits)
-    .values({
-      id: 1,
-      productId: 1,
-      satuan: 'Renteng',
-      jumlahKemasan: 12,
-      konversi: 12,
-      hargaJual: 18000_00,
-      createdAt: now,
-      updatedAt: now,
-    })
+    .values([
+      {
+        id: 101,
+        productId: 1,
+        unitId: PCS_UNIT_ID,
+        jumlahKemasan: 1,
+        conversionFactor: 1,
+        hargaJual: 2000_00,
+        isBaseUnit: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 102,
+        productId: 2,
+        unitId: KG_UNIT_ID,
+        jumlahKemasan: 1,
+        conversionFactor: 1,
+        hargaJual: 14000_00,
+        isBaseUnit: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 1,
+        productId: 1,
+        unitId: RENTENG_UNIT_ID,
+        jumlahKemasan: 12,
+        conversionFactor: 12,
+        hargaJual: 18000_00,
+        isBaseUnit: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
     .run()
 
   return db
@@ -104,7 +141,7 @@ describe('recordPurchase', () => {
       productUnitId: null,
       qty: 10,
       konversi: 1,
-      satuan: null,
+      satuan: 'PCS',
       hargaBeli: 1400_00,
       subtotal: 14000_00,
     })

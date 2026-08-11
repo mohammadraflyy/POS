@@ -1,8 +1,8 @@
 import { desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { purchases, purchaseItems, products, suppliers, productUnits } from './db/schema'
-import { listProductUnits } from './inventory-units'
+import { purchases, purchaseItems, products, suppliers, productUnits, units } from './db/schema'
+import { getBaseProductUnit, listProductUnits } from './inventory-units'
 
 export interface PurchaseItemInput {
   productId: number
@@ -60,7 +60,18 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
   const productRows = db.select().from(products).where(inArray(products.id, productIds)).all()
   const productsById = new Map(productRows.map((p) => [p.id, p]))
 
-  const unitRows = db.select().from(productUnits).where(inArray(productUnits.productId, productIds)).all()
+  const unitRows = db
+    .select({
+      id: productUnits.id,
+      productId: productUnits.productId,
+      satuan: units.code,
+      konversi: productUnits.conversionFactor,
+      isBaseUnit: productUnits.isBaseUnit,
+    })
+    .from(productUnits)
+    .innerJoin(units, eq(productUnits.unitId, units.id))
+    .where(inArray(productUnits.productId, productIds))
+    .all()
 
   const resolvedItems: ResolvedPurchaseItem[] = []
 
@@ -71,18 +82,15 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
       throw new Error('Produk tidak ditemukan.')
     }
 
-    let konversi = 1
-    let satuan: string | null = null
+    // a null productUnitId still means "the base unit" at the input level -
+    // it now resolves to a real product_units row instead of an implicit one
+    const unit =
+      item.productUnitId !== null
+        ? unitRows.find((row) => row.id === item.productUnitId && row.productId === product.id)
+        : unitRows.find((row) => row.productId === product.id && row.isBaseUnit)
 
-    if (item.productUnitId !== null) {
-      const unit = unitRows.find((row) => row.id === item.productUnitId && row.productId === product.id)
-
-      if (!unit) {
-        throw new Error(`Satuan tidak valid untuk ${product.namaItem}.`)
-      }
-
-      konversi = unit.konversi
-      satuan = unit.satuan
+    if (!unit) {
+      throw new Error(`Satuan tidak valid untuk ${product.namaItem}.`)
     }
 
     const subtotal = item.qty * item.hargaBeli
@@ -91,8 +99,8 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
       productId: item.productId,
       productUnitId: item.productUnitId,
       qty: item.qty,
-      konversi,
-      satuan,
+      konversi: unit.konversi,
+      satuan: unit.satuan,
       hargaBeli: item.hargaBeli,
       subtotal,
     })
@@ -237,7 +245,6 @@ export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schem
       id: products.id,
       kodeItem: products.kodeItem,
       namaItem: products.namaItem,
-      satuan: products.satuan,
       hargaPokok: products.hargaPokok,
     })
     .from(products)
@@ -247,8 +254,13 @@ export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schem
     .all()
 
   return rows.map((row) => {
-    const units = listProductUnits(db, row.id).map((u) => ({ id: u.id, satuan: u.satuan, konversi: u.konversi }))
+    // the base unit is the product's own satuan label; the picker lists only
+    // the derived ones, matching how a null productUnitId means "base"
+    const baseUnit = getBaseProductUnit(db, row.id)
+    const derivedUnits = listProductUnits(db, row.id)
+      .filter((u) => !u.isBaseUnit)
+      .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor }))
 
-    return { ...row, units }
+    return { ...row, satuan: baseUnit.unitCode, units: derivedUnits }
   })
 }
