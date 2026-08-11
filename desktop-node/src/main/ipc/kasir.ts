@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { and, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings, users } from '../db/schema'
+import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings, units, users } from '../db/schema'
 import { checkout, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, purgeTodaySales, type CheckoutInput } from '../kasir'
 import { buildReceiptEscPos, SAMPLE_RECEIPT, type PaperWidth } from '../escpos'
 import { printRaw } from '../print-windows'
@@ -82,29 +82,48 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     const productRows = db.select().from(products).where(eq(products.isActive, true)).orderBy(products.namaItem).all()
-    const unitRows = db.select().from(productUnits).all()
+    const unitRows = db
+      .select({
+        id: productUnits.id,
+        productId: productUnits.productId,
+        satuan: units.code,
+        konversi: productUnits.conversionFactor,
+        hargaJual: productUnits.hargaJual,
+        isBaseUnit: productUnits.isBaseUnit,
+      })
+      .from(productUnits)
+      .innerJoin(units, eq(productUnits.unitId, units.id))
+      .all()
     const tierRows = db.select().from(productPriceTiers).all()
 
-    return productRows.map((product) => ({
-      id: product.id,
-      kodeItem: product.kodeItem,
-      barcode: product.barcode,
-      namaItem: product.namaItem,
-      satuan: product.satuan,
-      hargaJual: toRupiah(product.hargaJual),
-      stok: product.stok,
-      productUnits: unitRows
-        .filter((unit) => unit.productId === product.id)
-        .map((unit) => ({
-          id: unit.id,
-          satuan: unit.satuan,
-          konversi: unit.konversi,
-          hargaJual: toRupiah(unit.hargaJual),
-        })),
-      priceTiers: tierRows
-        .filter((tier) => tier.productId === product.id)
-        .map((tier) => ({ minQty: tier.minQty, hargaJual: toRupiah(tier.hargaJual) })),
-    }))
+    return productRows.map((product) => {
+      // products.satuan is gone - the base-unit product_units row carries the label now
+      const baseUnit = unitRows.find((unit) => unit.productId === product.id && unit.isBaseUnit)
+
+      return {
+        id: product.id,
+        kodeItem: product.kodeItem,
+        barcode: product.barcode,
+        namaItem: product.namaItem,
+        satuan: baseUnit?.satuan ?? '',
+        hargaJual: toRupiah(product.hargaJual),
+        stok: product.stok,
+        // the base unit stays out of this list: the renderer still treats
+        // productUnitId === null as "base unit", so listing it here would show
+        // the same satuan twice. Revisit in Task 10's cart-logic rewrite.
+        productUnits: unitRows
+          .filter((unit) => unit.productId === product.id && !unit.isBaseUnit)
+          .map((unit) => ({
+            id: unit.id,
+            satuan: unit.satuan,
+            konversi: unit.konversi,
+            hargaJual: toRupiah(unit.hargaJual),
+          })),
+        priceTiers: tierRows
+          .filter((tier) => tier.productId === product.id)
+          .map((tier) => ({ minQty: tier.minQty, hargaJual: toRupiah(tier.hargaJual) })),
+      }
+    })
   })
 
   ipcMain.handle('kasir:listSalesToday', () => {

@@ -749,6 +749,7 @@ git commit -m "feat: rewrite product-unit CRUD for unit_id + explicit base-unit 
 **Files:**
 - Modify: `src/main/kasir.ts`
 - Modify: `src/main/kasir.test.ts`
+- Modify: `src/main/ipc/kasir.ts` (**added post-Task-4**: this file's `listProducts`/checkout handlers read `products.satuan`/`productUnits.satuan`/`productUnits.konversi` directly — all removed/renamed by Task 4. Originally omitted from this task's file list by mistake; confirmed via `tsc` to have exactly 3 errors, all in this file, all caused by the same schema change this task otherwise fixes. Fix in place: `satuan` reads become `unitCode` reads (or a join through `units`), `konversi` becomes `conversionFactor`.)
 
 **Interfaces:**
 - Consumes: `getBaseProductUnit` (Task 5), `productUnits.isBaseUnit/conversionFactor/unitId` (Task 4).
@@ -930,15 +931,17 @@ git commit -m "feat: read base unit label through product_units in stock opname"
 
 ---
 
-### Task 6d: Update `main/rekap.ts` and `main/escpos.ts` for the new base-unit model
+### Task 6d: Update `main/rekap.ts`, `main/escpos.ts`, and `main/dashboard.ts` for the new base-unit model
 
 **Files:**
 - Modify: `src/main/rekap.ts`
 - Modify: `src/main/rekap.test.ts`
 - Modify: `src/main/escpos.ts`
 - Modify: `src/main/escpos.test.ts`
+- Modify: `src/main/dashboard.ts` (**added post-Task-4**: `getDashboard`'s low-stock query selects `products.satuan` directly at what was originally line 46 — omitted from this task's file list by mistake, confirmed via `tsc` to be the only other file with errors caused by Task 4 not yet covered by any task)
+- Modify: `src/main/dashboard.test.ts`
 
-Both files are read-only consumers (reporting and receipt printing) — they read `product.satuan`/`saleItem.satuan` for display. `saleItem.satuan` is unaffected (already a stored snapshot string on `sale_items`, untouched by this migration). Only direct `products.satuan` reads need fixing.
+All three files are read-only consumers (reporting and receipt printing) — they read `product.satuan`/`saleItem.satuan` for display. `saleItem.satuan` is unaffected (already a stored snapshot string on `sale_items`, untouched by this migration). Only direct `products.satuan` reads need fixing.
 
 - [ ] **Step 1: Find every `products.satuan` reference in both files**
 
