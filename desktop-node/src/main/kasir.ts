@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, storeSettings } from './db/schema'
+import { products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, stockMovements, storeSettings } from './db/schema'
 
 export interface PriceTier {
   minQty: number
@@ -224,6 +224,19 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
         .where(eq(products.id, line.productId))
         .run()
+
+      tx.insert(stockMovements)
+        .values({
+          productId: line.productId,
+          productUnitId: line.productUnitId,
+          quantity: -line.qty,
+          conversionFactor: line.konversi,
+          baseQuantity: -line.qtyDasar,
+          movementType: 'sale',
+          referenceId: sale.id,
+          createdAt: now,
+        })
+        .run()
     }
 
     tx.update(sales).set({ total }).where(eq(sales.id, sale.id)).run()
@@ -239,11 +252,34 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
 type Db = BetterSQLite3Database<typeof schema>
 type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
 
-function restoreStockForItems(tx: Tx, items: { productId: number; qty: number; konversi: number }[]): void {
+/**
+ * Puts sold stock back and logs the reversal. Both callers (cancelSale and purgeTodaySales)
+ * move real stock, so both write to the ledger - otherwise the movement sum drifts away
+ * from products.stok.
+ */
+function restoreStockForItems(
+  tx: Tx,
+  items: { saleId: number; productId: number; productUnitId: number | null; qty: number; konversi: number }[],
+): void {
+  const now = new Date()
+
   for (const item of items) {
     tx.update(products)
       .set({ stok: sql`${products.stok} + ${item.qty * item.konversi}` })
       .where(eq(products.id, item.productId))
+      .run()
+
+    tx.insert(stockMovements)
+      .values({
+        productId: item.productId,
+        productUnitId: item.productUnitId,
+        quantity: item.qty,
+        conversionFactor: item.konversi,
+        baseQuantity: item.qty * item.konversi,
+        movementType: 'sale_cancel',
+        referenceId: item.saleId,
+        createdAt: now,
+      })
       .run()
   }
 }

@@ -3,7 +3,7 @@ import { priceForQty, resolveCartItem, type ProductRow, type ProductUnitRow } fr
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { users, products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, storeSettings } from './db/schema'
+import { users, products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, stockMovements, storeSettings } from './db/schema'
 import { checkout, type CheckoutInput, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, purgeTodaySales } from './kasir'
 
 const PCS_UNIT_ID = 1
@@ -280,6 +280,26 @@ describe('checkout', () => {
     expect(items[0].priceSource).toBe('price_tier')
     expect(items[0].baseQuantity).toBe(5)
     expect(items[0].baseQuantity).toBe(items[0].qty * items[0].konversi)
+  })
+
+  it('records a signed sale stock movement per line, in both the sold unit and base units', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 220000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: 9, qty: 2 }],
+    })
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, result.saleId)).all()
+    expect(movements).toHaveLength(1)
+    expect(movements[0].movementType).toBe('sale')
+    expect(movements[0].productUnitId).toBe(9)
+    expect(movements[0].quantity).toBe(-2)
+    expect(movements[0].conversionFactor).toBe(40)
+    expect(movements[0].baseQuantity).toBe(-80)
   })
 
   it("records priceSource 'normal' and converts baseQuantity for an untiered derived-unit line", () => {
@@ -657,6 +677,20 @@ describe('cancelSale', () => {
     cancelSale(db, saleId)
 
     expect(() => cancelSale(db, saleId)).toThrow('Transaksi sudah dibatalkan.')
+  })
+
+  it('records a reversing sale_cancel stock movement', () => {
+    const { db, saleId } = seedDbWithOneSale()
+
+    cancelSale(db, saleId)
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
+    const reversal = movements.filter((movement) => movement.movementType === 'sale_cancel')
+    expect(reversal).toHaveLength(1)
+    expect(reversal[0].quantity).toBe(5)
+    expect(reversal[0].baseQuantity).toBe(5)
+    // the ledger nets to zero once the sale is undone
+    expect(movements.reduce((sum, movement) => sum + movement.baseQuantity, 0)).toBe(0)
   })
 
   it('restores stock multiplied by konversi when the sale line used a product unit', () => {
