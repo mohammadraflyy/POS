@@ -14,7 +14,7 @@ import {
   type ProductUnitRow,
 } from '../inventory-units'
 import { getProductsByIds, bulkSaveProducts, importProducts, importSatuan, type BulkSaveRow } from '../inventory-bulk'
-import { listUnits, createUnit, updateUnit, deactivateUnit, resolveOrCreateUnit } from '../master-satuan'
+import { listUnits, createUnit, updateUnit, deactivateUnit } from '../master-satuan'
 import { getCurrentUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -60,10 +60,12 @@ function toDto(item: ReturnType<typeof searchProductsQuick>[number]): ProductLis
 function toUnitDto(unit: ProductUnitRow) {
   return {
     id: unit.id,
+    unitId: unit.unitId,
     satuan: unit.unitCode,
     jumlahKemasan: unit.jumlahKemasan,
     konversi: unit.conversionFactor,
     hargaJual: toRupiah(unit.hargaJual),
+    isBaseUnit: unit.isBaseUnit,
   }
 }
 
@@ -152,7 +154,13 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
 
     return {
       units: detail.units.map(toUnitDto),
-      priceTiers: detail.priceTiers.map((tier) => ({ id: tier.id, minQty: tier.minQty, hargaJual: toRupiah(tier.hargaJual) })),
+      priceTiers: detail.priceTiers.map((tier) => ({
+        id: tier.id,
+        productUnitId: tier.productUnitId,
+        minQty: tier.minQty,
+        maxQty: tier.maxQty,
+        hargaJual: toRupiah(tier.hargaJual),
+      })),
       priceHistory: detail.priceHistory.map((entry) => ({
         id: entry.id,
         hargaPokokLama: toRupiah(entry.hargaPokokLama),
@@ -167,15 +175,13 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
 
   ipcMain.handle(
     'inventory:addProductUnit',
-    (_event, productId: number, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) => {
+    (_event, productId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) => {
       if (!getCurrentUser()) {
         throw new Error('Silakan login terlebih dahulu.')
       }
 
-      // the product form still submits free satuan text; the shared units table
-      // sits behind it (Task 16 replaces this with a real unit picker)
       addProductUnit(db, productId, {
-        unitId: resolveOrCreateUnit(db, input.satuan),
+        unitId: input.unitId,
         jumlahKemasan: input.jumlahKemasan,
         hargaJual: toCents(input.hargaJual),
       })
@@ -184,13 +190,13 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
 
   ipcMain.handle(
     'inventory:updateProductUnit',
-    (_event, productId: number, unitId: number, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) => {
+    (_event, productId: number, unitRowId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) => {
       if (!getCurrentUser()) {
         throw new Error('Silakan login terlebih dahulu.')
       }
 
-      updateProductUnit(db, productId, unitId, {
-        unitId: resolveOrCreateUnit(db, input.satuan),
+      updateProductUnit(db, productId, unitRowId, {
+        unitId: input.unitId,
         jumlahKemasan: input.jumlahKemasan,
         hargaJual: toCents(input.hargaJual),
       })

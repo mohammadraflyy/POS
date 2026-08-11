@@ -69,10 +69,13 @@ const api = {
     bulkDeleteProducts: (ids: number[]) => invoke('inventory:bulkDeleteProducts', ids),
     searchProducts: (q: string) => invoke('inventory:searchProducts', q),
     getProductDetail: (productId: number) => invoke('inventory:getProductDetail', productId),
-    addProductUnit: (productId: number, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) =>
+    addProductUnit: (productId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) =>
       invoke('inventory:addProductUnit', productId, input),
-    updateProductUnit: (productId: number, unitId: number, input: { satuan: string; jumlahKemasan: number; hargaJual: number }) =>
-      invoke('inventory:updateProductUnit', productId, unitId, input),
+    updateProductUnit: (
+      productId: number,
+      unitRowId: number,
+      input: { unitId: number; jumlahKemasan: number; hargaJual: number },
+    ) => invoke('inventory:updateProductUnit', productId, unitRowId, input),
     deleteProductUnit: (productId: number, unitId: number) => invoke('inventory:deleteProductUnit', productId, unitId),
     addPriceTier: (
       productId: number,

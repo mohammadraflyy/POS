@@ -6,21 +6,34 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { InputError } from '@/components/input-error'
 import { useConfirm } from '@/hooks/use-confirm'
 import { formatRupiah } from '@/lib/utils'
 
 interface UnitRow {
   id: number
+  unitId: number
   satuan: string
   jumlahKemasan: number
   konversi: number
   hargaJual: number
+  isBaseUnit: boolean
+}
+
+interface MasterUnit {
+  id: number
+  code: string
+  name: string
+  symbol: string
+  isActive: boolean
 }
 
 interface PriceTierRow {
   id: number
+  productUnitId: number
   minQty: number
+  maxQty: number | null
   hargaJual: number
 }
 
@@ -50,6 +63,7 @@ interface ProductDetailDialogProps {
 
 export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpenChange, onChanged }: ProductDetailDialogProps) {
   const [detail, setDetail] = useState<ProductDetail | null>(null)
+  const [masterUnits, setMasterUnits] = useState<MasterUnit[]>([])
   const [error, setError] = useState<string | null>(null)
 
   function reload(id: number) {
@@ -69,6 +83,10 @@ export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpen
       return
     }
     reload(productId)
+    window.api.masterSatuan
+      .list()
+      .then((rows) => setMasterUnits(rows.filter((row) => row.isActive)))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat master satuan'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId])
 
@@ -88,8 +106,14 @@ export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpen
         {error && <p className="text-sm text-destructive">{error}</p>}
         {productId !== null && detail && (
           <>
-            <UnitChainManager productId={productId} baseSatuan={baseSatuan} units={detail.units} onChanged={refresh} />
-            <PriceTiersManager productId={productId} baseSatuan={baseSatuan} tiers={detail.priceTiers} onChanged={refresh} />
+            <UnitChainManager
+              productId={productId}
+              baseSatuan={detail.units.find((unit) => unit.isBaseUnit)?.satuan ?? baseSatuan}
+              units={detail.units}
+              masterUnits={masterUnits}
+              onChanged={refresh}
+            />
+            <PriceTiersManager productId={productId} units={detail.units} tiers={detail.priceTiers} onChanged={refresh} />
             <PriceHistoryList history={detail.priceHistory} />
           </>
         )}
@@ -102,16 +126,22 @@ function UnitChainManager({
   productId,
   baseSatuan,
   units,
+  masterUnits,
   onChanged,
 }: {
   productId: number
   baseSatuan: string
   units: UnitRow[]
+  masterUnits: MasterUnit[]
   onChanged: () => void
 }) {
   const [adding, setAdding] = useState(false)
 
-  const largest = units.length > 0 ? units[units.length - 1] : null
+  // the base row lives in the same table now, but it is not part of the derived chain -
+  // its unit and conversion are fixed, and its price is edited on the product form
+  const derived = units.filter((unit) => !unit.isBaseUnit)
+  const largest = derived.length > 0 ? derived[derived.length - 1] : null
+  const usedUnitIds = units.map((unit) => unit.unitId)
 
   return (
     <div className="space-y-3 border-t pt-4">
@@ -121,16 +151,17 @@ function UnitChainManager({
         <span className="text-xs text-muted-foreground">mis. 1 Renteng = 12 {baseSatuan}, 1 Dus = 10 Renteng</span>
       </div>
 
-      {units.length > 0 ? (
+      {derived.length > 0 ? (
         <div className="space-y-1.5">
-          {units.map((unit, idx) => (
+          {derived.map((unit, idx) => (
             <UnitChainRow
               key={unit.id}
               productId={productId}
               unit={unit}
-              relativeToLabel={idx === 0 ? baseSatuan : units[idx - 1].satuan}
+              relativeToLabel={idx === 0 ? baseSatuan : derived[idx - 1].satuan}
               baseSatuan={baseSatuan}
-              unitsAbove={units.slice(idx + 1)}
+              unitsAbove={derived.slice(idx + 1)}
+              unitOptions={masterUnits.filter((option) => option.id === unit.unitId || !usedUnitIds.includes(option.id))}
               onChanged={onChanged}
             />
           ))}
@@ -143,6 +174,7 @@ function UnitChainManager({
         <UnitChainAddForm
           productId={productId}
           relativeToLabel={largest?.satuan ?? baseSatuan}
+          unitOptions={masterUnits.filter((option) => !usedUnitIds.includes(option.id))}
           onDone={() => setAdding(false)}
           onChanged={onChanged}
         />
@@ -161,6 +193,7 @@ function UnitChainRow({
   relativeToLabel,
   baseSatuan,
   unitsAbove,
+  unitOptions,
   onChanged,
 }: {
   productId: number
@@ -168,10 +201,11 @@ function UnitChainRow({
   relativeToLabel: string
   baseSatuan: string
   unitsAbove: UnitRow[]
+  unitOptions: MasterUnit[]
   onChanged: () => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [satuan, setSatuan] = useState(unit.satuan)
+  const [unitId, setUnitId] = useState(String(unit.unitId))
   const [jumlahKemasan, setJumlahKemasan] = useState(String(unit.jumlahKemasan))
   const [hargaJual, setHargaJual] = useState(String(unit.hargaJual))
   const [error, setError] = useState<string | null>(null)
@@ -179,7 +213,7 @@ function UnitChainRow({
   const { confirm, ConfirmDialog } = useConfirm()
 
   function startEdit() {
-    setSatuan(unit.satuan)
+    setUnitId(String(unit.unitId))
     setJumlahKemasan(String(unit.jumlahKemasan))
     setHargaJual(String(unit.hargaJual))
     setError(null)
@@ -189,8 +223,9 @@ function UnitChainRow({
   function submit(e: FormEvent) {
     e.preventDefault()
 
-    if (!satuan.trim()) {
-      setError('Satuan wajib diisi.')
+    const unitIdNum = Number(unitId)
+    if (!Number.isInteger(unitIdNum) || unitIdNum < 1) {
+      setError('Satuan wajib dipilih.')
       return
     }
 
@@ -210,7 +245,7 @@ function UnitChainRow({
     setError(null)
 
     window.api.inventory
-      .updateProductUnit(productId, unit.id, { satuan, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
+      .updateProductUnit(productId, unit.id, { unitId: unitIdNum, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
       .then(() => {
         setEditing(false)
         onChanged()
@@ -246,7 +281,7 @@ function UnitChainRow({
         <div className="flex items-end gap-2">
           <div className="grid flex-1 gap-1">
             <Label className="text-xs">Satuan</Label>
-            <Input value={satuan} onChange={(e) => setSatuan(e.target.value)} />
+            <UnitSelect value={unitId} options={unitOptions} onChange={setUnitId} />
           </div>
           <div className="grid w-32 gap-1">
             <Label className="text-xs">= jumlah {relativeToLabel}</Label>
@@ -291,18 +326,37 @@ function UnitChainRow({
   )
 }
 
+function UnitSelect({ value, options, onChange }: { value: string; options: MasterUnit[]; onChange: (value: string) => void }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger>
+        <SelectValue placeholder="Pilih satuan" />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.id} value={String(option.id)}>
+            {option.code} &mdash; {option.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 function UnitChainAddForm({
   productId,
   relativeToLabel,
+  unitOptions,
   onDone,
   onChanged,
 }: {
   productId: number
   relativeToLabel: string
+  unitOptions: MasterUnit[]
   onDone: () => void
   onChanged: () => void
 }) {
-  const [satuan, setSatuan] = useState('')
+  const [unitId, setUnitId] = useState('')
   const [jumlahKemasan, setJumlahKemasan] = useState('')
   const [hargaJual, setHargaJual] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -311,8 +365,9 @@ function UnitChainAddForm({
   function submit(e: FormEvent) {
     e.preventDefault()
 
-    if (!satuan.trim()) {
-      setError('Satuan wajib diisi.')
+    const unitIdNum = Number(unitId)
+    if (!Number.isInteger(unitIdNum) || unitIdNum < 1) {
+      setError('Satuan wajib dipilih.')
       return
     }
 
@@ -332,7 +387,7 @@ function UnitChainAddForm({
     setError(null)
 
     window.api.inventory
-      .addProductUnit(productId, { satuan, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
+      .addProductUnit(productId, { unitId: unitIdNum, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
       .then(() => {
         onDone()
         onChanged()
@@ -346,7 +401,7 @@ function UnitChainAddForm({
       <div className="flex items-end gap-2">
         <div className="grid flex-1 gap-1">
           <Label className="text-xs">Satuan</Label>
-          <Input value={satuan} onChange={(e) => setSatuan(e.target.value)} placeholder="Dus" autoFocus />
+          <UnitSelect value={unitId} options={unitOptions} onChange={setUnitId} />
         </div>
         <div className="grid w-32 gap-1">
           <Label className="text-xs">= jumlah {relativeToLabel}</Label>
@@ -370,27 +425,49 @@ function UnitChainAddForm({
 
 function PriceTiersManager({
   productId,
-  baseSatuan,
+  units,
   tiers,
   onChanged,
 }: {
   productId: number
-  baseSatuan: string
+  units: UnitRow[]
   tiers: PriceTierRow[]
   onChanged: () => void
 }) {
+  const baseUnit = units.find((unit) => unit.isBaseUnit) ?? units[0]
+  const [selectedUnitId, setSelectedUnitId] = useState(String(baseUnit?.id ?? ''))
   const [minQty, setMinQty] = useState('')
+  const [maxQty, setMaxQty] = useState('')
   const [hargaJual, setHargaJual] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const { confirm, ConfirmDialog } = useConfirm()
 
+  const selectedUnit = units.find((unit) => String(unit.id) === selectedUnitId) ?? baseUnit
+  const unitLabel = selectedUnit?.satuan ?? ''
+  const visibleTiers = tiers.filter((tier) => tier.productUnitId === selectedUnit?.id)
+
+  function tierRange(tier: PriceTierRow, satuan: string) {
+    return tier.maxQty === null ? `${tier.minQty}+ ${satuan}` : `${tier.minQty} - ${tier.maxQty} ${satuan}`
+  }
+
   function addTier(e: FormEvent) {
     e.preventDefault()
+
+    if (!selectedUnit) {
+      setError('Satuan belum tersedia.')
+      return
+    }
 
     const minQtyNum = Number(minQty)
     if (minQty.trim() === '' || !Number.isFinite(minQtyNum)) {
       setError('Qty minimal wajib diisi.')
+      return
+    }
+
+    const maxQtyNum = maxQty.trim() === '' ? null : Number(maxQty)
+    if (maxQtyNum !== null && !Number.isFinite(maxQtyNum)) {
+      setError('Qty maksimal harus angka.')
       return
     }
 
@@ -404,9 +481,10 @@ function PriceTiersManager({
     setError(null)
 
     window.api.inventory
-      .addPriceTier(productId, { minQty: minQtyNum, hargaJual: hargaNum })
+      .addPriceTier(productId, { productUnitId: selectedUnit.id, minQty: minQtyNum, maxQty: maxQtyNum, hargaJual: hargaNum })
       .then(() => {
         setMinQty('')
+        setMaxQty('')
         setHargaJual('')
         onChanged()
       })
@@ -417,7 +495,7 @@ function PriceTiersManager({
   async function removeTier(tier: PriceTierRow) {
     const ok = await confirm({
       title: 'Hapus Harga Bertingkat',
-      description: `Hapus harga bertingkat untuk pembelian ${tier.minQty}+ ${baseSatuan}?`,
+      description: `Hapus harga bertingkat untuk pembelian ${tierRange(tier, unitLabel)}?`,
       confirmLabel: 'Hapus',
       destructive: true,
     })
@@ -440,21 +518,39 @@ function PriceTiersManager({
       <div className="flex items-center gap-2">
         <TrendingUp className="size-4 text-muted-foreground" />
         <Label className="text-sm font-semibold">Harga Bertingkat</Label>
-        <span className="text-xs text-muted-foreground">berdasarkan jumlah beli, satuan {baseSatuan}</span>
+        <span className="text-xs text-muted-foreground">berdasarkan jumlah beli, per satuan</span>
       </div>
-      {tiers.length > 0 ? (
+
+      <div className="flex items-end gap-2">
+        <div className="grid w-48 gap-1">
+          <Label className="text-xs">Satuan</Label>
+          <Select value={selectedUnitId} onValueChange={setSelectedUnitId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Pilih satuan" />
+            </SelectTrigger>
+            <SelectContent>
+              {units.map((unit) => (
+                <SelectItem key={unit.id} value={String(unit.id)}>
+                  {unit.satuan}
+                  {unit.isBaseUnit ? ' (dasar)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {visibleTiers.length > 0 ? (
         <div className="space-y-1.5">
-          {tiers.map((tier) => (
+          {visibleTiers.map((tier) => (
             <div
               key={tier.id}
               className="flex items-center justify-between rounded-lg border px-3 py-2 transition-colors hover:bg-accent/50"
             >
-              <span className="text-sm font-medium">
-                Beli {tier.minQty}+ {baseSatuan}
-              </span>
+              <span className="text-sm font-medium">Beli {tierRange(tier, unitLabel)}</span>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">
-                  {formatRupiah(tier.hargaJual)} / {baseSatuan}
+                  {formatRupiah(tier.hargaJual)} / {unitLabel}
                 </Badge>
                 <Button
                   type="button"
@@ -479,7 +575,11 @@ function PriceTiersManager({
             <Input type="number" value={minQty} onChange={(e) => setMinQty(e.target.value)} placeholder="6" />
           </div>
           <div className="grid w-40 gap-1">
-            <Label className="text-xs">Harga Jual per {baseSatuan}</Label>
+            <Label className="text-xs">Maks. Qty</Label>
+            <Input type="number" value={maxQty} onChange={(e) => setMaxQty(e.target.value)} placeholder="kosong = tak terbatas" />
+          </div>
+          <div className="grid w-40 gap-1">
+            <Label className="text-xs">Harga Jual per {unitLabel}</Label>
             <Input type="number" value={hargaJual} onChange={(e) => setHargaJual(e.target.value)} />
           </div>
           <Button type="submit" size="sm" disabled={processing}>
