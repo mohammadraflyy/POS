@@ -71,6 +71,13 @@
       "when": 1786451177906,
       "tag": "0009_lyrical_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786467942088,
+      "tag": "0010_outgoing_jane_foster",
+      "breakpoints": true
     }
   ]
 }

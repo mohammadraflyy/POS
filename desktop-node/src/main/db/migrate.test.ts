@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { and, eq, sql } from 'drizzle-orm'
 import { createDb } from './migrate'
-import { products, productUnits, units } from './schema'
+import { products, productUnits, stockMovements, units } from './schema'
 
 const migrationsFolder = path.resolve(__dirname, '../../../drizzle')
 
@@ -42,7 +42,7 @@ function partialMigrationsBefore(tag: string) {
 }
 
 describe('createDb', () => {
-  it('creates all 15 business tables', () => {
+  it('creates all 16 business tables', () => {
     const db = createDb(':memory:', migrationsFolder)
 
     const rows = db.all<{ name: string }>(
@@ -63,6 +63,7 @@ describe('createDb', () => {
         'sale_items',
         'sales',
         'stock_adjustments',
+        'stock_movements',
         'store_settings',
         'suppliers',
         'units',
@@ -249,6 +250,27 @@ describe('createDb', () => {
       { id: 5, product_id: 1, product_unit_id: 10, min_qty: 10, max_qty: null, harga_jual: 140000 },
       { id: 6, product_id: 1, product_unit_id: 10, min_qty: 50, max_qty: null, harga_jual: 130000 },
     ])
+  })
+
+  it('records a stock movement referencing a product unit', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+    const unit = db.insert(units).values({ code: 'PCS', name: 'Pieces', symbol: 'pcs', isActive: true, createdAt: now, updatedAt: now }).returning().get()
+    const product = db.insert(products).values({ kodeItem: 'M1', namaItem: 'Test', hargaJual: 1000, stok: 10, createdAt: now, updatedAt: now }).returning().get()
+    const baseUnit = db
+      .insert(productUnits)
+      .values({ productId: product.id, unitId: unit.id, jumlahKemasan: 1, conversionFactor: 1, hargaJual: 1000, isBaseUnit: true, isDefaultSalesUnit: true, isDefaultPurchaseUnit: true, createdAt: now, updatedAt: now })
+      .returning()
+      .get()
+
+    db.insert(stockMovements)
+      .values({ productId: product.id, productUnitId: baseUnit.id, quantity: -5, conversionFactor: 1, baseQuantity: -5, movementType: 'sale', referenceId: 1, createdAt: now })
+      .run()
+
+    const movements = db.select().from(stockMovements).all()
+    expect(movements).toHaveLength(1)
+    expect(movements[0].baseQuantity).toBe(-5)
+    expect(movements[0].movementType).toBe('sale')
   })
 
   it('backfills sale_items.base_quantity from qty * konversi, leaving price_source at its default', () => {

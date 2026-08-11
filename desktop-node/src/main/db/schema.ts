@@ -166,6 +166,23 @@ export const stockAdjustments = sqliteTable('stock_adjustments', {
   ...timestamps(),
 })
 
+/**
+ * Append-only ledger of every stock change, recorded from this migration forward.
+ * `quantity` is in the transacted unit, `baseQuantity` the same change in base units;
+ * both are signed - negative when stock leaves, positive when it arrives.
+ */
+export const stockMovements = sqliteTable('stock_movements', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  productUnitId: integer('product_unit_id').references(() => productUnits.id, { onDelete: 'set null' }),
+  quantity: integer('quantity').notNull(),
+  conversionFactor: integer('conversion_factor').notNull(),
+  baseQuantity: integer('base_quantity').notNull(),
+  movementType: text('movement_type', { enum: ['sale', 'sale_cancel', 'purchase', 'stock_adjustment'] }).notNull(),
+  referenceId: integer('reference_id').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+
 export const storeSettings = sqliteTable('store_settings', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   namaToko: text('nama_toko').notNull(),
