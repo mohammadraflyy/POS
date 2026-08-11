@@ -3,9 +3,9 @@ import path from 'node:path'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import * as XLSX from 'xlsx'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { categories, products, productPriceHistories, productUnits, stockAdjustments, users } from './db/schema'
+import { categories, products, productPriceHistories, productUnits, stockAdjustments, units, users } from './db/schema'
 import {
   getProductsByIds,
   saveProductRows,
@@ -40,7 +40,6 @@ function seedDb() {
       barcode: '1234567890',
       namaItem: 'Beras 5kg',
       categoryId: 1,
-      satuan: 'PCS',
       hargaPokok: 60000_00,
       hargaJual: 65000_00,
       stok: 10,
@@ -50,7 +49,43 @@ function seedDb() {
     })
     .run()
 
+  db.insert(units)
+    .values({ id: 1, code: 'PCS', name: 'Pieces', symbol: 'pcs', createdAt: now, updatedAt: now })
+    .run()
+
+  db.insert(productUnits)
+    .values({
+      id: 101,
+      productId: 1,
+      unitId: 1,
+      jumlahKemasan: 1,
+      conversionFactor: 1,
+      hargaJual: 65000_00,
+      isBaseUnit: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
   return db
+}
+
+/**
+ * The derived (non-base) rows of a product's satuan chain, with the unit code
+ * joined back in - importSatuan only ever writes these.
+ */
+function derivedUnits(db: ReturnType<typeof createDb>, productId: number) {
+  return db
+    .select({
+      satuan: units.code,
+      jumlahKemasan: productUnits.jumlahKemasan,
+      konversi: productUnits.conversionFactor,
+      hargaJual: productUnits.hargaJual,
+    })
+    .from(productUnits)
+    .innerJoin(units, eq(productUnits.unitId, units.id))
+    .where(and(eq(productUnits.productId, productId), eq(productUnits.isBaseUnit, false)))
+    .all()
 }
 
 function baseRow(overrides: Partial<BulkSaveRow> = {}): BulkSaveRow {
@@ -453,7 +488,7 @@ describe('importSatuan', () => {
       dilewatiRantaiTidakValid: 0,
     })
 
-    const unit = db.select().from(productUnits).where(eq(productUnits.productId, 1)).get()
+    const unit = derivedUnits(db, 1)[0]
     expect(unit).toMatchObject({ satuan: 'DUS', jumlahKemasan: 12, konversi: 12, hargaJual: 17000_00 })
   })
 
@@ -470,8 +505,8 @@ describe('importSatuan', () => {
     expect(result.produkDiperbarui).toBe(1)
     expect(result.satuanDitambahkan).toBe(2)
 
-    const units = db.select().from(productUnits).where(eq(productUnits.productId, 1)).all()
-    const bySatuan = Object.fromEntries(units.map((u) => [u.satuan, u]))
+    const chain = derivedUnits(db, 1)
+    const bySatuan = Object.fromEntries(chain.map((u) => [u.satuan, u]))
     expect(bySatuan.SLOP).toMatchObject({ jumlahKemasan: 10, konversi: 10 })
     expect(bySatuan.DUS).toMatchObject({ jumlahKemasan: 5, konversi: 50 }) // re-derived relative to SLOP, not PCS
   })
@@ -491,7 +526,7 @@ describe('importSatuan', () => {
     const result = importSatuan(db, filePath)
     expect(result).toEqual({ ...emptySatuanResult(), dilewatiSatuanTidakCocok: 1 })
 
-    expect(db.select().from(productUnits).all()).toHaveLength(0)
+    expect(derivedUnits(db, 1)).toHaveLength(0)
   })
 
   it('skips when a relative reference cannot be resolved', () => {
@@ -525,7 +560,7 @@ describe('importSatuan', () => {
 
     const result = importSatuan(db, filePath)
     expect(result).toEqual(emptySatuanResult())
-    expect(db.select().from(productUnits).all()).toHaveLength(0)
+    expect(derivedUnits(db, 1)).toHaveLength(0)
   })
 
   it('is idempotent: re-running updates the existing unit instead of duplicating it', () => {
@@ -538,9 +573,9 @@ describe('importSatuan', () => {
     const result = importSatuan(db, filePath2)
 
     expect(result.satuanDitambahkan).toBe(1)
-    const units = db.select().from(productUnits).where(eq(productUnits.productId, 1)).all()
-    expect(units).toHaveLength(1)
-    expect(units[0]).toMatchObject({ hargaJual: 18000_00 })
+    const chain = derivedUnits(db, 1)
+    expect(chain).toHaveLength(1)
+    expect(chain[0]).toMatchObject({ hargaJual: 18000_00 })
   })
 
   it('locates the header row even when preceded by a title block', () => {

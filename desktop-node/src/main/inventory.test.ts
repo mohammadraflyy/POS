@@ -13,10 +13,15 @@ import {
   users,
   productUnits,
   productPriceTiers,
+  units,
 } from './db/schema'
 import { listProducts, updateProduct, deleteProduct, bulkDeleteProducts, searchProductsQuick } from './inventory'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+const PCS_UNIT_ID = 1
+const KG_UNIT_ID = 2
+const RENTENG_UNIT_ID = 3
 
 function seedProducts() {
   const db = createDb(':memory:', migrationsFolder)
@@ -36,7 +41,6 @@ function seedProducts() {
         barcode: '1234567890',
         namaItem: 'Beras 5kg',
         categoryId: 1,
-        satuan: 'PCS',
         hargaPokok: 60000_00,
         hargaJual: 65000_00,
         stok: 10,
@@ -50,7 +54,6 @@ function seedProducts() {
         barcode: null,
         namaItem: 'Mie Instan',
         categoryId: null,
-        satuan: 'PCS',
         hargaPokok: 2500_00,
         hargaJual: 3000_00,
         stok: 100,
@@ -64,7 +67,6 @@ function seedProducts() {
         barcode: null,
         namaItem: 'Gula Pasir',
         categoryId: 1,
-        satuan: 'KG',
         hargaPokok: 12000_00,
         hargaJual: 14000_00,
         stok: 0,
@@ -73,6 +75,33 @@ function seedProducts() {
         updatedAt: now,
       },
     ])
+    .run()
+
+  db.insert(units)
+    .values([
+      { id: PCS_UNIT_ID, code: 'PCS', name: 'Pieces', symbol: 'pcs', createdAt: now, updatedAt: now },
+      { id: KG_UNIT_ID, code: 'KG', name: 'Kilogram', symbol: 'kg', createdAt: now, updatedAt: now },
+      { id: RENTENG_UNIT_ID, code: 'RENTENG', name: 'Renteng', symbol: 'rtg', createdAt: now, updatedAt: now },
+    ])
+    .run()
+
+  // the satuan label lives on each product's base row now; unitsCount still
+  // counts only the derived rows, so these do not affect it
+  db.insert(productUnits)
+    .values(
+      [
+        { id: 101, productId: 1, unitId: PCS_UNIT_ID, hargaJual: 65000_00 },
+        { id: 102, productId: 2, unitId: PCS_UNIT_ID, hargaJual: 3000_00 },
+        { id: 103, productId: 3, unitId: KG_UNIT_ID, hargaJual: 14000_00 },
+      ].map((row) => ({
+        ...row,
+        jumlahKemasan: 1,
+        conversionFactor: 1,
+        isBaseUnit: true,
+        createdAt: now,
+        updatedAt: now,
+      })),
+    )
     .run()
 
   return db
@@ -107,7 +136,6 @@ describe('listProducts', () => {
       barcode: null,
       namaItem: `Extra Produk ${i}`,
       categoryId: null,
-      satuan: 'PCS',
       hargaPokok: 1000_00,
       hargaJual: 1200_00,
       stok: 5,
@@ -136,7 +164,6 @@ describe('listProducts', () => {
       barcode: null,
       namaItem: `Invalid Pagesize Produk ${i}`,
       categoryId: null,
-      satuan: 'PCS',
       hargaPokok: 1000_00,
       hargaJual: 1200_00,
       stok: 5,
@@ -443,10 +470,11 @@ describe('listProducts unit/tier counts', () => {
     db.insert(productUnits)
       .values({
         productId: 1,
-        satuan: 'Renteng',
+        unitId: RENTENG_UNIT_ID,
         jumlahKemasan: 12,
-        konversi: 12,
+        conversionFactor: 12,
         hargaJual: 15000_00,
+        isBaseUnit: false,
         createdAt: now,
         updatedAt: now,
       })
@@ -478,10 +506,11 @@ describe('searchProductsQuick unit/tier counts', () => {
     db.insert(productUnits)
       .values({
         productId: 1,
-        satuan: 'Renteng',
+        unitId: RENTENG_UNIT_ID,
         jumlahKemasan: 12,
-        konversi: 12,
+        conversionFactor: 12,
         hargaJual: 15000_00,
+        isBaseUnit: false,
         createdAt: now,
         updatedAt: now,
       })

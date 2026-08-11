@@ -2,7 +2,9 @@ import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
-import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments } from './db/schema'
+import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments, units } from './db/schema'
+import { getBaseUnitCode, syncBaseProductUnit } from './inventory-units'
+import { resolveOrCreateUnit } from './master-satuan'
 
 type Db = BetterSQLite3Database<typeof schema>
 type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
@@ -47,18 +49,21 @@ export function getProductsByIds(db: Db, ids: number[]): ProductForBulkEdit[] {
       barcode: products.barcode,
       namaItem: products.namaItem,
       categoryName: categories.nama,
-      satuan: products.satuan,
+      satuan: units.code,
       hargaPokok: products.hargaPokok,
       hargaJual: products.hargaJual,
       stok: products.stok,
-      unitsCount: sql<number>`(SELECT COUNT(*) FROM ${productUnits} WHERE ${productUnits.productId} = ${products.id})`,
+      unitsCount: sql<number>`(SELECT COUNT(*) FROM ${productUnits} WHERE ${productUnits.productId} = ${products.id} AND ${productUnits.isBaseUnit} = 0)`,
       priceTiersCount: sql<number>`(SELECT COUNT(*) FROM ${productPriceTiers} WHERE ${productPriceTiers.productId} = ${products.id})`,
     })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(productUnits, and(eq(productUnits.productId, products.id), eq(productUnits.isBaseUnit, true)))
+    .leftJoin(units, eq(productUnits.unitId, units.id))
     .where(inArray(products.id, ids))
     .orderBy(products.namaItem)
     .all()
+    .map((row) => ({ ...row, satuan: row.satuan ?? '' }))
 }
 
 function findKodeItemCollision(db: DbOrTx, kodeItem: string, excludeId: number | null) {
@@ -213,7 +218,9 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
         existingProduct.barcode !== row.barcode ||
         existingProduct.namaItem !== row.namaItem ||
         existingProduct.categoryId !== categoryId ||
-        existingProduct.satuan !== row.satuan ||
+        // satuan lives on the base unit row now, and is compared by normalized
+        // code so a case-only difference is not counted as a change
+        getBaseUnitCode(db, row.id) !== row.satuan.trim().toUpperCase() ||
         existingProduct.hargaPokok !== row.hargaPokok ||
         existingProduct.hargaJual !== row.hargaJual ||
         (options.updateStok && existingProduct.stok !== row.stok)
@@ -229,13 +236,14 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           barcode: row.barcode,
           namaItem: row.namaItem,
           categoryId,
-          satuan: row.satuan,
           hargaPokok: row.hargaPokok,
           hargaJual: row.hargaJual,
           ...(options.updateStok ? { stok: row.stok } : {}),
         })
         .where(eq(products.id, row.id))
         .run()
+
+      syncBaseProductUnit(db, row.id, row.satuan, row.hargaJual)
 
       updated++
 
@@ -270,13 +278,13 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           .run()
       }
     } else {
-      db.insert(products)
+      const createdProduct = db
+        .insert(products)
         .values({
           kodeItem: row.kodeItem,
           barcode: row.barcode,
           namaItem: row.namaItem,
           categoryId,
-          satuan: row.satuan,
           hargaPokok: row.hargaPokok,
           hargaJual: row.hargaJual,
           stok: row.stok,
@@ -284,7 +292,12 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           createdAt: now,
           updatedAt: now,
         })
-        .run()
+        .returning()
+        .get()
+
+      // a product is not usable without its base unit row - checkout, purchase
+      // and every report resolve their satuan through it
+      syncBaseProductUnit(db, createdProduct.id, row.satuan, row.hargaJual)
 
       created++
     }
@@ -589,10 +602,12 @@ export function importSatuan(db: Db, filePath: string): ImportSatuanResult {
 
   const existingProducts = new Map(
     db
-      .select({ id: products.id, kodeItem: products.kodeItem, satuan: products.satuan })
+      .select({ id: products.id, kodeItem: products.kodeItem, satuan: units.code })
       .from(products)
+      .leftJoin(productUnits, and(eq(productUnits.productId, products.id), eq(productUnits.isBaseUnit, true)))
+      .leftJoin(units, eq(productUnits.unitId, units.id))
       .all()
-      .map((p) => [p.kodeItem, p]),
+      .map((p) => [p.kodeItem, { ...p, satuan: p.satuan ?? '' }]),
   )
 
   const result = { ...EMPTY_IMPORT_SATUAN_RESULT }
@@ -679,25 +694,43 @@ export function importSatuan(db: Db, filePath: string): ImportSatuanResult {
       const now = new Date()
 
       for (const unit of finalUnits) {
+        // resolveOrCreateUnit runs on the outer handle, which is the same
+        // connection this transaction holds - a rollback takes the unit with it
+        const unitId = resolveOrCreateUnit(db, unit.satuan)
+
+        // importSatuan only ever writes derived rows; the base row already came
+        // from product creation, so it is matched by unitId, never replaced
         const existingUnit = tx
           .select({ id: productUnits.id })
           .from(productUnits)
-          .where(and(eq(productUnits.productId, product.id), eq(productUnits.satuan, unit.satuan)))
+          .where(
+            and(
+              eq(productUnits.productId, product.id),
+              eq(productUnits.unitId, unitId),
+              eq(productUnits.isBaseUnit, false),
+            ),
+          )
           .get()
 
         if (existingUnit) {
           tx.update(productUnits)
-            .set({ jumlahKemasan: unit.jumlahKemasan, konversi: unit.konversi, hargaJual: Math.round(unit.hargaJual * 100), updatedAt: now })
+            .set({
+              jumlahKemasan: unit.jumlahKemasan,
+              conversionFactor: unit.konversi,
+              hargaJual: Math.round(unit.hargaJual * 100),
+              updatedAt: now,
+            })
             .where(eq(productUnits.id, existingUnit.id))
             .run()
         } else {
           tx.insert(productUnits)
             .values({
               productId: product.id,
-              satuan: unit.satuan,
+              unitId,
               jumlahKemasan: unit.jumlahKemasan,
-              konversi: unit.konversi,
+              conversionFactor: unit.konversi,
               hargaJual: Math.round(unit.hargaJual * 100),
+              isBaseUnit: false,
               createdAt: now,
               updatedAt: now,
             })

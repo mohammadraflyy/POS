@@ -41,6 +41,35 @@ export function listUnits(db: BetterSQLite3Database<typeof schema>): UnitRow[] {
     .all()
 }
 
+/**
+ * Maps free satuan text (from the product form or an import sheet) onto a
+ * `units` row, creating one on first sight. Product entry still takes free
+ * text - the shared table sits behind it rather than in front of it.
+ */
+export function resolveOrCreateUnit(db: BetterSQLite3Database<typeof schema>, satuanText: string): number {
+  const code = normalizeCode(satuanText)
+
+  if (!code) {
+    throw new Error('Satuan wajib diisi.')
+  }
+
+  const existing = db.select({ id: units.id }).from(units).where(eq(units.code, code)).get()
+
+  if (existing) {
+    return existing.id
+  }
+
+  const now = new Date()
+  const label = satuanText.trim()
+  const created = db
+    .insert(units)
+    .values({ code, name: label, symbol: label.toLowerCase(), isActive: true, createdAt: now, updatedAt: now })
+    .returning()
+    .get()
+
+  return created.id
+}
+
 export function createUnit(db: BetterSQLite3Database<typeof schema>, input: UpsertUnitInput): void {
   validate(input)
   const code = normalizeCode(input.code)

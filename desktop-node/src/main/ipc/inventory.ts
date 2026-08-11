@@ -13,7 +13,7 @@ import {
   type ProductUnitRow,
 } from '../inventory-units'
 import { getProductsByIds, bulkSaveProducts, importProducts, importSatuan, type BulkSaveRow } from '../inventory-bulk'
-import { listUnits, createUnit, updateUnit, deactivateUnit } from '../master-satuan'
+import { listUnits, createUnit, updateUnit, deactivateUnit, resolveOrCreateUnit } from '../master-satuan'
 import { getCurrentUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -59,9 +59,9 @@ function toDto(item: ReturnType<typeof searchProductsQuick>[number]): ProductLis
 function toUnitDto(unit: ProductUnitRow) {
   return {
     id: unit.id,
-    satuan: unit.satuan,
+    satuan: unit.unitCode,
     jumlahKemasan: unit.jumlahKemasan,
-    konversi: unit.konversi,
+    konversi: unit.conversionFactor,
     hargaJual: toRupiah(unit.hargaJual),
   }
 }
@@ -171,8 +171,10 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
         throw new Error('Silakan login terlebih dahulu.')
       }
 
+      // the product form still submits free satuan text; the shared units table
+      // sits behind it (Task 16 replaces this with a real unit picker)
       addProductUnit(db, productId, {
-        satuan: input.satuan,
+        unitId: resolveOrCreateUnit(db, input.satuan),
         jumlahKemasan: input.jumlahKemasan,
         hargaJual: toCents(input.hargaJual),
       })
@@ -187,7 +189,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
       }
 
       updateProductUnit(db, productId, unitId, {
-        satuan: input.satuan,
+        unitId: resolveOrCreateUnit(db, input.satuan),
         jumlahKemasan: input.jumlahKemasan,
         hargaJual: toCents(input.hargaJual),
       })

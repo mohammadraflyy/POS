@@ -2,6 +2,7 @@ import { and, eq, inArray, desc } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { productUnits, productPriceTiers, productPriceHistories, units, users, products } from './db/schema'
+import { resolveOrCreateUnit } from './master-satuan'
 
 export interface ProductUnitRow {
   id: number
@@ -50,6 +51,56 @@ export function getBaseProductUnit(db: BetterSQLite3Database<typeof schema>, pro
     throw new Error(`Produk ${productId} tidak memiliki satuan dasar.`)
   }
   return row
+}
+
+/** the base unit's code, or null when the product has no base row yet */
+export function getBaseUnitCode(db: BetterSQLite3Database<typeof schema>, productId: number): string | null {
+  const row = unitRowSelect(db)
+    .where(and(eq(productUnits.productId, productId), eq(productUnits.isBaseUnit, true)))
+    .get()
+
+  return row?.unitCode ?? null
+}
+
+/**
+ * Points a product's base row at the unit named by `satuanText` (creating that
+ * unit on first sight) and mirrors `hargaJual` onto it. Product forms and the
+ * Excel import both still submit one satuan + one price per product, so both
+ * funnel through here rather than writing product_units themselves.
+ */
+export function syncBaseProductUnit(
+  db: BetterSQLite3Database<typeof schema>,
+  productId: number,
+  satuanText: string,
+  hargaJual: number,
+): void {
+  const unitId = resolveOrCreateUnit(db, satuanText)
+  const now = new Date()
+  const baseUnit = db
+    .select({ id: productUnits.id })
+    .from(productUnits)
+    .where(and(eq(productUnits.productId, productId), eq(productUnits.isBaseUnit, true)))
+    .get()
+
+  if (baseUnit) {
+    db.update(productUnits).set({ unitId, hargaJual, updatedAt: now }).where(eq(productUnits.id, baseUnit.id)).run()
+
+    return
+  }
+
+  // pre-migration data, or a product created before base rows existed - heal it
+  db.insert(productUnits)
+    .values({
+      productId,
+      unitId,
+      jumlahKemasan: 1,
+      conversionFactor: 1,
+      hargaJual,
+      isBaseUnit: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
 }
 
 export interface UpsertProductUnitInput {

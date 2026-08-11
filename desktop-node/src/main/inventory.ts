@@ -1,7 +1,8 @@
 import { and, eq, like, ne, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { categories, products, productPriceHistories, productUnits, productPriceTiers } from './db/schema'
+import { categories, products, productPriceHistories, productUnits, productPriceTiers, units } from './db/schema'
+import { syncBaseProductUnit } from './inventory-units'
 
 export interface ProductListItem {
   id: number
@@ -29,16 +30,22 @@ function productListSelect(db: BetterSQLite3Database<typeof schema>) {
       barcode: products.barcode,
       namaItem: products.namaItem,
       categoryName: categories.nama,
-      satuan: products.satuan,
+      satuan: units.code,
       hargaPokok: products.hargaPokok,
       hargaJual: products.hargaJual,
       stok: products.stok,
       isActive: products.isActive,
-      unitsCount: sql<number>`(SELECT COUNT(*) FROM ${productUnits} WHERE ${productUnits.productId} = ${products.id})`,
+      // the base row is a unit like any other in storage, but the product list
+      // has always counted only the derived ones ("satuan turunan")
+      unitsCount: sql<number>`(SELECT COUNT(*) FROM ${productUnits} WHERE ${productUnits.productId} = ${products.id} AND ${productUnits.isBaseUnit} = 0)`,
       priceTiersCount: sql<number>`(SELECT COUNT(*) FROM ${productPriceTiers} WHERE ${productPriceTiers.productId} = ${products.id})`,
     })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
+    // left-joined: a product missing its base row is a data bug, but hiding it
+    // from the product list would make it unfixable through the UI
+    .leftJoin(productUnits, and(eq(productUnits.productId, products.id), eq(productUnits.isBaseUnit, true)))
+    .leftJoin(units, eq(productUnits.unitId, units.id))
 }
 
 function toListItem(row: {
@@ -47,7 +54,7 @@ function toListItem(row: {
   barcode: string | null
   namaItem: string
   categoryName: string | null
-  satuan: string
+  satuan: string | null
   hargaPokok: number
   hargaJual: number
   stok: number
@@ -55,7 +62,7 @@ function toListItem(row: {
   unitsCount: number
   priceTiersCount: number
 }): ProductListItem {
-  return row
+  return { ...row, satuan: row.satuan ?? '' }
 }
 
 export function listProducts(
@@ -192,13 +199,17 @@ export function updateProduct(db: BetterSQLite3Database<typeof schema>, id: numb
       barcode: input.barcode,
       namaItem: input.namaItem,
       categoryId,
-      satuan: input.satuan,
       hargaPokok: input.hargaPokok,
       hargaJual: input.hargaJual,
       isActive: input.isActive,
     })
     .where(eq(products.id, id))
     .run()
+
+  // The form still submits one satuan + one hargaJual per product; both now live
+  // on the base product_units row, with products.hargaJual kept as a cache of it
+  // (design spec decision 2), so the two writes must stay in step.
+  syncBaseProductUnit(db, id, input.satuan, input.hargaJual)
 
   if (existingProduct && (existingProduct.hargaPokok !== input.hargaPokok || existingProduct.hargaJual !== input.hargaJual)) {
     const now = new Date()
