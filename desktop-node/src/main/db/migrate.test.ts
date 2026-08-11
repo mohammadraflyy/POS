@@ -214,4 +214,40 @@ describe('createDb', () => {
 
     expect(cause).toMatch(/NOT NULL constraint failed: __new_product_units.unit_id/)
   })
+
+  it('backfills every existing price tier onto its product base unit row, open-ended above min_qty', () => {
+    const { partialFolder, dbFile, cleanup } = partialMigrationsBefore('0008_flat_wendell_vaughn')
+
+    const partialDb = createDb(dbFile, partialFolder)
+    partialDb.run(sql`INSERT INTO products (id, kode_item, nama_item, harga_pokok, harga_jual, stok, is_active, created_at, updated_at)
+      VALUES (1, 'P1', 'Rokok A', 100000, 150000, 100, 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO units (id, code, name, symbol, is_active, created_at, updated_at)
+      VALUES (1, 'PCS', 'Pieces', 'pcs', 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO units (id, code, name, symbol, is_active, created_at, updated_at)
+      VALUES (2, 'SLOP', 'Slop', 'slop', 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO product_units (id, product_id, unit_id, jumlah_kemasan, conversion_factor, harga_jual, is_base_unit, is_default_sales_unit, is_default_purchase_unit, created_at, updated_at)
+      VALUES (10, 1, 1, 1, 1, 150000, 1, 1, 1, unixepoch(), unixepoch())`)
+    // a derived row exists too - the backfill must not attach the tiers to it
+    partialDb.run(sql`INSERT INTO product_units (id, product_id, unit_id, jumlah_kemasan, conversion_factor, harga_jual, is_base_unit, is_default_sales_unit, is_default_purchase_unit, created_at, updated_at)
+      VALUES (11, 1, 2, 10, 10, 1400000, 0, 0, 0, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO product_price_tiers (id, product_id, min_qty, harga_jual, created_at, updated_at)
+      VALUES (5, 1, 10, 140000, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO product_price_tiers (id, product_id, min_qty, harga_jual, created_at, updated_at)
+      VALUES (6, 1, 50, 130000, unixepoch(), unixepoch())`)
+    partialDb.$client.close()
+
+    const fullDb = createDb(dbFile, migrationsFolder)
+    const tiers = fullDb.all<{ id: number; product_id: number; product_unit_id: number; min_qty: number; max_qty: number | null; harga_jual: number }>(
+      sql`SELECT id, product_id, product_unit_id, min_qty, max_qty, harga_jual FROM product_price_tiers ORDER BY min_qty`,
+    )
+    fullDb.$client.close()
+    cleanup()
+
+    // ids survive, both tiers land on the base row (10) rather than the derived one (11),
+    // and max_qty stays NULL so each tier keeps reading as open-ended above min_qty
+    expect(tiers).toEqual([
+      { id: 5, product_id: 1, product_unit_id: 10, min_qty: 10, max_qty: null, harga_jual: 140000 },
+      { id: 6, product_id: 1, product_unit_id: 10, min_qty: 50, max_qty: null, harga_jual: 130000 },
+    ])
+  })
 })

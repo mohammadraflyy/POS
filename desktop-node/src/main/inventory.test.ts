@@ -482,8 +482,8 @@ describe('listProducts unit/tier counts', () => {
 
     db.insert(productPriceTiers)
       .values([
-        { productId: 1, minQty: 6, hargaJual: 63000_00, createdAt: now, updatedAt: now },
-        { productId: 1, minQty: 12, hargaJual: 60000_00, createdAt: now, updatedAt: now },
+        { productId: 1, productUnitId: 101, minQty: 6, maxQty: null, hargaJual: 63000_00, createdAt: now, updatedAt: now },
+        { productId: 1, productUnitId: 101, minQty: 12, maxQty: null, hargaJual: 60000_00, createdAt: now, updatedAt: now },
       ])
       .run()
 

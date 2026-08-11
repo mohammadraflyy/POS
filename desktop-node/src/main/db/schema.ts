@@ -61,11 +61,16 @@ export const productUnits = sqliteTable('product_units', {
 export const productPriceTiers = sqliteTable('product_price_tiers', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  productUnitId: integer('product_unit_id').notNull().references(() => productUnits.id, { onDelete: 'cascade' }),
   minQty: integer('min_qty').notNull(),
+  maxQty: integer('max_qty'),
   hargaJual: integer('harga_jual').notNull(),
   ...timestamps(),
 }, (table) => ({
-  productMinQtyUnique: uniqueIndex('product_price_tiers_product_id_min_qty_unique').on(table.productId, table.minQty),
+  // unique rather than a plain index: tiers used to be unique per (product,
+  // minQty) and are now scoped per unit, so this keeps that guarantee while
+  // doubling as the productUnitId lookup index
+  productUnitMinQtyUnique: uniqueIndex('product_price_tiers_product_unit_id_min_qty_unique').on(table.productUnitId, table.minQty),
 }))
 
 export const productPriceHistories = sqliteTable('product_price_histories', {

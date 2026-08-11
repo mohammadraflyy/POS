@@ -190,7 +190,9 @@ describe('checkout', () => {
       .values({
         id: 1,
         productId: 1,
+        productUnitId: 101,
         minQty: 5,
+        maxQty: null,
         hargaJual: 62000_00,
         createdAt: now,
         updatedAt: now,

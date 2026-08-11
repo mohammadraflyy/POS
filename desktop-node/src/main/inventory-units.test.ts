@@ -40,7 +40,31 @@ function seedProduct() {
     })
     .run()
 
+  seedBaseUnit(db, 1, 1500_00)
+
   return db
+}
+
+/**
+ * Gives a product the base `product_units` row every product must have - price
+ * tiers and cart resolution both look it up by `isBaseUnit`.
+ */
+function seedBaseUnit(db: ReturnType<typeof createDb>, productId: number, hargaJual: number) {
+  const now = new Date()
+  const unitId = seedUnit(db, { code: `BASE${productId}`, name: `Base ${productId}`, symbol: `b${productId}` })
+
+  db.insert(productUnits)
+    .values({
+      productId,
+      unitId,
+      jumlahKemasan: 1,
+      conversionFactor: 1,
+      hargaJual,
+      isBaseUnit: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
 }
 
 let unitSeq = 0
@@ -483,6 +507,8 @@ describe('deletePriceTier', () => {
         updatedAt: now,
       })
       .run()
+
+    seedBaseUnit(db, 2, 1500_00)
 
     addPriceTier(db, 2, { minQty: 6, hargaJual: 1400_00 })
     const [tier] = listPriceTiers(db, 2)

@@ -260,8 +260,22 @@ export function addPriceTier(db: BetterSQLite3Database<typeof schema>, productId
 
   const now = new Date()
 
+  // Tiers are per-unit rows now, but the CRUD surface is still the old
+  // product-scoped one, so every tier lands on the base unit - which is exactly
+  // what these tiers have always meant. Task 8 opens this up to any unit and to
+  // closed [minQty, maxQty] ranges.
+  const baseUnit = getBaseProductUnit(db, productId)
+
   db.insert(productPriceTiers)
-    .values({ productId, minQty: input.minQty, hargaJual: input.hargaJual, createdAt: now, updatedAt: now })
+    .values({
+      productId,
+      productUnitId: baseUnit.id,
+      minQty: input.minQty,
+      maxQty: null,
+      hargaJual: input.hargaJual,
+      createdAt: now,
+      updatedAt: now,
+    })
     .run()
 }
 
