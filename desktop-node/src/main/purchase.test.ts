@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { products, productUnits, purchases, purchaseItems, suppliers, units, users } from './db/schema'
+import { products, productUnits, purchases, purchaseItems, stockMovements, suppliers, units, users } from './db/schema'
 import { recordPurchase, listPurchases, searchProductsForPurchase, type PurchaseItemInput } from './purchase'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
@@ -162,6 +162,24 @@ describe('recordPurchase', () => {
 
     const items = db.select().from(purchaseItems).where(eq(purchaseItems.purchaseId, result.purchaseId)).all()
     expect(items[0]).toMatchObject({ productUnitId: 1, qty: 2, konversi: 12, satuan: 'Renteng', hargaBeli: 15000_00, subtotal: 30000_00 })
+  })
+
+  it('records a purchase stock movement against the resolved unit row, even for a null (base) input unit', () => {
+    const db = seedDb()
+    const result = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ productUnitId: null, qty: 10 }), baseItem({ productUnitId: 1, qty: 2, hargaBeli: 15000_00 })],
+      userId: 1,
+    })
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, result.purchaseId)).all()
+    expect(movements).toHaveLength(2)
+    expect(movements.every((movement) => movement.movementType === 'purchase')).toBe(true)
+    // the base line resolves to product 1's base row (101) rather than staying null
+    expect(movements[0]).toMatchObject({ productUnitId: 101, quantity: 10, conversionFactor: 1, baseQuantity: 10 })
+    expect(movements[1]).toMatchObject({ productUnitId: 1, quantity: 2, conversionFactor: 12, baseQuantity: 24 })
   })
 
   it('records multiple items in one purchase and sums the total', () => {

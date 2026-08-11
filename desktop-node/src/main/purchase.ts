@@ -1,7 +1,7 @@
 import { desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { purchases, purchaseItems, products, suppliers, productUnits, units } from './db/schema'
+import { purchases, purchaseItems, products, suppliers, productUnits, stockMovements, units } from './db/schema'
 import { getBaseProductUnit, listProductUnits } from './inventory-units'
 
 export interface PurchaseItemInput {
@@ -26,6 +26,8 @@ export interface RecordPurchaseResult {
 interface ResolvedPurchaseItem {
   productId: number
   productUnitId: number | null
+  /** the product_units row the line actually resolved to, even when the input said null (base) */
+  resolvedUnitId: number
   qty: number
   konversi: number
   satuan: string | null
@@ -98,6 +100,7 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
     resolvedItems.push({
       productId: item.productId,
       productUnitId: item.productUnitId,
+      resolvedUnitId: unit.id,
       qty: item.qty,
       konversi: unit.konversi,
       satuan: unit.satuan,
@@ -146,6 +149,19 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
       tx.update(products)
         .set({ stok: sql`${products.stok} + ${item.qty * item.konversi}` })
         .where(eq(products.id, item.productId))
+        .run()
+
+      tx.insert(stockMovements)
+        .values({
+          productId: item.productId,
+          productUnitId: item.resolvedUnitId,
+          quantity: item.qty,
+          conversionFactor: item.konversi,
+          baseQuantity: item.qty * item.konversi,
+          movementType: 'purchase',
+          referenceId: purchase.id,
+          createdAt: now,
+        })
         .run()
     }
 
