@@ -6,7 +6,11 @@ export interface ProductUnitOption {
 }
 
 export interface PriceTier {
+  /** the product_units row this tier prices - base rows included */
+  productUnitId: number
   minQty: number
+  /** null means the range runs open-ended above minQty */
+  maxQty: number | null
   hargaJual: number
 }
 
@@ -18,6 +22,8 @@ export interface Product {
   satuan: string
   hargaJual: number
   stok: number
+  /** the base unit's product_units.id - a cart line's null productUnitId resolves to this */
+  baseProductUnitId: number
   productUnits: ProductUnitOption[]
   priceTiers: PriceTier[]
 }
@@ -31,22 +37,47 @@ export interface CartLine {
   qty: number
 }
 
-// Mirrors main/kasir.ts's priceForQty — duplicated (not imported) because
-// main/kasir.ts also pulls in drizzle-orm/better-sqlite3, which must not
-// end up in the renderer bundle.
-export function priceForQty(priceTiers: PriceTier[], hargaJualDasar: number, qty: number): number {
-  const applicable = priceTiers.filter((tier) => qty >= tier.minQty).sort((a, b) => b.minQty - a.minQty)
-  return applicable[0]?.hargaJual ?? hargaJualDasar
+// Mirrors main/kasir.ts's findTierForQty/priceForQty — duplicated (not
+// imported) because main/kasir.ts also pulls in drizzle-orm/better-sqlite3,
+// which must not end up in the renderer bundle. Keep the two in step: this is
+// what the cashier sees, that is what the sale is charged at.
+export function findTierForQty(priceTiers: PriceTier[], qty: number): PriceTier | undefined {
+  return [...priceTiers]
+    .sort((a, b) => b.minQty - a.minQty)
+    .find((tier) => qty >= tier.minQty && (tier.maxQty === null || qty <= tier.maxQty))
 }
 
-/** resolve the price for a cart line - fixed for a derived unit, tiered by qty for the base unit */
-export function unitPrice(line: CartLine): number {
-  if (line.productUnitId !== null) {
-    const unit = line.product.productUnits.find((u) => u.id === line.productUnitId)
-    return unit?.hargaJual ?? line.product.hargaJual
-  }
+export function priceForQty(priceTiers: PriceTier[], hargaJualDasar: number, qty: number): number {
+  return findTierForQty(priceTiers, qty)?.hargaJual ?? hargaJualDasar
+}
 
-  return priceForQty(line.product.priceTiers, line.product.hargaJual, line.qty)
+/**
+ * A cart line still says "base unit" as productUnitId: null - a renderer-side
+ * convenience - while every tier names a real product_units row.
+ */
+function resolvedProductUnitId(line: CartLine): number {
+  return line.productUnitId ?? line.product.baseProductUnitId
+}
+
+function tiersForLine(line: CartLine): PriceTier[] {
+  const unitId = resolvedProductUnitId(line)
+
+  return line.product.priceTiers.filter((tier) => tier.productUnitId === unitId)
+}
+
+/** the tier currently pricing this line, or null when it sits outside every range */
+export function activeTier(line: CartLine): PriceTier | null {
+  return findTierForQty(tiersForLine(line), line.qty) ?? null
+}
+
+/** resolve the price for a cart line - tiered by qty, scoped to the line's own unit */
+export function unitPrice(line: CartLine): number {
+  const normalPrice =
+    line.productUnitId === null
+      ? line.product.hargaJual
+      : (line.product.productUnits.find((u) => u.id === line.productUnitId)?.hargaJual ?? line.product.hargaJual)
+
+  return priceForQty(tiersForLine(line), normalPrice, line.qty)
 }
 
 export function lineKey(productId: number, productUnitId: number | null): string {

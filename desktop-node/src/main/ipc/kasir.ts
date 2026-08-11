@@ -108,6 +108,9 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         satuan: baseUnit?.satuan ?? '',
         hargaJual: toRupiah(product.hargaJual),
         stok: product.stok,
+        // the cart says "base unit" as productUnitId: null, but tiers name real
+        // product_units rows, so the renderer needs the base row's id to match them
+        baseProductUnitId: baseUnit?.id ?? 0,
         // the base unit stays out of this list: the renderer still treats
         // productUnitId === null as "base unit", so listing it here would show
         // the same satuan twice. Revisit in Task 10's cart-logic rewrite.
@@ -121,7 +124,12 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
           })),
         priceTiers: tierRows
           .filter((tier) => tier.productId === product.id)
-          .map((tier) => ({ minQty: tier.minQty, hargaJual: toRupiah(tier.hargaJual) })),
+          .map((tier) => ({
+            productUnitId: tier.productUnitId,
+            minQty: tier.minQty,
+            maxQty: tier.maxQty,
+            hargaJual: toRupiah(tier.hargaJual),
+          })),
       }
     })
   })

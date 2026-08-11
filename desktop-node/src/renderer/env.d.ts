@@ -20,8 +20,9 @@ declare global {
             satuan: string
             hargaJual: number
             stok: number
+            baseProductUnitId: number
             productUnits: { id: number; satuan: string; konversi: number; hargaJual: number }[]
-            priceTiers: { minQty: number; hargaJual: number }[]
+            priceTiers: { productUnitId: number; minQty: number; maxQty: number | null; hargaJual: number }[]
           }[]
         >
         listSalesToday: () => Promise<

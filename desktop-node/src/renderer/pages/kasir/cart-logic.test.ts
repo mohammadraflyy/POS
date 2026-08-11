@@ -8,6 +8,7 @@ import {
   resolveLineQty,
   unitKonversi,
   unitPrice,
+  activeTier,
   type CartLine,
   type Product,
 } from './cart-logic'
@@ -20,8 +21,18 @@ const product: Product = {
   satuan: 'PCS',
   hargaJual: 65000,
   stok: 100,
+  baseProductUnitId: 1,
   productUnits: [{ id: 9, satuan: 'DUS', konversi: 12, hargaJual: 700000 }],
-  priceTiers: [{ minQty: 5, hargaJual: 62000 }],
+  priceTiers: [{ productUnitId: 1, minQty: 5, maxQty: null, hargaJual: 62000 }],
+}
+
+/** carries a tier on the DUS unit as well as on the base unit */
+const productWithUnitTiers: Product = {
+  ...product,
+  priceTiers: [
+    { productUnitId: 1, minQty: 5, maxQty: 9, hargaJual: 62000 },
+    { productUnitId: 9, minQty: 2, maxQty: null, hargaJual: 650000 },
+  ],
 }
 
 describe('unitPrice', () => {
@@ -35,9 +46,50 @@ describe('unitPrice', () => {
     expect(unitPrice(line)).toBe(65000)
   })
 
-  it('uses the fixed unit price when a productUnitId is set, ignoring tiers', () => {
+  it('uses the fixed unit price when a derived unit carries no tier of its own', () => {
     const line: CartLine = { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1 }
     expect(unitPrice(line)).toBe(700000)
+  })
+
+  it('falls back to the normal price above a closed range with nothing above it', () => {
+    const line: CartLine = { key: lineKey(1, null), product: productWithUnitTiers, productUnitId: null, satuan: 'PCS', qty: 50 }
+    expect(unitPrice(line)).toBe(65000)
+  })
+})
+
+describe('unitPrice with per-unit tiers', () => {
+  it('applies a tier scoped to the currently selected derived unit', () => {
+    const line: CartLine = { key: lineKey(1, 9), product: productWithUnitTiers, productUnitId: 9, satuan: 'DUS', qty: 3 }
+    expect(unitPrice(line)).toBe(650000)
+  })
+
+  it('does not apply a tier scoped to a different unit', () => {
+    // qty 1 misses the DUS tier's minQty 2, so it takes DUS's own price -
+    // never the base unit's tier, which is priced per PCS
+    const line: CartLine = { key: lineKey(1, 9), product: productWithUnitTiers, productUnitId: 9, satuan: 'DUS', qty: 1 }
+    expect(unitPrice(line)).toBe(700000)
+  })
+
+  it('applies the base unit tier to a base-unit line, resolving null through baseProductUnitId', () => {
+    const line: CartLine = { key: lineKey(1, null), product: productWithUnitTiers, productUnitId: null, satuan: 'PCS', qty: 6 }
+    expect(unitPrice(line)).toBe(62000)
+  })
+})
+
+describe('activeTier', () => {
+  it('returns the matched tier', () => {
+    const line: CartLine = { key: lineKey(1, 9), product: productWithUnitTiers, productUnitId: 9, satuan: 'DUS', qty: 3 }
+    expect(activeTier(line)).toEqual({ productUnitId: 9, minQty: 2, maxQty: null, hargaJual: 650000 })
+  })
+
+  it('returns null when no tier matches', () => {
+    const line: CartLine = { key: lineKey(1, 9), product: productWithUnitTiers, productUnitId: 9, satuan: 'DUS', qty: 1 }
+    expect(activeTier(line)).toBeNull()
+  })
+
+  it('returns null when qty sits above a closed range', () => {
+    const line: CartLine = { key: lineKey(1, null), product: productWithUnitTiers, productUnitId: null, satuan: 'PCS', qty: 20 }
+    expect(activeTier(line)).toBeNull()
   })
 })
 
