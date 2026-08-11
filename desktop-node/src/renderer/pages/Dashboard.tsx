@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
 import { TriangleAlert } from 'lucide-react'
+import { Page, PageHeader } from '@/components/page'
 import { ReportTable } from '@/components/report-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -128,13 +129,15 @@ export function Dashboard() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-semibold">Dashboard</h1>
-          <Button variant="outline" size="sm" onClick={() => navigate('/rekap')}>
-            Lihat Rekap Lengkap
-          </Button>
-        </div>
+      <Page>
+        <PageHeader
+          title="Dashboard"
+          actions={
+            <Button variant="outline" size="sm" onClick={() => navigate('/rekap')}>
+              Lihat Rekap Lengkap
+            </Button>
+          }
+        />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
@@ -205,7 +208,7 @@ export function Dashboard() {
             </button>
           }
         />
-      </div>
+      </Page>
     </AppShell>
   )
 }

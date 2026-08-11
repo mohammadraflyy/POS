@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import type { Column, RowsChangeData } from 'react-data-grid'
 import { DataGrid, SelectColumn, renderTextEditor } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -60,7 +61,7 @@ function toDraftRow(product: ProductRow): DraftRow {
   }
 }
 
-const OTHER_COLUMNS_WIDTH = 50 + 110 + 130 + 130 + 90 + 110 + 110 + 90 + 90 + 170 + 70
+const OTHER_COLUMNS_WIDTH = 50 + 60 + 110 + 130 + 130 + 90 + 110 + 110 + 90 + 90 + 170 + 70
 const MIN_NAMA_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Katalog Produk', href: '/inventory' }]
@@ -69,7 +70,7 @@ export function Inventory() {
   const navigate = useNavigate()
   const { resolvedAppearance } = useAppearance()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
-  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(72)
+  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<DraftRow[]>([])
@@ -367,6 +368,14 @@ export function Inventory() {
 
   const columns: Column<DraftRow>[] = [
     SelectColumn,
+    {
+      key: 'no',
+      name: 'No',
+      // numbering runs across pages, so page 2 of 20 starts at 21
+      renderCell: ({ rowIdx }) => (
+        <span className="text-muted-foreground text-left">{(currentPage - 1) * Number(pageSize) + rowIdx + 1}</span>
+      ),
+    },
     textColumn('kodeItem', 'Kode Item', 110),
     textColumn('barcode', 'Barcode', 130),
     textColumn('namaItem', 'Nama', namaWidth),
@@ -444,7 +453,8 @@ export function Inventory() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <Page>
+        <PageHeader title="Katalog Produk" />
         {deleteError && (
           <p role="alert" className="text-sm text-destructive">
             {deleteError}
@@ -564,7 +574,7 @@ export function Inventory() {
             <span>dari {total} produk</span>
           </div>
         </div>
-      </div>
+      </Page>
 
       <CommandDialog open={paletteOpen} onOpenChange={setPaletteOpen} title="Cari Produk" description="Cari kode, nama, atau barcode produk" shouldFilter={false}>
         <CommandInput value={paletteQuery} onValueChange={setPaletteQuery} placeholder="Cari kode / nama / barcode produk..." />

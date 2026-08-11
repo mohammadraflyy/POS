@@ -105,6 +105,12 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
     out.push(...textLine(padLine('Kasir', sale.kasirName, width)))
   }
 
+  // printed for every method, not just bon - a tunai customer may still give
+  // a name, and it is the only way to tie a printed struk back to a person
+  if (sale.namaPelanggan) {
+    out.push(...textLine(padLine('Pelanggan', sale.namaPelanggan, width)))
+  }
+
   out.push(...textLine(dashLine))
 
   for (const item of sale.items) {
@@ -124,7 +130,8 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
     const kembalian = sale.dibayar - sale.total
     out.push(...textLine(padLine('Kembali', formatRupiah(Math.max(kembalian, 0)), width)))
   } else {
-    out.push(...textLine(padLine('Bon', sale.namaPelanggan ?? '', width)))
+    // the name already has its own line above, so this one carries the debt
+    out.push(...textLine(padLine('Bon', formatRupiah(sale.total - sale.dibayar), width)))
   }
 
   if (storeSettings.pesanFooter) {

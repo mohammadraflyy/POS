@@ -4,11 +4,13 @@ import { useNavigate } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
 import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAppearance } from '@/hooks/use-appearance'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
@@ -31,7 +33,7 @@ interface SaleHistoryRow {
   items: SaleHistoryItem[]
 }
 
-const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 300
+const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 380
 const MIN_ITEM_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -42,8 +44,9 @@ const BREADCRUMBS: BreadcrumbItem[] = [
 export function KasirHistory() {
   const navigate = useNavigate()
   const { resolvedAppearance } = useAppearance()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
-  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(56)
+  const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(64)
 
   const [search, setSearch] = useState('')
   const [dari, setDari] = useState('')
@@ -85,7 +88,14 @@ export function KasirHistory() {
   }
 
   async function cancelSale(sale: SaleHistoryRow) {
-    if (!confirm('Batalkan transaksi ini? Stok akan dikembalikan.')) {
+    const confirmed = await confirm({
+      title: 'Batalkan transaksi?',
+      description: `Transaksi #${sale.id} akan ditandai dibatalkan dan stoknya dikembalikan.`,
+      confirmLabel: 'Batalkan',
+      destructive: true,
+    })
+
+    if (!confirmed) {
       return
     }
 
@@ -99,7 +109,42 @@ export function KasirHistory() {
     }
   }
 
+  async function deleteSale(sale: SaleHistoryRow) {
+    const confirmed = await confirm({
+      title: 'Hapus transaksi?',
+      description:
+        sale.status === 'dibatalkan'
+          ? `Transaksi #${sale.id} dihapus permanen dan datanya tidak bisa dikembalikan.`
+          : `Transaksi #${sale.id} dihapus permanen, stoknya dikembalikan, dan datanya tidak bisa dikembalikan.`,
+      confirmLabel: 'Hapus',
+      destructive: true,
+    })
+
+    if (!confirmed) {
+      return
+    }
+
+    setError(null)
+
+    try {
+      await window.api.kasir.deleteSale(sale.id)
+      loadPage(currentPage)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menghapus')
+    }
+  }
+
   async function printSale(saleId: number) {
+    const confirmed = await confirm({
+      title: 'Cetak struk?',
+      description: `Struk transaksi #${saleId} akan dicetak ulang ke printer.`,
+      confirmLabel: 'Cetak',
+    })
+
+    if (!confirmed) {
+      return
+    }
+
     setError(null)
 
     try {
@@ -163,7 +208,7 @@ export function KasirHistory() {
     {
       key: 'aksi',
       name: '',
-      width: 300,
+      width: 380,
       renderCell: ({ row }) => (
         <div className="flex items-center gap-2">
           {row.metodePembayaran === 'bon' && row.status === 'selesai' && row.total - row.dibayar > 0 && (
@@ -179,6 +224,9 @@ export function KasirHistory() {
           <Button variant="outline" size="sm" onClick={() => printSale(row.id)}>
             Cetak
           </Button>
+          <Button variant="destructive" size="sm" onClick={() => deleteSale(row)}>
+            Hapus
+          </Button>
         </div>
       ),
     },
@@ -187,8 +235,8 @@ export function KasirHistory() {
   return (
     <>
       <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <h1 className="text-xl font-semibold">Riwayat Transaksi</h1>
+      <Page>
+        <PageHeader title="Riwayat Transaksi" />
 
         {error && (
           <p role="alert" className="text-sm text-destructive">
@@ -279,8 +327,9 @@ export function KasirHistory() {
             Berikutnya
           </Button>
         </div>
-      </div>
+      </Page>
       </AppShell>
+      {ConfirmDialog}
     </>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Column } from 'react-data-grid'
 import { ReportTable } from '@/components/report-table'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -43,6 +44,7 @@ interface PembelianPerSupplierRow {
 interface StockValueRow {
   namaItem: string
   kodeItem: string
+  satuan: string
   stok: number
   hargaPokok: number
   nilai: number
@@ -180,6 +182,7 @@ export function Rekap() {
     { key: 'kodeItem', name: 'Kode', width: 100 },
     { key: 'namaItem', name: 'Produk' },
     { key: 'stok', name: 'Stok', width: 90 },
+    { key: 'satuan', name: 'Satuan', width: 90 },
     {
       key: 'hargaPokok',
       name: 'Harga Pokok',
@@ -230,8 +233,8 @@ export function Rekap() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <h1 className="text-xl font-semibold">Rekap</h1>
+      <Page>
+        <PageHeader title="Rekap" />
 
         <form onSubmit={submitFilter} className="flex flex-wrap items-end gap-2">
           <div className="grid gap-1">
@@ -342,7 +345,7 @@ export function Rekap() {
             emptyMessage="Belum ada produk dengan stok."
           />
         </div>
-      </div>
+      </Page>
     </AppShell>
   )
 }

@@ -74,6 +74,34 @@ describe('buildReceiptEscPos', () => {
     expect(text).not.toContain('Kembali')
   })
 
+  it('prints the customer name on a tunai receipt too', () => {
+    const namedTunai: EscPosReceiptSale = { ...tunaiSale, namaPelanggan: 'Pak Budi' }
+    const line = buildReceiptEscPos(namedTunai, storeSettings, '58mm')
+      .toString('ascii')
+      .split('\n')
+      .find((l) => l.startsWith('Pelanggan'))
+
+    expect(line).toBeDefined()
+    expect(line).toContain('Pak Budi')
+  })
+
+  it('omits the Pelanggan line when no name was given', () => {
+    const text = buildReceiptEscPos(tunaiSale, storeSettings, '58mm').toString('ascii')
+    expect(text).not.toContain('Pelanggan')
+  })
+
+  it('shows the outstanding amount on the Bon line', () => {
+    const partlyPaid: EscPosReceiptSale = { ...tunaiSale, metodePembayaran: 'bon', namaPelanggan: 'Bu Siti', dibayar: 25000 }
+    // the bold-off escape bytes ride at the head of this line, so match loosely
+    const line = buildReceiptEscPos(partlyPaid, storeSettings, '58mm')
+      .toString('ascii')
+      .split('\n')
+      .find((l) => l.includes('Bon'))
+
+    // 65000 total - 25000 paid
+    expect(line).toContain('40.000')
+  })
+
   it('omits alamat/telepon/pesanFooter lines when null', () => {
     const bareSettings: EscPosStoreSettings = { namaToko: 'Toko', alamat: null, telepon: null, pesanFooter: null }
     const text = buildReceiptEscPos(tunaiSale, bareSettings, '58mm').toString('ascii')

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Banknote, CornerDownLeft, HandCoins, Printer } from 'lucide-react'
+import { Banknote, CornerDownLeft, HandCoins, Pencil, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import { useConfirm } from '@/hooks/use-confirm'
 import { cn, formatRupiah } from '@/lib/utils'
+import { DEFAULT_PELANGGAN } from './CustomerPicker'
 
 const actions = ['cetak', 'simpan', 'batal'] as const
 type Action = (typeof actions)[number]
@@ -18,7 +20,8 @@ export interface PaymentDialogProps {
   metode: 'tunai' | 'bon'
   setMetode: (metode: 'tunai' | 'bon') => void
   namaPelanggan: string
-  setNamaPelanggan: (value: string) => void
+  /** hands the cashier back to the customer picker on the kasir page */
+  onEditCustomer: () => void
   dibayar: string
   setDibayar: (value: string) => void
   processing: boolean
@@ -34,7 +37,7 @@ export function PaymentDialog({
   metode,
   setMetode,
   namaPelanggan,
-  setNamaPelanggan,
+  onEditCustomer,
   dibayar,
   setDibayar,
   processing,
@@ -45,6 +48,10 @@ export function PaymentDialog({
   const totalBayar = metode === 'tunai' ? Number(dibayar || 0) : 0
   const selisih = total - totalBayar
   const isLunas = metode === 'tunai' && selisih <= 0
+  // Bon debt is collected per person, so it must never be filed under the
+  // walk-in name - that debt would be uncollectable.
+  const bonNeedsCustomer =
+    metode === 'bon' && (namaPelanggan.trim() === '' || namaPelanggan.trim().toUpperCase() === DEFAULT_PELANGGAN)
 
   // PageUp/PageDown cycle which action Enter will fire, so the whole
   // dialog can be driven without a mouse: type the amount, PgDn/PgUp to
@@ -52,6 +59,7 @@ export function PaymentDialog({
   // into focused inputs, so those work regardless of what's focused too.
   const [selectedAction, setSelectedAction] = useState<Action>('cetak')
   const [prevOpen, setPrevOpen] = useState(open)
+  const { confirm, ConfirmDialog } = useConfirm()
 
   if (open !== prevOpen) {
     setPrevOpen(open)
@@ -61,9 +69,30 @@ export function PaymentDialog({
     }
   }
 
-  function runAction(action: Action) {
-    if (action === 'cetak') {
+  // Printing is the one action that reaches hardware and wastes paper when
+  // fired by accident - and it sits on Enter, the fastest key to hit twice.
+  async function submitWithPrint() {
+    const confirmed = await confirm({
+      title: 'Cetak struk?',
+      description: `Transaksi ${formatRupiah(total)} akan disimpan dan struknya langsung dicetak.`,
+      confirmLabel: 'Simpan + Cetak',
+      cancelLabel: 'Batal',
+    })
+
+    if (confirmed) {
       onSubmit(true)
+    }
+  }
+
+  function runAction(action: Action) {
+    if (action !== 'batal' && bonNeedsCustomer) {
+      onEditCustomer()
+
+      return
+    }
+
+    if (action === 'cetak') {
+      submitWithPrint()
     } else if (action === 'simpan') {
       onSubmit(false)
     } else {
@@ -107,12 +136,13 @@ export function PaymentDialog({
         break
       case 's':
         e.preventDefault()
-        onSubmit(false)
+        runAction('simpan')
         break
     }
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[46rem]">
         <DialogHeader>
@@ -121,7 +151,7 @@ export function PaymentDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            onSubmit(true)
+            runAction('cetak')
           }}
           onKeyDown={handleShortcut}
           className="space-y-5"
@@ -154,7 +184,7 @@ export function PaymentDialog({
             <span className="text-4xl font-bold text-background tabular-nums">{formatRupiah(total)}</span>
           </div>
 
-          {metode === 'tunai' ? (
+          {metode === 'tunai' && (
             <div className="grid gap-2">
               <Label htmlFor="dibayar">Uang Tunai</Label>
               <Input
@@ -168,18 +198,27 @@ export function PaymentDialog({
                 className="h-16 text-right text-2xl font-semibold tabular-nums"
               />
             </div>
-          ) : (
-            <div className="grid gap-2">
-              <Label htmlFor="nama_pelanggan">Nama Pelanggan</Label>
-              <Input
-                id="nama_pelanggan"
-                autoFocus
-                value={namaPelanggan}
-                disabled={processing || printing}
-                onChange={(e) => setNamaPelanggan(e.target.value)}
-                className="h-16 text-xl"
-              />
-            </div>
+          )}
+
+          {/* the name is picked on the kasir page - shown here only so the
+              cashier can see (and fix) who the sale is filed under */}
+          <button
+            type="button"
+            disabled={processing || printing}
+            onClick={onEditCustomer}
+            className="flex w-full items-center justify-between rounded-xl border px-5 py-3.5 text-left hover:bg-muted/50 disabled:opacity-50"
+          >
+            <span className="text-sm text-muted-foreground">Pelanggan</span>
+            <span className="flex items-center gap-2 text-lg font-semibold">
+              {namaPelanggan.trim() || <span className="text-destructive">Belum dipilih</span>}
+              <Pencil className="size-3.5 text-muted-foreground" />
+            </span>
+          </button>
+
+          {bonNeedsCustomer && (
+            <p role="alert" className="text-sm text-destructive">
+              Transaksi bon harus atas nama pelanggan, bukan {DEFAULT_PELANGGAN}. Pilih pelanggan dulu.
+            </p>
           )}
 
           <div className="space-y-2">
@@ -232,7 +271,7 @@ export function PaymentDialog({
             <div className="space-y-2">
               <Button
                 type="submit"
-                disabled={processing}
+                disabled={processing || bonNeedsCustomer}
                 className={cn(
                   'w-full',
                   selectedAction === 'cetak' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
@@ -246,7 +285,7 @@ export function PaymentDialog({
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={processing}
+                  disabled={processing || bonNeedsCustomer}
                   className={cn(
                     selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
                   )}
@@ -279,5 +318,7 @@ export function PaymentDialog({
         </form>
       </DialogContent>
     </Dialog>
+    {ConfirmDialog}
+    </>
   )
 }

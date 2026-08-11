@@ -25,6 +25,7 @@ declare global {
             priceTiers: { productUnitId: number; minQty: number; maxQty: number | null; hargaJual: number }[]
           }[]
         >
+        listCustomers: () => Promise<string[]>
         listSalesToday: () => Promise<
           {
             id: number
@@ -52,6 +53,7 @@ declare global {
           items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
         }>
         cancelSale: (saleId: number) => Promise<void>
+        deleteSale: (saleId: number) => Promise<void>
         getStoreSettings: () => Promise<{
           namaToko: string
           alamat: string | null
@@ -319,7 +321,7 @@ declare global {
           pembelianPerSupplier: { supplierName: string; totalPembelian: number }[]
           stockValue: {
             totalNilai: number
-            produk: { namaItem: string; kodeItem: string; stok: number; hargaPokok: number; nilai: number }[]
+            produk: { namaItem: string; kodeItem: string; satuan: string; stok: number; hargaPokok: number; nilai: number }[]
           }
           salesHistory: {
             id: number

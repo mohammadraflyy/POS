@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -80,7 +81,7 @@ export function BonPayment() {
   if (!sale) {
     return (
       <AppShell breadcrumbs={BREADCRUMBS}>
-        <div className="flex flex-1 flex-col gap-4 p-4">
+        <Page>
           <div className="flex items-center justify-between">
             <p>{loadError ?? 'Memuat...'}</p>
             {loadError && (
@@ -89,7 +90,7 @@ export function BonPayment() {
               </Button>
             )}
           </div>
-        </div>
+        </Page>
       </AppShell>
     )
   }
@@ -120,21 +121,18 @@ export function BonPayment() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold">
-            Pending Payment &mdash; {sale.namaPelanggan ?? `Struk #${sale.id}`}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {sale.items.map((i) => `${i.namaItem} x${i.qty}`).join(', ')} &middot;{' '}
-            {new Date(sale.createdAt).toLocaleString('id-ID')}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => navigate('/history')}>
-          Kembali
-        </Button>
-      </div>
+    <Page>
+      <PageHeader
+        title={`Pending Payment — ${sale.namaPelanggan ?? `Struk #${sale.id}`}`}
+        description={`${sale.items.map((i) => `${i.namaItem} x${i.qty}`).join(', ')} · ${new Date(
+          sale.createdAt,
+        ).toLocaleString('id-ID')}`}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => navigate('/history')}>
+            Kembali
+          </Button>
+        }
+      />
 
       {loadError && (
         <p role="alert" className="text-sm text-destructive">
@@ -202,7 +200,7 @@ export function BonPayment() {
         emptyMessage="Belum ada pembayaran."
         columns={columns}
       />
-    </div>
+    </Page>
     </AppShell>
   )
 }

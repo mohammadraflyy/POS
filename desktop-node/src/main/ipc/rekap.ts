@@ -49,6 +49,7 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
         produk: result.stockValue.produk.map((row) => ({
           namaItem: row.namaItem,
           kodeItem: row.kodeItem,
+          satuan: row.satuan,
           stok: row.stok,
           hargaPokok: toRupiah(row.hargaPokok),
           nilai: toRupiah(row.nilai),

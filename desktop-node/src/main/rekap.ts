@@ -2,7 +2,7 @@ import { and, desc, eq, gt, gte, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
-import { categories, products, purchases, saleItems, sales, suppliers } from './db/schema'
+import { categories, products, productUnits, purchases, saleItems, sales, suppliers, units } from './db/schema'
 
 export interface RekapSummary {
   omzetTunai: number
@@ -37,6 +37,7 @@ export interface PembelianPerSupplierRow {
 export interface StockValueRow {
   namaItem: string
   kodeItem: string
+  satuan: string
   stok: number
   hargaPokok: number
   nilai: number
@@ -191,15 +192,20 @@ export function getStockValue(db: BetterSQLite3Database<typeof schema>): StockVa
     .select({
       namaItem: products.namaItem,
       kodeItem: products.kodeItem,
+      // the satuan label lives on the product's base product_units row now; left-joined so a
+      // product with a broken unit chain still shows up in the report, just without a label
+      satuan: units.code,
       stok: products.stok,
       hargaPokok: products.hargaPokok,
     })
     .from(products)
+    .leftJoin(productUnits, and(eq(productUnits.productId, products.id), eq(productUnits.isBaseUnit, true)))
+    .leftJoin(units, eq(units.id, productUnits.unitId))
     .where(and(eq(products.isActive, true), gt(products.stok, 0)))
     .all()
 
   const produk: StockValueRow[] = rows
-    .map((row) => ({ ...row, nilai: row.stok * row.hargaPokok }))
+    .map((row) => ({ ...row, satuan: row.satuan ?? '', nilai: row.stok * row.hargaPokok }))
     .sort((a, b) => b.nilai - a.nilai)
 
   const totalNilai = produk.reduce((sum, row) => sum + row.nilai, 0)
@@ -295,11 +301,12 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
     },
     {
       name: 'Nilai Stock',
-      headers: ['Kode Item', 'Produk', 'Stok', 'Harga Pokok', 'Nilai'],
+      headers: ['Kode Item', 'Produk', 'Stok', 'Satuan', 'Harga Pokok', 'Nilai'],
       rows: rekap.stockValue.produk.map((row) => ({
         'Kode Item': row.kodeItem,
         Produk: row.namaItem,
         Stok: row.stok,
+        Satuan: row.satuan,
         'Harga Pokok': toRupiahExport(row.hargaPokok),
         Nilai: toRupiahExport(row.nilai),
       })),

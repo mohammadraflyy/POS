@@ -1,4 +1,15 @@
-import { Boxes, Building2, ClipboardCheck, ClipboardList, History, LayoutGrid, PackagePlus, Ruler, ShoppingCart } from 'lucide-react'
+import {
+  Boxes,
+  Building2,
+  ClipboardCheck,
+  ClipboardList,
+  History,
+  LayoutGrid,
+  PackagePlus,
+  Ruler,
+  Settings,
+  ShoppingCart,
+} from 'lucide-react'
 import { AppLogo } from './app-logo'
 import { NavMain } from './nav-main'
 import { NavUser } from './nav-user'
@@ -22,6 +33,8 @@ const pembelianNavItems: NavItem[] = [
 
 const laporanNavItems: NavItem[] = [{ title: 'Rekap', href: '/rekap', icon: ClipboardList }]
 
+const lainnyaNavItems: NavItem[] = [{ title: 'Pengaturan', href: '/settings', icon: Settings }]
+
 export function AppSidebar({ storeName, user }: { storeName: string; user: AuthUser }) {
   return (
     <Sidebar collapsible="icon" variant="inset">
@@ -36,6 +49,7 @@ export function AppSidebar({ storeName, user }: { storeName: string; user: AuthU
         <NavMain items={penjualanNavItems} label="Penjualan" />
         <NavMain items={pembelianNavItems} label="Pembelian & Stok" />
         <NavMain items={laporanNavItems} label="Laporan" />
+        <NavMain items={lainnyaNavItems} label="Lainnya" />
       </SidebarContent>
 
       <SidebarFooter>

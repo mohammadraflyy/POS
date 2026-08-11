@@ -11,12 +11,16 @@ import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { cn, formatRupiah } from '@/lib/utils'
+import { formatRupiah } from '@/lib/utils'
 import { activeTier, unitPrice, type CartLine } from './cart-logic'
 
 function focusAndSelectQtyInput(input: HTMLInputElement | null) {
   input?.focus()
   input?.select()
+}
+
+function focusSelect(select: HTMLSelectElement | null) {
+  select?.focus()
 }
 
 function renderQtyEditCell({ row, onRowChange, onClose }: RenderEditCellProps<CartLine>) {
@@ -25,8 +29,11 @@ function renderQtyEditCell({ row, onRowChange, onClose }: RenderEditCellProps<Ca
       type="text"
       inputMode="decimal"
       ref={focusAndSelectQtyInput}
-      value={row.qty}
-      title="Boleh diisi pecahan, misalnya 0.5 - otomatis dibulatkan ke satuan yang pas"
+      // uncontrolled: a controlled `value` re-synced from the parsed number
+      // on every keystroke wipes out a trailing "." before the fractional
+      // digits are typed, so "0.25" degrades into "025"
+      defaultValue={row.qty}
+      title="Boleh diisi pecahan, misalnya 0.25 - diambil persis sesuai satuan yang dipilih"
       className="h-full w-full bg-background px-2 text-center text-sm font-semibold outline-none"
       onChange={(e) => onRowChange({ ...row, qty: Number(e.target.value) || 0 })}
       onBlur={() => onClose(true, false)}
@@ -79,40 +86,43 @@ export function CartGrid({
       key: 'satuan',
       name: 'Satuan',
       width: 180,
-      renderCell: ({ row }) =>
-        row.product.productUnits.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1 py-1">
-            <button
-              type="button"
-              onClick={() => onChangeUnit(row, null)}
-              className={cn(
-                'rounded-md border px-2 py-0.5 text-xs font-medium transition-colors',
-                row.productUnitId === null
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-input bg-background hover:bg-accent',
-              )}
-            >
-              {row.product.satuan}
-            </button>
-            {row.product.productUnits.map((unit) => (
-              <button
-                key={unit.id}
-                type="button"
-                onClick={() => onChangeUnit(row, unit.id)}
-                className={cn(
-                  'rounded-md border px-2 py-0.5 text-xs font-medium transition-colors',
-                  row.productUnitId === unit.id
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-input bg-background hover:bg-accent',
-                )}
-              >
-                {unit.satuan}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <span className="text-xs text-muted-foreground">{row.satuan}</span>
-        ),
+      // grid cell navigation (arrow keys/tab) only ever focuses the cell
+      // wrapper div, not a descendant - a select rendered directly in
+      // renderCell is mouse-only. Editable + renderEditCell is RDG's
+      // supported way to hand real keyboard focus to a <select>: F2/Enter
+      // opens the editor (autofocused below) and RDG defers all keys to it.
+      editable: (row) => row.product.productUnits.length > 0,
+      renderCell: ({ row }) => (
+        <span className="text-xs font-medium">
+          {row.productUnitId === null
+            ? row.product.satuan
+            : (row.product.productUnits.find((u) => u.id === row.productUnitId)?.satuan ?? row.satuan)}
+        </span>
+      ),
+      renderEditCell: ({ row, onClose }) => (
+        <select
+          ref={focusSelect}
+          defaultValue={row.productUnitId ?? 'base'}
+          onChange={(e) => {
+            onChangeUnit(row, e.target.value === 'base' ? null : Number(e.target.value))
+            onClose(true, false)
+          }}
+          onBlur={() => onClose(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              onClose(false)
+            }
+          }}
+          className="h-full w-full bg-background px-2 text-xs font-medium outline-none"
+        >
+          <option value="base">{row.product.satuan}</option>
+          {row.product.productUnits.map((unit) => (
+            <option key={unit.id} value={unit.id}>
+              {unit.satuan}
+            </option>
+          ))}
+        </select>
+      ),
     },
     {
       key: 'harga',
@@ -143,7 +153,7 @@ export function CartGrid({
       renderCell: ({ row }) => (
         <span
           className="text-sm font-semibold"
-          title="Boleh diisi pecahan, misalnya 0.5 - otomatis dibulatkan ke satuan yang pas"
+          title="Boleh diisi pecahan, misalnya 0.25 - diambil persis sesuai satuan yang dipilih"
         >
           {row.qty}
         </span>

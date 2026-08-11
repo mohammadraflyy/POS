@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Printer, ScanLine } from 'lucide-react'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -336,8 +337,8 @@ export function Settings() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-8 p-4">
-        <h1 className="text-xl font-semibold">Pengaturan</h1>
+      <Page className="gap-8">
+        <PageHeader title="Pengaturan" />
 
         <div className="space-y-6">
           <Heading variant="small" title="Tampilan" description="Pilih tema terang, gelap, atau ikuti pengaturan sistem" />
@@ -418,7 +419,7 @@ export function Settings() {
           <PurgeToday />
           <PurgeHistory />
         </div>
-      </div>
+      </Page>
     </AppShell>
   )
 }

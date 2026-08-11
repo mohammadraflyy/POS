@@ -1,6 +1,6 @@
 {
-  "name": "desktop-node",
-  "version": "0.0.1",
+  "name": "point-of-sale",
+  "version": "0.0.2",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
   "type": "module",

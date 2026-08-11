@@ -1,17 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CellKeyboardEvent, CellKeyDownArgs, DataGridHandle, RowsChangeData } from 'react-data-grid'
-import { Search, ShoppingCart, Trash2 } from 'lucide-react'
+import { ShoppingCart, Trash2, UserRound } from 'lucide-react'
+import { Page, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
-import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
+import { CartGrid } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
-import { addLine, applyQty, changeUnit, lineKey, unitPrice, type CartLine, type Product } from './kasir/cart-logic'
+import { CustomerPicker, DEFAULT_PELANGGAN } from './kasir/CustomerPicker'
+import {
+  addLine,
+  applyQty,
+  changeUnit,
+  restoreCart,
+  toStoredCart,
+  unitPrice,
+  type CartLine,
+  type Product,
+  type StoredCartLine,
+} from './kasir/cart-logic'
 
 interface SaleDto {
   id: number
@@ -24,14 +38,59 @@ interface SaleDto {
 
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Penjualan', href: '/kasir' }]
 
+const DRAFT_STORAGE_KEY = 'kasir:draft'
+
+/** the whole in-progress sale, kept across navigation and app restarts */
+interface KasirDraft {
+  cart: StoredCartLine[]
+  metode: 'tunai' | 'bon'
+  namaPelanggan: string
+  dibayar: string
+  jumlah: string
+}
+
+const EMPTY_DRAFT: KasirDraft = {
+  cart: [],
+  metode: 'tunai',
+  namaPelanggan: DEFAULT_PELANGGAN,
+  dibayar: '',
+  jumlah: '1.00',
+}
+
+function readStoredDraft(): KasirDraft {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY)
+
+    if (!raw) {
+      return EMPTY_DRAFT
+    }
+
+    const parsed = JSON.parse(raw) as Partial<KasirDraft>
+
+    return {
+      cart: Array.isArray(parsed.cart) ? parsed.cart : [],
+      metode: parsed.metode === 'bon' ? 'bon' : 'tunai',
+      namaPelanggan: typeof parsed.namaPelanggan === 'string' ? parsed.namaPelanggan : DEFAULT_PELANGGAN,
+      dibayar: typeof parsed.dibayar === 'string' ? parsed.dibayar : '',
+      jumlah: typeof parsed.jumlah === 'string' ? parsed.jumlah : EMPTY_DRAFT.jumlah,
+    }
+  } catch {
+    return EMPTY_DRAFT
+  }
+}
+
 export function Kasir() {
+  // read once, before any effect can overwrite the stored draft
+  const [initialDraft] = useState(readStoredDraft)
   const [products, setProducts] = useState<Product[]>([])
   const [salesToday, setSalesToday] = useState<SaleDto[]>([])
+  const [customers, setCustomers] = useState<string[]>([])
+  const [customerOpen, setCustomerOpen] = useState(false)
   const [cart, setCart] = useState<CartLine[]>([])
   const [scanError, setScanError] = useState('')
-  const [metode, setMetode] = useState<'tunai' | 'bon'>('tunai')
-  const [namaPelanggan, setNamaPelanggan] = useState('')
-  const [dibayar, setDibayar] = useState('')
+  const [metode, setMetode] = useState<'tunai' | 'bon'>(initialDraft.metode)
+  const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
+  const [dibayar, setDibayar] = useState(initialDraft.dibayar)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
@@ -40,21 +99,47 @@ export function Kasir() {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
+  const [jumlah, setJumlah] = useState(initialDraft.jumlah)
   const { resolvedAppearance } = useAppearance()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [cartWidthRef, cartGridWidth] = useElementWidth<HTMLDivElement>()
   const cartGridRef = useRef<DataGridHandle>(null)
-  const lastTouchedKeyRef = useRef<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  // the cart can only be rebuilt once the catalog is loaded, so it waits here
+  // while the rest of the draft is restored straight into state above
+  const pendingRestoreRef = useRef<StoredCartLine[]>(initialDraft.cart)
 
   useEffect(() => {
     refreshProducts()
     refreshSalesToday()
+    refreshCustomers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah }
+
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
+  }, [cart, metode, namaPelanggan, dibayar, jumlah])
 
   function refreshProducts() {
     window.api.kasir
       .listProducts()
-      .then(setProducts)
+      .then((list) => {
+        setProducts(list)
+
+        if (pendingRestoreRef.current.length > 0) {
+          setCart(restoreCart(pendingRestoreRef.current, list))
+          pendingRestoreRef.current = []
+        }
+      })
+      .catch(() => setError('Gagal memuat data.'))
+  }
+
+  function refreshCustomers() {
+    window.api.kasir
+      .listCustomers()
+      .then(setCustomers)
       .catch(() => setError('Gagal memuat data.'))
   }
 
@@ -68,6 +153,14 @@ export function Kasir() {
   const total = useMemo(() => cart.reduce((sum, line) => sum + line.qty * unitPrice(line), 0), [cart])
   const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart])
 
+  // the walk-in name is always offered, even on a fresh database where no sale
+  // has ever carried it; so is a name picked but not yet checked out
+  const customerOptions = useMemo(() => {
+    const names = [DEFAULT_PELANGGAN, namaPelanggan.trim(), ...customers].filter((nama) => nama !== '')
+
+    return [...new Set(names)]
+  }, [customers, namaPelanggan])
+
   const paletteResults = useMemo(() => {
     const q = paletteQuery.trim().toLowerCase()
 
@@ -80,9 +173,8 @@ export function Kasir() {
       .slice(0, 50)
   }, [products, paletteQuery])
 
-  function addProductToCart(product: Product) {
-    lastTouchedKeyRef.current = lineKey(product.id, null)
-    setCart((prev) => addLine(prev, product))
+  function addProductToCart(product: Product, qty = 1) {
+    setCart((prev) => addLine(prev, product, qty))
   }
 
   function changeLineUnit(line: CartLine, productUnitId: number | null) {
@@ -110,8 +202,8 @@ export function Kasir() {
 
       if (e.key === '/' && scanBuffer.current === '') {
         e.preventDefault()
-        setPaletteQuery('')
-        setPaletteOpen(true)
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
 
         return
       }
@@ -119,6 +211,13 @@ export function Kasir() {
       if (e.altKey && e.key.toLowerCase() === 'k' && !paymentOpen) {
         e.preventDefault()
         clearCart()
+
+        return
+      }
+
+      if (e.altKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        setCustomerOpen(true)
 
         return
       }
@@ -184,16 +283,21 @@ export function Kasir() {
     setCart((prev) => prev.filter((i) => i.key !== key))
   }
 
-  function clearCart() {
+  async function clearCart() {
     if (cart.length === 0) {
       return
     }
 
-    if (!confirm('Kosongkan keranjang?')) {
-      return
-    }
+    const confirmed = await confirm({
+      title: 'Kosongkan keranjang?',
+      description: `${cart.length} baris di keranjang akan dibuang.`,
+      confirmLabel: 'Kosongkan',
+      destructive: true,
+    })
 
-    setCart([])
+    if (confirmed) {
+      setCart([])
+    }
   }
 
   function handleCartRowsChange(newRows: CartLine[], { indexes }: RowsChangeData<CartLine>) {
@@ -224,24 +328,10 @@ export function Kasir() {
     }
   }
 
-  function focusCartQty(key: string | null) {
-    if (!key) {
-      return
-    }
-
-    const rowIdx = cart.findIndex((line) => line.key === key)
-
-    if (rowIdx === -1) {
-      return
-    }
-
-    cartGridRef.current?.setActivePosition({ rowIdx, idx: QTY_COLUMN_IDX }, { shouldFocus: true })
-  }
-
   function resetAfterCheckout() {
     setPaymentOpen(false)
     setCart([])
-    setNamaPelanggan('')
+    setNamaPelanggan(DEFAULT_PELANGGAN)
     setDibayar('')
   }
 
@@ -253,7 +343,10 @@ export function Kasir() {
     try {
       const sale = await window.api.kasir.checkout({
         metodePembayaran: metode,
-        namaPelanggan: metode === 'bon' ? namaPelanggan : null,
+        // tunai falls back to the walk-in name so the struk is never nameless;
+        // bon must not, or an unnamed debt would silently be filed under it and
+        // the main process could never reject it
+        namaPelanggan: metode === 'bon' ? namaPelanggan.trim() || null : namaPelanggan.trim() || DEFAULT_PELANGGAN,
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
         items: cart.map((line) => ({
           productId: line.product.id,
@@ -275,6 +368,7 @@ export function Kasir() {
       resetAfterCheckout()
       refreshProducts()
       refreshSalesToday()
+      refreshCustomers()
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Gagal checkout')
     } finally {
@@ -314,6 +408,7 @@ export function Kasir() {
         resetAfterCheckout()
         refreshProducts()
         refreshSalesToday()
+        refreshCustomers()
       })
 
     return () => {
@@ -323,6 +418,17 @@ export function Kasir() {
   }, [printingSaleId])
 
   async function handleCancel(saleId: number) {
+    const confirmed = await confirm({
+      title: 'Batalkan transaksi?',
+      description: `Transaksi #${saleId} akan ditandai dibatalkan dan stoknya dikembalikan.`,
+      confirmLabel: 'Batalkan',
+      destructive: true,
+    })
+
+    if (!confirmed) {
+      return
+    }
+
     setError(null)
     setMessage(null)
 
@@ -338,7 +444,52 @@ export function Kasir() {
   return (
     <>
       <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex-1 space-y-4 p-4 sm:p-6 print:hidden">
+      <Page className="print:hidden">
+      <PageHeader
+        title="Penjualan"
+        actions={
+          <>
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="kasir-jumlah" className="text-xs text-muted-foreground">
+                Jumlah
+              </label>
+              <Input
+                id="kasir-jumlah"
+                type="text"
+                inputMode="decimal"
+                value={jumlah}
+                onChange={(e) => setJumlah(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    setPaletteOpen(true)
+                  }
+                }}
+                className="w-16 text-center tabular-nums"
+              />
+            </div>
+            <div className="relative w-72">
+              <Input
+                ref={searchInputRef}
+                value={paletteQuery}
+                onChange={(e) => setPaletteQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    setPaletteOpen(true)
+                  }
+                }}
+                placeholder="Cari nama / kode produk..."
+                className="pr-8"
+              />
+              <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                /
+              </kbd>
+            </div>
+          </>
+        }
+      />
+
       {scanError && (
         <p role="alert" className="text-sm text-destructive">
           {scanError}
@@ -351,96 +502,132 @@ export function Kasir() {
       )}
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 font-semibold">
-          <ShoppingCart className="size-4" />
-          Keranjang
-          {cartItemCount > 0 && <Badge variant="secondary">{cartItemCount}</Badge>}
-        </h2>
-        <div className="flex items-center gap-2">
-          {cart.length > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-destructive"
-              onClick={clearCart}
-            >
-              <Trash2 className="size-3.5" />
-              Kosongkan
-              <kbd className="ml-1 rounded border px-1.5 py-0.5 text-xs">Alt+K</kbd>
-            </Button>
-          )}
-          <Button
-            type="button"
-            onClick={() => {
-              setPaletteQuery('')
-              setPaletteOpen(true)
-            }}
-          >
-            <Search className="size-4" />
-            Cari / Tambah Produk
-            <kbd className="ml-1 rounded border border-primary-foreground/30 px-1.5 py-0.5 text-xs">/</kbd>
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5">/</kbd>
-          Cari Produk
-        </span>
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd>
-          Bayar
-        </span>
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5">Alt+K</kbd>
-          Kosongkan
-        </span>
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border bg-muted px-1.5 py-0.5">F2</kbd>
-          Edit Qty
-        </span>
-        <span>Klik pill satuan untuk ganti satuan</span>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border">
-        {cart.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 p-12 text-center text-sm text-muted-foreground">
-            <ShoppingCart className="size-8 opacity-40" />
-            Keranjang kosong. Scan barcode atau cari produk untuk mulai.
-          </div>
-        ) : (
-          <div ref={cartWidthRef}>
-            {cartGridWidth > 0 && (
-              <CartGrid
-                cart={cart}
-                width={cartGridWidth}
-                resolvedAppearance={resolvedAppearance}
-                gridRef={cartGridRef}
-                onRowsChange={handleCartRowsChange}
-                onCellKeyDown={handleCartCellKeyDown}
-                onChangeUnit={changeLineUnit}
-                onRemoveLine={removeFromCart}
-              />
+      <div className="grid flex-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <ShoppingCart className="size-4" />
+              Keranjang
+              {cartItemCount > 0 && <Badge variant="secondary">{cartItemCount}</Badge>}
+            </h2>
+            {cart.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={clearCart}
+              >
+                <Trash2 className="size-3.5" />
+                Kosongkan
+                <kbd className="ml-1 rounded border px-1.5 py-0.5 text-xs">Alt+K</kbd>
+              </Button>
             )}
           </div>
-        )}
-      </div>
 
-      <div className="flex items-center justify-between rounded-xl border p-4">
-        <span className="text-muted-foreground">Total</span>
-        <span className="text-2xl font-bold">{formatRupiah(total)}</span>
-        <Button
-          type="button"
-          size="lg"
-          className="h-14 px-10 text-lg"
-          disabled={cart.length === 0}
-          onClick={() => setPaymentOpen(true)}
-        >
-          Bayar
-        </Button>
+          <div className="overflow-hidden rounded-xl border">
+            {cart.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 p-12 text-center text-sm text-muted-foreground">
+                <ShoppingCart className="size-8 opacity-40" />
+                Keranjang kosong. Scan barcode atau cari produk untuk mulai.
+              </div>
+            ) : (
+              <div ref={cartWidthRef}>
+                {cartGridWidth > 0 && (
+                  <CartGrid
+                    cart={cart}
+                    width={cartGridWidth}
+                    resolvedAppearance={resolvedAppearance}
+                    gridRef={cartGridRef}
+                    onRowsChange={handleCartRowsChange}
+                    onCellKeyDown={handleCartCellKeyDown}
+                    onChangeUnit={changeLineUnit}
+                    onRemoveLine={removeFromCart}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">/</kbd>
+              Cari Produk
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd>
+              Bayar
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">Alt+K</kbd>
+              Kosongkan
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">F2</kbd>
+              Edit Qty / Satuan
+            </span>
+          </div>
+        </div>
+
+        {/* stays put while the cart scrolls, so the total and Bayar never
+            leave the screen on a long transaction */}
+        <aside className="flex flex-col gap-4 xl:sticky xl:top-6">
+          <button
+            type="button"
+            onClick={() => setCustomerOpen(true)}
+            className="flex items-center justify-between gap-2 rounded-xl border p-4 text-left hover:bg-muted/50"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <UserRound className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block text-xs text-muted-foreground">Pelanggan</span>
+                <span className="block truncate font-medium">{namaPelanggan.trim() || DEFAULT_PELANGGAN}</span>
+              </span>
+            </span>
+            <kbd className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">Alt+P</kbd>
+          </button>
+
+          <div className="rounded-xl border p-5">
+            <span className="text-sm text-muted-foreground">Total</span>
+            <p className="mt-1 text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
+            <Button
+              type="button"
+              size="lg"
+              className="mt-4 h-14 w-full text-lg"
+              disabled={cart.length === 0}
+              onClick={() => setPaymentOpen(true)}
+            >
+              Bayar
+            </Button>
+          </div>
+
+          <section className="space-y-2">
+            <h2 className="text-sm font-medium text-muted-foreground">Transaksi Hari Ini</h2>
+            <div className="max-h-80 overflow-y-auto rounded-xl border">
+              {salesToday.length === 0 ? (
+                <p className="p-4 text-center text-sm text-muted-foreground">Belum ada transaksi.</p>
+              ) : (
+                salesToday.map((sale) => (
+                  <div key={sale.id} className="flex items-center justify-between gap-2 border-b p-2.5 last:border-0">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium tabular-nums">{formatRupiah(sale.total)}</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        #{sale.id} &middot; {sale.metodePembayaran}
+                      </p>
+                    </div>
+                    {sale.status === 'selesai' ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => handleCancel(sale.id)}>
+                        Batal
+                      </Button>
+                    ) : (
+                      <Badge variant="outline">Dibatalkan</Badge>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </aside>
       </div>
 
       <PaymentDialog
@@ -450,13 +637,24 @@ export function Kasir() {
         metode={metode}
         setMetode={setMetode}
         namaPelanggan={namaPelanggan}
-        setNamaPelanggan={setNamaPelanggan}
+        onEditCustomer={() => {
+          setPaymentOpen(false)
+          setCustomerOpen(true)
+        }}
         dibayar={dibayar}
         setDibayar={setDibayar}
         processing={processing}
         printing={printingSaleId !== null}
         error={checkoutError}
         onSubmit={handleCheckout}
+      />
+
+      <CustomerPicker
+        open={customerOpen}
+        onOpenChange={setCustomerOpen}
+        value={namaPelanggan.trim() || DEFAULT_PELANGGAN}
+        customers={customerOptions}
+        onSelect={setNamaPelanggan}
       />
 
       <CommandPalette
@@ -466,44 +664,22 @@ export function Kasir() {
         onQueryChange={setPaletteQuery}
         results={paletteResults}
         products={products}
+        jumlah={jumlah}
         onSelect={(product) => {
-          addProductToCart(product)
+          addProductToCart(product, Number(jumlah) || 1)
           setPaletteQuery('')
+          setJumlah('1.00')
         }}
         onCloseAutoFocus={(e) => {
           e.preventDefault()
-          focusCartQty(lastTouchedKeyRef.current)
+          searchInputRef.current?.focus()
+          searchInputRef.current?.select()
         }}
       />
 
-      <section className="space-y-2">
-        <h2 className="font-semibold">Transaksi Hari Ini</h2>
-        <div className="overflow-hidden rounded-xl border">
-          <table className="w-full text-sm">
-            <tbody>
-              {salesToday.map((sale) => (
-                <tr key={sale.id} className="border-b last:border-0">
-                  <td className="p-2">#{sale.id}</td>
-                  <td className="p-2 capitalize">{sale.metodePembayaran}</td>
-                  <td className="p-2">
-                    <Badge variant={sale.status === 'selesai' ? 'secondary' : 'outline'}>{sale.status}</Badge>
-                  </td>
-                  <td className="p-2 text-right font-medium">{formatRupiah(sale.total)}</td>
-                  <td className="p-2 text-right">
-                    {sale.status === 'selesai' && (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => handleCancel(sale.id)}>
-                        Batal
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      </div>
+      </Page>
       </AppShell>
+      {ConfirmDialog}
     </>
   )
 }

@@ -16,6 +16,7 @@ export interface CommandPaletteProps {
   onQueryChange: (query: string) => void
   results: Product[]
   products: Product[]
+  jumlah: string
   onSelect: (product: Product) => void
   onCloseAutoFocus: (event: Event) => void
 }
@@ -27,6 +28,7 @@ export function CommandPalette({
   onQueryChange,
   results,
   products,
+  jumlah,
   onSelect,
   onCloseAutoFocus,
 }: CommandPaletteProps) {
@@ -36,7 +38,7 @@ export function CommandPalette({
       onOpenChange={onOpenChange}
       onCloseAutoFocus={onCloseAutoFocus}
       title="Cari Produk"
-      description="Cari produk untuk ditambahkan ke keranjang"
+      description={`Pilih produk untuk menambahkan ${jumlah || 1} ke keranjang`}
       shouldFilter={false}
     >
       <CommandInput

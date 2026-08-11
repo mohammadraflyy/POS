@@ -4,7 +4,17 @@ import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
 import { users, products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, stockMovements, storeSettings } from './db/schema'
-import { checkout, type CheckoutInput, cancelSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, purgeTodaySales } from './kasir'
+import {
+  checkout,
+  type CheckoutInput,
+  cancelSale,
+  deleteSale,
+  listCustomers,
+  recordBonPayment,
+  updateStoreSettings,
+  purgeSalesBefore,
+  purgeTodaySales,
+} from './kasir'
 
 const PCS_UNIT_ID = 1
 const DUS_UNIT_ID = 2
@@ -511,7 +521,7 @@ describe('checkout', () => {
       items: [{ productId: 1, productUnitId: null, qty: -1 }],
     }
 
-    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+    expect(() => checkout(db, input)).toThrow('Qty harus lebih dari 0.')
     expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
@@ -526,23 +536,29 @@ describe('checkout', () => {
       items: [{ productId: 1, productUnitId: null, qty: 0 }],
     }
 
-    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
+    expect(() => checkout(db, input)).toThrow('Qty harus lebih dari 0.')
     expect(db.select().from(sales).all()).toHaveLength(0)
   })
 
-  it('throws when qty is not an integer', () => {
+  it('allows a fractional qty, deducting stock and rounding the subtotal to the nearest cent', () => {
     const db = seedDb()
 
     const input: CheckoutInput = {
       metodePembayaran: 'tunai',
       namaPelanggan: null,
-      dibayar: 100_00,
+      dibayar: 2_000_000,
       userId: 1,
-      items: [{ productId: 1, productUnitId: null, qty: 1.5 }],
+      items: [{ productId: 1, productUnitId: null, qty: 0.25 }],
     }
 
-    expect(() => checkout(db, input)).toThrow('Qty harus bilangan bulat minimal 1.')
-    expect(db.select().from(sales).all()).toHaveLength(0)
+    const result = checkout(db, input)
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+
+    expect(items[0].qty).toBe(0.25)
+    expect(items[0].subtotal).toBe(Math.round(0.25 * items[0].hargaJual))
+    expect(result.total).toBe(items[0].subtotal)
+    expect(product?.stok).toBe(10 - 0.25)
   })
 
   it('throws when bon has an empty customer name', () => {
@@ -768,6 +784,90 @@ describe('cancelSale', () => {
   it('throws when the sale does not exist', () => {
     const { db } = seedDbWithOneSale()
     expect(() => cancelSale(db, 999)).toThrow('Transaksi tidak ditemukan.')
+  })
+})
+
+describe('deleteSale', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedDbWithOneSale() {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({
+        id: 1,
+        username: 'kasir1',
+        passwordHash: 'hash',
+        name: 'Kasir Satu',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 5,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    seedPcsBaseUnits(db, [{ id: 101, productId: 1, hargaJual: 65000_00 }])
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 400000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 5 }],
+    })
+
+    return { db, saleId: result.saleId }
+  }
+
+  it('restores stock and removes the sale with its items', () => {
+    const { db, saleId } = seedDbWithOneSale()
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(0)
+
+    deleteSale(db, saleId)
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(5)
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeUndefined()
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(0)
+  })
+
+  it('does not restore stock twice when the sale was already cancelled', () => {
+    const { db, saleId } = seedDbWithOneSale()
+
+    cancelSale(db, saleId)
+    deleteSale(db, saleId)
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(5)
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeUndefined()
+  })
+
+  it('throws when the sale has bon payments recorded', () => {
+    const { db, saleId } = seedDbWithOneSale()
+    const now = new Date()
+
+    db.insert(bonPayments)
+      .values({ saleId, jumlah: 10000_00, tanggal: '2026-08-06', createdAt: now, updatedAt: now })
+      .run()
+
+    expect(() => deleteSale(db, saleId)).toThrow('Tidak bisa menghapus, bon sudah ada pembayaran.')
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeDefined()
+  })
+
+  it('throws when the sale does not exist', () => {
+    const { db } = seedDbWithOneSale()
+    expect(() => deleteSale(db, 999)).toThrow('Transaksi tidak ditemukan.')
   })
 })
 
@@ -1380,5 +1480,68 @@ describe('purgeTodaySales', () => {
     const result = purgeTodaySales(db)
 
     expect(result).toEqual({ deleted: 0, skipped: 0 })
+  })
+})
+
+describe('listCustomers', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedDb() {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({ id: 1, username: 'kasir1', passwordHash: 'hash', name: 'Kasir Satu', createdAt: now, updatedAt: now })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 100,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    seedPcsBaseUnits(db, [{ id: 101, productId: 1, hargaJual: 65000_00 }])
+
+    return db
+  }
+
+  function sell(db: ReturnType<typeof createDb>, namaPelanggan: string | null) {
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+  }
+
+  it('returns each name once, most recently used first', () => {
+    const db = seedDb()
+    sell(db, 'Bu Siti')
+    sell(db, 'UMUM')
+    sell(db, 'Pak Budi')
+    sell(db, 'Bu Siti')
+
+    expect(listCustomers(db)).toEqual(['Bu Siti', 'Pak Budi', 'UMUM'])
+  })
+
+  it('skips sales with no usable name', () => {
+    const db = seedDb()
+    sell(db, null)
+    sell(db, '   ')
+    sell(db, 'Bu Siti')
+
+    expect(listCustomers(db)).toEqual(['Bu Siti'])
+  })
+
+  it('returns nothing on a database with no sales', () => {
+    expect(listCustomers(seedDb())).toEqual([])
   })
 })

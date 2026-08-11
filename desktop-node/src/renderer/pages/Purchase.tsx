@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Plus, Search, Trash2 } from 'lucide-react'
 import { ReportTable } from '@/components/report-table'
+import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import {
   CommandDialog,
@@ -259,8 +260,8 @@ export function Purchase() {
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <h1 className="text-xl font-semibold">Pembelian</h1>
+      <Page>
+        <PageHeader title="Pembelian" />
 
         <form onSubmit={submit} className="space-y-4 rounded-xl border p-4">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -407,7 +408,7 @@ export function Purchase() {
           </div>
           <span className="text-sm text-muted-foreground">dari {total} pembelian</span>
         </div>
-      </div>
+      </Page>
 
       <CommandDialog
         open={paletteOpen}

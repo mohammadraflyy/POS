@@ -85,6 +85,24 @@ export function resolveCartItem(
   }
 }
 
+/**
+ * Every distinct customer name ever used on a sale, most recently used first.
+ * There is no customer master table - names typed at the register are the list,
+ * so a brand new name shows up here after its first sale.
+ */
+export function listCustomers(db: BetterSQLite3Database<typeof schema>): string[] {
+  const rows = db
+    .select({ nama: sales.namaPelanggan })
+    .from(sales)
+    .where(sql`${sales.namaPelanggan} is not null and trim(${sales.namaPelanggan}) <> ''`)
+    .groupBy(sales.namaPelanggan)
+    .orderBy(sql`max(${sales.id}) desc`)
+    .limit(200)
+    .all()
+
+  return rows.map((row) => row.nama as string)
+}
+
 export interface CartItemInput {
   productId: number
   productUnitId: number | null
@@ -110,8 +128,8 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   }
 
   for (const item of input.items) {
-    if (!Number.isInteger(item.qty) || item.qty < 1) {
-      throw new Error('Qty harus bilangan bulat minimal 1.')
+    if (!(item.qty > 0)) {
+      throw new Error('Qty harus lebih dari 0.')
     }
   }
 
@@ -199,7 +217,8 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     let total = 0
 
     for (const line of resolvedItems) {
-      const subtotal = line.qty * line.hargaJual
+      // qty may be fractional (e.g. 0.25 kg) - hargaJual is stored in integer cents
+      const subtotal = Math.round(line.qty * line.hargaJual)
       total += subtotal
 
       tx.insert(saleItems)
@@ -306,6 +325,31 @@ export function cancelSale(db: Db, saleId: number): void {
   db.transaction((tx) => {
     restoreStockForItems(tx, items)
     tx.update(sales).set({ status: 'dibatalkan' }).where(eq(sales.id, saleId)).run()
+  })
+}
+
+export function deleteSale(db: Db, saleId: number): void {
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  const hasBonPayment = db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).get()
+
+  if (hasBonPayment) {
+    throw new Error('Tidak bisa menghapus, bon sudah ada pembayaran.')
+  }
+
+  const items = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+
+  db.transaction((tx) => {
+    // a cancelled sale already gave its stock back
+    if (sale.status !== 'dibatalkan') {
+      restoreStockForItems(tx, items)
+    }
+
+    tx.delete(sales).where(eq(sales.id, saleId)).run()
   })
 }
 
