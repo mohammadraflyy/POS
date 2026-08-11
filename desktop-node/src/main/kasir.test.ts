@@ -264,6 +264,41 @@ describe('checkout', () => {
     return db
   }
 
+  it('snapshots baseQuantity and priceSource on a tier-priced line', () => {
+    const db = seedDb()
+
+    // product 1 has a base-unit tier at qty>=5 (seeded), so 5 PCS takes it
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 310000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 5 }],
+    })
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items[0].priceSource).toBe('price_tier')
+    expect(items[0].baseQuantity).toBe(5)
+    expect(items[0].baseQuantity).toBe(items[0].qty * items[0].konversi)
+  })
+
+  it("records priceSource 'normal' and converts baseQuantity for an untiered derived-unit line", () => {
+    const db = seedDb()
+
+    // 2 DUS of product 2 (konversi 40) with no DUS tier seeded
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 220000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: 9, qty: 2 }],
+    })
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items[0].priceSource).toBe('normal')
+    expect(items[0].baseQuantity).toBe(80)
+  })
+
   it('prices a derived-unit line against that unit own tiers, never the base unit tiers', () => {
     const db = seedDb()
     const now = new Date()

@@ -250,4 +250,32 @@ describe('createDb', () => {
       { id: 6, product_id: 1, product_unit_id: 10, min_qty: 50, max_qty: null, harga_jual: 130000 },
     ])
   })
+
+  it('backfills sale_items.base_quantity from qty * konversi, leaving price_source at its default', () => {
+    const { partialFolder, dbFile, cleanup } = partialMigrationsBefore('0009_lyrical_scarlet_spider')
+
+    const partialDb = createDb(dbFile, partialFolder)
+    partialDb.run(sql`INSERT INTO products (id, kode_item, nama_item, harga_pokok, harga_jual, stok, is_active, created_at, updated_at)
+      VALUES (1, 'P1', 'Rokok A', 100000, 150000, 100, 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO sales (id, metode_pembayaran, status, total, dibayar, created_at, updated_at)
+      VALUES (1, 'tunai', 'selesai', 1500000, 1500000, unixepoch(), unixepoch())`)
+    // a base-unit line (konversi 1) and a derived-unit line (konversi 12)
+    partialDb.run(sql`INSERT INTO sale_items (id, sale_id, product_id, qty, konversi, satuan, harga_jual, harga_pokok, subtotal, created_at, updated_at)
+      VALUES (1, 1, 1, 3, 1, 'PCS', 150000, 100000, 450000, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO sale_items (id, sale_id, product_id, qty, konversi, satuan, harga_jual, harga_pokok, subtotal, created_at, updated_at)
+      VALUES (2, 1, 1, 2, 12, 'Renteng', 1500000, 1200000, 3000000, unixepoch(), unixepoch())`)
+    partialDb.$client.close()
+
+    const fullDb = createDb(dbFile, migrationsFolder)
+    const rows = fullDb.all<{ id: number; qty: number; konversi: number; base_quantity: number; price_source: string }>(
+      sql`SELECT id, qty, konversi, base_quantity, price_source FROM sale_items ORDER BY id`,
+    )
+    fullDb.$client.close()
+    cleanup()
+
+    expect(rows).toEqual([
+      { id: 1, qty: 3, konversi: 1, base_quantity: 3, price_source: 'normal' },
+      { id: 2, qty: 2, konversi: 12, base_quantity: 24, price_source: 'normal' },
+    ])
+  })
 })

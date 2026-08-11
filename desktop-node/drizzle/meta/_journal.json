@@ -64,6 +64,13 @@
       "when": 1786449136176,
       "tag": "0008_flat_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786451177906,
+      "tag": "0009_lyrical_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

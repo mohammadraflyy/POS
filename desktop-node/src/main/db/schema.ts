@@ -134,9 +134,13 @@ export const saleItems = sqliteTable('sale_items', {
   productUnitId: integer('product_unit_id').references(() => productUnits.id, { onDelete: 'set null' }),
   qty: integer('qty').notNull(),
   konversi: integer('konversi').notNull().default(1),
+  /** qty expressed in the product's base unit - qty * konversi at the time of sale */
+  baseQuantity: integer('base_quantity').notNull().default(0),
   satuan: text('satuan'),
   hargaJual: integer('harga_jual').notNull(),
   hargaPokok: integer('harga_pokok').notNull(),
+  /** where hargaJual came from, so a later tier edit can never re-explain a past sale */
+  priceSource: text('price_source', { enum: ['normal', 'price_tier', 'manual'] }).notNull().default('normal'),
   subtotal: integer('subtotal').notNull(),
   ...timestamps(),
 })
