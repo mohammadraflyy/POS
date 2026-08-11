@@ -1,7 +1,7 @@
 import { and, eq, inArray, like, or } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { categories, products, productUnits, stockAdjustments, units } from './db/schema'
+import { categories, products, productUnits, stockAdjustments, stockMovements, units } from './db/schema'
 
 export interface CategoryOption {
   id: number
@@ -125,6 +125,26 @@ export function recordStockAdjustment(
       .get()
 
     tx.update(products).set({ stok: input.stokSesudah }).where(eq(products.id, input.productId)).run()
+
+    // adjustments are always counted in base units, so the base row is the unit to log against
+    const baseUnit = tx
+      .select({ id: productUnits.id })
+      .from(productUnits)
+      .where(and(eq(productUnits.productId, input.productId), eq(productUnits.isBaseUnit, true)))
+      .get()
+
+    tx.insert(stockMovements)
+      .values({
+        productId: input.productId,
+        productUnitId: baseUnit?.id ?? null,
+        quantity: selisih,
+        conversionFactor: 1,
+        baseQuantity: selisih,
+        movementType: 'stock_adjustment',
+        referenceId: adjustment.id,
+        createdAt: now,
+      })
+      .run()
 
     return { id: adjustment.id }
   })

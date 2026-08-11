@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { categories, products, productUnits, stockAdjustments, units, users } from './db/schema'
+import { categories, products, productUnits, stockAdjustments, stockMovements, units, users } from './db/schema'
 import {
   listCategories,
   searchProductsForOpname,
@@ -244,6 +244,22 @@ describe('recordStockAdjustment', () => {
 
     const adjustment = db.select().from(stockAdjustments).where(eq(stockAdjustments.id, result.id)).get()
     expect(adjustment?.selisih).toBe(-5)
+  })
+
+  it('records a stock movement against the base unit row, signed like the selisih', () => {
+    const db = seedDb()
+    const result = recordStockAdjustment(db, { productId: 2, stokSesudah: 45, alasan: null, userId: 1 })
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, result.id)).all()
+    expect(movements).toHaveLength(1)
+    expect(movements[0]).toMatchObject({
+      productId: 2,
+      productUnitId: 102,
+      quantity: -5,
+      conversionFactor: 1,
+      baseQuantity: -5,
+      movementType: 'stock_adjustment',
+    })
   })
 
   it('records a zero-change adjustment', () => {
