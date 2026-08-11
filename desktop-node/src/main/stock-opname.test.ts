@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { categories, products, stockAdjustments, users } from './db/schema'
+import { categories, products, productUnits, stockAdjustments, units, users } from './db/schema'
 import {
   listCategories,
   searchProductsForOpname,
@@ -34,7 +34,6 @@ function seedDb() {
         barcode: '8991234567890',
         namaItem: 'Kopi Kapal Api',
         categoryId: 1,
-        satuan: 'PCS',
         hargaPokok: 1500_00,
         hargaJual: 2000_00,
         stok: 10,
@@ -48,7 +47,6 @@ function seedDb() {
         barcode: null,
         namaItem: 'Gula Pasir',
         categoryId: 1,
-        satuan: 'KG',
         hargaPokok: 12000_00,
         hargaJual: 14000_00,
         stok: 50,
@@ -62,7 +60,6 @@ function seedDb() {
         barcode: null,
         namaItem: 'Teh Botol',
         categoryId: 2,
-        satuan: 'PCS',
         hargaPokok: 3000_00,
         hargaJual: 4000_00,
         stok: 20,
@@ -76,7 +73,6 @@ function seedDb() {
         barcode: null,
         namaItem: 'Produk Nonaktif',
         categoryId: 1,
-        satuan: 'PCS',
         hargaPokok: 1000_00,
         hargaJual: 1500_00,
         stok: 5,
@@ -85,6 +81,32 @@ function seedDb() {
         updatedAt: now,
       },
     ])
+    .run()
+
+  db.insert(units)
+    .values([
+      { id: 1, code: 'PCS', name: 'Pieces', symbol: 'pcs', createdAt: now, updatedAt: now },
+      { id: 2, code: 'KG', name: 'Kilogram', symbol: 'kg', createdAt: now, updatedAt: now },
+    ])
+    .run()
+
+  // one base product_units row per product - the satuan label lives here now
+  db.insert(productUnits)
+    .values(
+      [
+        { id: 101, productId: 1, unitId: 1, hargaJual: 2000_00 },
+        { id: 102, productId: 2, unitId: 2, hargaJual: 14000_00 },
+        { id: 103, productId: 3, unitId: 1, hargaJual: 4000_00 },
+        { id: 104, productId: 4, unitId: 1, hargaJual: 1500_00 },
+      ].map((row) => ({
+        ...row,
+        jumlahKemasan: 1,
+        conversionFactor: 1,
+        isBaseUnit: true,
+        createdAt: now,
+        updatedAt: now,
+      })),
+    )
     .run()
 
   return db
@@ -142,7 +164,6 @@ describe('searchProductsForOpname', () => {
       barcode: null,
       namaItem: `Produk Banyak ${i}`,
       categoryId: 1,
-      satuan: 'PCS',
       hargaPokok: 1000_00,
       hargaJual: 1500_00,
       stok: 1,
@@ -165,7 +186,6 @@ describe('searchProductsForOpname', () => {
       barcode: null,
       namaItem: `Produk Banyak ${i}`,
       categoryId: 1,
-      satuan: 'PCS',
       hargaPokok: 1000_00,
       hargaJual: 1500_00,
       stok: 1,

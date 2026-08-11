@@ -1,7 +1,7 @@
 import { and, eq, inArray, like, or } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { categories, products, stockAdjustments } from './db/schema'
+import { categories, products, productUnits, stockAdjustments, units } from './db/schema'
 
 export interface CategoryOption {
   id: number
@@ -54,15 +54,21 @@ export function searchProductsForOpname(
       barcode: products.barcode,
       namaItem: products.namaItem,
       categoryName: categories.nama,
-      satuan: products.satuan,
+      satuan: units.code,
       stok: products.stok,
     })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
+    // left-joined, not inner: a product missing its base-unit row is a data
+    // bug, but dropping it from an opname list would hide stock from the count
+    .leftJoin(productUnits, and(eq(productUnits.productId, products.id), eq(productUnits.isBaseUnit, true)))
+    .leftJoin(units, eq(productUnits.unitId, units.id))
     .where(and(...conditions))
     .orderBy(products.namaItem)
 
-  return browsing ? baseQuery.all() : baseQuery.limit(20).all()
+  const rows = browsing ? baseQuery.all() : baseQuery.limit(20).all()
+
+  return rows.map((row) => ({ ...row, satuan: row.satuan ?? '' }))
 }
 
 export interface RecordStockAdjustmentInput {
