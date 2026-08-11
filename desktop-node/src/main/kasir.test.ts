@@ -44,15 +44,77 @@ function seedPcsBaseUnits(
 }
 
 describe('priceForQty', () => {
-  it('falls back to the base price when there are no tiers', () => {
+  it('falls back to the normal price with an empty tier list', () => {
     expect(priceForQty([], 10000, 5)).toBe(10000)
   })
 
-  it('applies a tier when qty meets its threshold', () => {
-    expect(priceForQty([{ minQty: 10, maxQty: null, hargaJual: 9000 }], 10000, 12)).toBe(9000)
+  it('matches a closed range', () => {
+    const tiers = [
+      { minQty: 1, maxQty: 9, hargaJual: 5000 },
+      { minQty: 10, maxQty: 49, hargaJual: 4500 },
+    ]
+    expect(priceForQty(tiers, 6000, 5)).toBe(5000)
+    expect(priceForQty(tiers, 6000, 10)).toBe(4500)
   })
 
-  it('picks the highest satisfied tier threshold', () => {
+  it('uses the exact lower boundary of a tier, not the tier below', () => {
+    const tiers = [
+      { minQty: 1, maxQty: 4, hargaJual: 45000 },
+      { minQty: 5, maxQty: 9, hargaJual: 42000 },
+    ]
+    expect(priceForQty(tiers, 50000, 5)).toBe(42000)
+    expect(priceForQty(tiers, 50000, 4)).toBe(45000)
+  })
+
+  it('uses the exact upper boundary of a tier, not the tier above', () => {
+    const tiers = [
+      { minQty: 1, maxQty: 9, hargaJual: 5000 },
+      { minQty: 10, maxQty: 49, hargaJual: 4500 },
+    ]
+    expect(priceForQty(tiers, 6000, 9)).toBe(5000)
+  })
+
+  it('falls through to the unbounded tier above the last closed one', () => {
+    const tiers = [
+      { minQty: 1, maxQty: 4, hargaJual: 85000 },
+      { minQty: 5, maxQty: null, hargaJual: 80000 },
+    ]
+    expect(priceForQty(tiers, 90000, 100)).toBe(80000)
+  })
+
+  it('falls back to the normal price when qty is below every tier', () => {
+    expect(priceForQty([{ minQty: 10, maxQty: null, hargaJual: 4000 }], 5000, 1)).toBe(5000)
+  })
+
+  // The one case the old highest-minQty-wins logic got wrong: it never looked at
+  // maxQty, so a qty past the top of a closed range kept that range's price
+  // instead of falling back.
+  it('falls back to the normal price when qty is above a closed range with nothing above it', () => {
+    expect(priceForQty([{ minQty: 1, maxQty: 9, hargaJual: 5000 }], 6000, 50)).toBe(6000)
+  })
+
+  it('falls back to the normal price when qty lands in a gap between ranges', () => {
+    const tiers = [
+      { minQty: 1, maxQty: 9, hargaJual: 5000 },
+      { minQty: 20, maxQty: 49, hargaJual: 4500 },
+    ]
+    expect(priceForQty(tiers, 6000, 12)).toBe(6000)
+  })
+
+  it('ignores tier order in the list', () => {
+    const tiers = [
+      { minQty: 10, maxQty: 49, hargaJual: 4500 },
+      { minQty: 1, maxQty: 9, hargaJual: 5000 },
+    ]
+    expect(priceForQty(tiers, 6000, 3)).toBe(5000)
+    expect(priceForQty(tiers, 6000, 30)).toBe(4500)
+  })
+
+  // Migration 0008 backfills every pre-existing tier with maxQty null, and the old
+  // schema happily allowed 10+ and 50+ side by side on one product. Those overlap,
+  // so a migrated database still carries pairs that today's write-time validation
+  // would reject - the highest satisfied minQty has to keep winning for them.
+  it('picks the highest satisfied minQty among overlapping legacy tiers', () => {
     const tiers = [
       { minQty: 10, maxQty: null, hargaJual: 9500 },
       { minQty: 50, maxQty: null, hargaJual: 9000 },
@@ -201,6 +263,32 @@ describe('checkout', () => {
 
     return db
   }
+
+  it('prices a derived-unit line against that unit own tiers, never the base unit tiers', () => {
+    const db = seedDb()
+    const now = new Date()
+
+    // product 2 sells as PCS (base row 102) or DUS (row 9, konversi 40).
+    // A base-unit tier at qty>=2 must not touch a 2 DUS line.
+    db.insert(productPriceTiers)
+      .values([
+        { id: 2, productId: 2, productUnitId: 102, minQty: 2, maxQty: null, hargaJual: 2500_00, createdAt: now, updatedAt: now },
+        { id: 3, productId: 2, productUnitId: 9, minQty: 2, maxQty: null, hargaJual: 100000_00, createdAt: now, updatedAt: now },
+      ])
+      .run()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 200000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: 9, qty: 2 }],
+    })
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items[0].hargaJual).toBe(100000_00)
+    expect(result.total).toBe(200000_00)
+  })
 
   it('checks out a tunai sale with base-unit tier pricing, decrements stock, snapshots sale_items', () => {
     const db = seedDb()

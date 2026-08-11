@@ -9,12 +9,22 @@ export interface PriceTier {
   hargaJual: number
 }
 
-export function priceForQty(priceTiers: PriceTier[], hargaJualDasar: number, qty: number): number {
-  const applicable = priceTiers
-    .filter((tier) => qty >= tier.minQty)
+/**
+ * Tiers are closed [minQty, maxQty] ranges, with a null maxQty running
+ * open-ended above. Write-time validation keeps them non-overlapping per unit,
+ * so at most one can match - but migration 0008 backfilled every pre-existing
+ * tier as unbounded, and the old schema allowed "10+" and "50+" together on one
+ * product. Those pairs overlap, so the highest satisfied minQty is taken first,
+ * which prices them the way they were priced before the migration.
+ */
+export function findTierForQty(priceTiers: PriceTier[], qty: number): PriceTier | undefined {
+  return [...priceTiers]
     .sort((a, b) => b.minQty - a.minQty)
+    .find((tier) => qty >= tier.minQty && (tier.maxQty === null || qty <= tier.maxQty))
+}
 
-  return applicable[0]?.hargaJual ?? hargaJualDasar
+export function priceForQty(priceTiers: PriceTier[], hargaJualDasar: number, qty: number): number {
+  return findTierForQty(priceTiers, qty)?.hargaJual ?? hargaJualDasar
 }
 
 export interface ProductRow {
@@ -52,7 +62,7 @@ export function resolveCartItem(
   qty: number,
 ): ResolvedItem {
   const normalPrice = productUnit.hargaJual
-  const tier = priceTiers.find((t) => qty >= t.minQty && (t.maxQty === null || qty <= t.maxQty))
+  const tier = findTierForQty(priceTiers, qty)
   const hargaJual = tier?.hargaJual ?? normalPrice
   const priceSource: 'normal' | 'price_tier' = tier ? 'price_tier' : 'normal'
 
@@ -151,15 +161,11 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
       throw new Error(`Satuan tidak valid untuk ${product.namaItem}.`)
     }
 
-    // ponytail: product_price_tiers still keys off productId with no maxQty, so tiers
-    // are base-unit-only open-ended ranges and the highest satisfied minQty must win.
-    // Task 7 adds productUnitId/maxQty; this becomes `.filter(row => row.productUnitId === unit.id)`.
-    const tiers: PriceTier[] = unit.isBaseUnit
-      ? tierRows
-          .filter((row) => row.productId === product.id)
-          .map((row) => ({ minQty: row.minQty, maxQty: null, hargaJual: row.hargaJual }))
-          .sort((a, b) => b.minQty - a.minQty)
-      : []
+    // tiers hang off the unit being sold, so a DUS line prices against DUS tiers
+    // and never against the base unit's
+    const tiers: PriceTier[] = tierRows
+      .filter((row) => row.productUnitId === unit.id)
+      .map((row) => ({ minQty: row.minQty, maxQty: row.maxQty, hargaJual: row.hargaJual }))
 
     const resolved = resolveCartItem(product, unit, tiers, item.qty)
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
