@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, lte } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { products, saleItems, sales } from './db/schema'
+import { products, productUnits, saleItems, sales, units } from './db/schema'
 import { getRekap, type ProdukTerlarisRow, type RekapSummary } from './rekap'
 
 export interface StokMenipisRow {
@@ -38,19 +38,25 @@ export function getDashboard(db: BetterSQLite3Database<typeof schema>): Dashboar
 
   const rekap = getRekap(db, { from: today, to: today })
 
-  const stokMenipis: StokMenipisRow[] = db
+  const stokMenipisRows = db
     .select({
       id: products.id,
       kodeItem: products.kodeItem,
       namaItem: products.namaItem,
-      satuan: products.satuan,
+      satuan: units.code,
       stok: products.stok,
     })
     .from(products)
+    // left-joined so a product missing its base-unit row still shows up in the
+    // low-stock warning rather than silently dropping out of it
+    .leftJoin(productUnits, and(eq(productUnits.productId, products.id), eq(productUnits.isBaseUnit, true)))
+    .leftJoin(units, eq(productUnits.unitId, units.id))
     .where(and(eq(products.isActive, true), lte(products.stok, LOW_STOCK_THRESHOLD)))
     .orderBy(products.stok)
     .limit(10)
     .all()
+
+  const stokMenipis: StokMenipisRow[] = stokMenipisRows.map((row) => ({ ...row, satuan: row.satuan ?? '' }))
 
   const saleRows = db
     .select({

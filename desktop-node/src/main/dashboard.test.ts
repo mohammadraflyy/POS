@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { createDb } from './db/migrate'
-import { products, sales, saleItems, users } from './db/schema'
+import { products, productUnits, sales, saleItems, units, users } from './db/schema'
 import { getDashboard } from './dashboard'
 import { getRekap } from './rekap'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+const PCS_UNIT_ID = 1
 
 function seedUser(db: ReturnType<typeof createDb>) {
   const now = new Date()
@@ -26,11 +28,30 @@ function insertProduct(
       barcode: null,
       namaItem: input.namaItem,
       categoryId: null,
-      satuan: 'PCS',
       hargaPokok: 1000_00,
       hargaJual: 1500_00,
       stok: input.stok,
       isActive: input.isActive,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  // the satuan label lives on the base product_units row now; the units row is
+  // shared, so it is inserted once and reused by every product
+  db.insert(units)
+    .values({ id: PCS_UNIT_ID, code: 'PCS', name: 'Pieces', symbol: 'pcs', createdAt: now, updatedAt: now })
+    .onConflictDoNothing()
+    .run()
+
+  db.insert(productUnits)
+    .values({
+      productId: input.id,
+      unitId: PCS_UNIT_ID,
+      jumlahKemasan: 1,
+      conversionFactor: 1,
+      hargaJual: 1500_00,
+      isBaseUnit: true,
       createdAt: now,
       updatedAt: now,
     })

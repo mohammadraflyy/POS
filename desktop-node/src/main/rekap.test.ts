@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import XLSX from 'xlsx'
 import { createDb } from './db/migrate'
-import { categories, products, productUnits, purchases, sales, saleItems, suppliers, users } from './db/schema'
+import { categories, products, productUnits, purchases, sales, saleItems, suppliers, units, users } from './db/schema'
 import { getRekap, getStockValue, getSalesHistory, buildRekapWorkbook } from './rekap'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+const PCS_UNIT_ID = 1
+const KG_UNIT_ID = 2
+const DUS_UNIT_ID = 3
 
 function seedBase(db: ReturnType<typeof createDb>) {
   const now = new Date()
@@ -30,8 +34,7 @@ function seedBase(db: ReturnType<typeof createDb>) {
         barcode: null,
         namaItem: 'Kopi Kapal Api',
         categoryId: 1,
-        satuan: 'PCS',
-        hargaPokok: 1000_00,
+                hargaPokok: 1000_00,
         hargaJual: 1500_00,
         stok: 100,
         isActive: true,
@@ -44,8 +47,7 @@ function seedBase(db: ReturnType<typeof createDb>) {
         barcode: null,
         namaItem: 'Gula Pasir',
         categoryId: null,
-        satuan: 'KG',
-        hargaPokok: 12000_00,
+                hargaPokok: 12000_00,
         hargaJual: 14000_00,
         stok: 100,
         isActive: true,
@@ -55,17 +57,52 @@ function seedBase(db: ReturnType<typeof createDb>) {
     ])
     .run()
 
+  db.insert(units)
+    .values([
+      { id: PCS_UNIT_ID, code: 'PCS', name: 'Pieces', symbol: 'pcs', createdAt: now, updatedAt: now },
+      { id: KG_UNIT_ID, code: 'KG', name: 'Kilogram', symbol: 'kg', createdAt: now, updatedAt: now },
+      { id: DUS_UNIT_ID, code: 'DUS', name: 'Dus', symbol: 'dus', createdAt: now, updatedAt: now },
+    ])
+    .run()
+
+  // one base row per product plus the derived DUS row that the laba-kotor
+  // costing test sells through
   db.insert(productUnits)
-    .values({
-      id: 1,
-      productId: 1,
-      satuan: 'DUS',
-      jumlahKemasan: 10,
-      konversi: 10,
-      hargaJual: 14000_00,
-      createdAt: now,
-      updatedAt: now,
-    })
+    .values([
+      {
+        id: 101,
+        productId: 1,
+        unitId: PCS_UNIT_ID,
+        jumlahKemasan: 1,
+        conversionFactor: 1,
+        hargaJual: 1500_00,
+        isBaseUnit: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 102,
+        productId: 2,
+        unitId: KG_UNIT_ID,
+        jumlahKemasan: 1,
+        conversionFactor: 1,
+        hargaJual: 14000_00,
+        isBaseUnit: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 1,
+        productId: 1,
+        unitId: DUS_UNIT_ID,
+        jumlahKemasan: 10,
+        conversionFactor: 10,
+        hargaJual: 14000_00,
+        isBaseUnit: false,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
     .run()
 }
 
@@ -142,8 +179,7 @@ describe('getStockValue', () => {
           barcode: null,
           namaItem: 'Stok Habis',
           categoryId: null,
-          satuan: 'PCS',
-          hargaPokok: 5000_00,
+                    hargaPokok: 5000_00,
           hargaJual: 6000_00,
           stok: 0,
           isActive: true,
@@ -156,8 +192,7 @@ describe('getStockValue', () => {
           barcode: null,
           namaItem: 'Produk Nonaktif',
           categoryId: null,
-          satuan: 'PCS',
-          hargaPokok: 5000_00,
+                    hargaPokok: 5000_00,
           hargaJual: 6000_00,
           stok: 50,
           isActive: false,
@@ -443,7 +478,6 @@ describe('getRekap', () => {
       barcode: null,
       namaItem: `Produk ${i + 1}`,
       categoryId: null,
-      satuan: 'PCS',
       hargaPokok: 1000_00,
       hargaJual: 1500_00,
       stok: 100,
