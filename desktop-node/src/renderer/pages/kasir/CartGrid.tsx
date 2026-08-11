@@ -12,7 +12,7 @@ import 'react-data-grid/lib/styles.css'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn, formatRupiah } from '@/lib/utils'
-import { unitPrice, type CartLine } from './cart-logic'
+import { activeTier, unitPrice, type CartLine } from './cart-logic'
 
 function focusAndSelectQtyInput(input: HTMLInputElement | null) {
   input?.focus()
@@ -118,7 +118,21 @@ export function CartGrid({
       key: 'harga',
       name: 'Harga',
       width: 120,
-      renderCell: ({ row }) => <span className="text-xs text-muted-foreground">{formatRupiah(unitPrice(row))}</span>,
+      renderCell: ({ row }) => {
+        const tier = activeTier(row)
+
+        return (
+          <span className="text-xs text-muted-foreground">
+            {formatRupiah(unitPrice(row))}
+            {tier && (
+              <span className="block text-[10px] text-muted-foreground">
+                tier {tier.minQty}
+                {tier.maxQty === null ? '+' : `-${tier.maxQty}`}
+              </span>
+            )}
+          </span>
+        )
+      },
     },
     {
       key: 'qty',
