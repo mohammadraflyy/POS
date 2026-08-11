@@ -16,6 +16,7 @@ const api = {
   kasir: {
     listProducts: () => invoke('kasir:listProducts'),
     listSalesToday: () => invoke('kasir:listSalesToday'),
+    listCustomers: () => invoke<string[]>('kasir:listCustomers'),
     checkout: (input: {
       metodePembayaran: 'tunai' | 'bon'
       namaPelanggan: string | null

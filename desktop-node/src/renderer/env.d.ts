@@ -24,6 +24,7 @@ declare global {
             priceTiers: { minQty: number; hargaJual: number }[]
           }[]
         >
+        listCustomers: () => Promise<string[]>
         listSalesToday: () => Promise<
           {
             id: number

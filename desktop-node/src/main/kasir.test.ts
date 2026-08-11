@@ -4,7 +4,7 @@ import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
 import { users, products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings } from './db/schema'
-import { checkout, type CheckoutInput, cancelSale, deleteSale, recordBonPayment, updateStoreSettings, purgeSalesBefore, purgeTodaySales } from './kasir'
+import { checkout, type CheckoutInput, cancelSale, deleteSale, listCustomers, recordBonPayment, updateStoreSettings, purgeSalesBefore, purgeTodaySales } from './kasir'
 
 describe('priceForQty', () => {
   it('falls back to the base price when there are no tiers', () => {
@@ -1250,5 +1250,67 @@ describe('purgeTodaySales', () => {
     const result = purgeTodaySales(db)
 
     expect(result).toEqual({ deleted: 0, skipped: 0 })
+  })
+})
+
+describe('listCustomers', () => {
+  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+  function seedDb() {
+    const db = createDb(':memory:', migrationsFolder)
+    const now = new Date()
+
+    db.insert(users)
+      .values({ id: 1, username: 'kasir1', passwordHash: 'hash', name: 'Kasir Satu', createdAt: now, updatedAt: now })
+      .run()
+
+    db.insert(products)
+      .values({
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        satuan: 'PCS',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 100,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    return db
+  }
+
+  function sell(db: ReturnType<typeof createDb>, namaPelanggan: string | null) {
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+  }
+
+  it('returns each name once, most recently used first', () => {
+    const db = seedDb()
+    sell(db, 'Bu Siti')
+    sell(db, 'UMUM')
+    sell(db, 'Pak Budi')
+    sell(db, 'Bu Siti')
+
+    expect(listCustomers(db)).toEqual(['Bu Siti', 'Pak Budi', 'UMUM'])
+  })
+
+  it('skips sales with no usable name', () => {
+    const db = seedDb()
+    sell(db, null)
+    sell(db, '   ')
+    sell(db, 'Bu Siti')
+
+    expect(listCustomers(db)).toEqual(['Bu Siti'])
+  })
+
+  it('returns nothing on a database with no sales', () => {
+    expect(listCustomers(seedDb())).toEqual([])
   })
 })

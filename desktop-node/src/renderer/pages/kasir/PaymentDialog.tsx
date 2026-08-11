@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Banknote, CornerDownLeft, HandCoins, Printer } from 'lucide-react'
+import { Banknote, CornerDownLeft, HandCoins, Pencil, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { useConfirm } from '@/hooks/use-confirm'
 import { cn, formatRupiah } from '@/lib/utils'
+import { DEFAULT_PELANGGAN } from './CustomerPicker'
 
 const actions = ['cetak', 'simpan', 'batal'] as const
 type Action = (typeof actions)[number]
@@ -19,7 +20,8 @@ export interface PaymentDialogProps {
   metode: 'tunai' | 'bon'
   setMetode: (metode: 'tunai' | 'bon') => void
   namaPelanggan: string
-  setNamaPelanggan: (value: string) => void
+  /** hands the cashier back to the customer picker on the kasir page */
+  onEditCustomer: () => void
   dibayar: string
   setDibayar: (value: string) => void
   processing: boolean
@@ -35,7 +37,7 @@ export function PaymentDialog({
   metode,
   setMetode,
   namaPelanggan,
-  setNamaPelanggan,
+  onEditCustomer,
   dibayar,
   setDibayar,
   processing,
@@ -46,6 +48,10 @@ export function PaymentDialog({
   const totalBayar = metode === 'tunai' ? Number(dibayar || 0) : 0
   const selisih = total - totalBayar
   const isLunas = metode === 'tunai' && selisih <= 0
+  // Bon debt is collected per person, so it must never be filed under the
+  // walk-in name - that debt would be uncollectable.
+  const bonNeedsCustomer =
+    metode === 'bon' && (namaPelanggan.trim() === '' || namaPelanggan.trim().toUpperCase() === DEFAULT_PELANGGAN)
 
   // PageUp/PageDown cycle which action Enter will fire, so the whole
   // dialog can be driven without a mouse: type the amount, PgDn/PgUp to
@@ -79,6 +85,12 @@ export function PaymentDialog({
   }
 
   function runAction(action: Action) {
+    if (action !== 'batal' && bonNeedsCustomer) {
+      onEditCustomer()
+
+      return
+    }
+
     if (action === 'cetak') {
       submitWithPrint()
     } else if (action === 'simpan') {
@@ -124,7 +136,7 @@ export function PaymentDialog({
         break
       case 's':
         e.preventDefault()
-        onSubmit(false)
+        runAction('simpan')
         break
     }
   }
@@ -139,7 +151,7 @@ export function PaymentDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            submitWithPrint()
+            runAction('cetak')
           }}
           onKeyDown={handleShortcut}
           className="space-y-5"
@@ -188,23 +200,26 @@ export function PaymentDialog({
             </div>
           )}
 
-          <div className="grid gap-2">
-            <Label htmlFor="nama_pelanggan">
-              Nama Pelanggan {metode === 'tunai' && <span className="text-muted-foreground">(opsional)</span>}
-            </Label>
-            <Input
-              id="nama_pelanggan"
-              autoFocus={metode === 'bon'}
-              placeholder={metode === 'bon' ? 'Wajib diisi' : undefined}
-              value={namaPelanggan}
-              disabled={processing || printing}
-              // the field arrives prefilled with the walk-in default, so typing
-              // should replace it instead of appending to it
-              onFocus={(e) => e.target.select()}
-              onChange={(e) => setNamaPelanggan(e.target.value)}
-              className="h-16 text-xl"
-            />
-          </div>
+          {/* the name is picked on the kasir page - shown here only so the
+              cashier can see (and fix) who the sale is filed under */}
+          <button
+            type="button"
+            disabled={processing || printing}
+            onClick={onEditCustomer}
+            className="flex w-full items-center justify-between rounded-xl border px-5 py-3.5 text-left hover:bg-muted/50 disabled:opacity-50"
+          >
+            <span className="text-sm text-muted-foreground">Pelanggan</span>
+            <span className="flex items-center gap-2 text-lg font-semibold">
+              {namaPelanggan.trim() || <span className="text-destructive">Belum dipilih</span>}
+              <Pencil className="size-3.5 text-muted-foreground" />
+            </span>
+          </button>
+
+          {bonNeedsCustomer && (
+            <p role="alert" className="text-sm text-destructive">
+              Transaksi bon harus atas nama pelanggan, bukan {DEFAULT_PELANGGAN}. Pilih pelanggan dulu.
+            </p>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-xl bg-green-500/15 px-5 py-3.5 dark:bg-green-500/20">
@@ -256,7 +271,7 @@ export function PaymentDialog({
             <div className="space-y-2">
               <Button
                 type="submit"
-                disabled={processing}
+                disabled={processing || bonNeedsCustomer}
                 className={cn(
                   'w-full',
                   selectedAction === 'cetak' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
@@ -270,7 +285,7 @@ export function PaymentDialog({
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={processing}
+                  disabled={processing || bonNeedsCustomer}
                   className={cn(
                     selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
                   )}

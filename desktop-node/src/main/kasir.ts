@@ -84,6 +84,24 @@ export function resolveCartItem(
   }
 }
 
+/**
+ * Every distinct customer name ever used on a sale, most recently used first.
+ * There is no customer master table - names typed at the register are the list,
+ * so a brand new name shows up here after its first sale.
+ */
+export function listCustomers(db: BetterSQLite3Database<typeof schema>): string[] {
+  const rows = db
+    .select({ nama: sales.namaPelanggan })
+    .from(sales)
+    .where(sql`${sales.namaPelanggan} is not null and trim(${sales.namaPelanggan}) <> ''`)
+    .groupBy(sales.namaPelanggan)
+    .orderBy(sql`max(${sales.id}) desc`)
+    .limit(200)
+    .all()
+
+  return rows.map((row) => row.nama as string)
+}
+
 export interface CartItemInput {
   productId: number
   productUnitId: number | null

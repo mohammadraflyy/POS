@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CellKeyboardEvent, CellKeyDownArgs, DataGridHandle, RowsChangeData } from 'react-data-grid'
-import { ShoppingCart, Trash2 } from 'lucide-react'
+import { ShoppingCart, Trash2, UserRound } from 'lucide-react'
 import { Page, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import type { BreadcrumbItem } from '../types'
 import { CartGrid } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
+import { CustomerPicker, DEFAULT_PELANGGAN } from './kasir/CustomerPicker'
 import {
   addLine,
   applyQty,
@@ -47,9 +48,6 @@ interface KasirDraft {
   dibayar: string
   jumlah: string
 }
-
-/** walk-in customer - stands in whenever the cashier does not type a name */
-const DEFAULT_PELANGGAN = 'UMUM'
 
 const EMPTY_DRAFT: KasirDraft = {
   cart: [],
@@ -86,6 +84,8 @@ export function Kasir() {
   const [initialDraft] = useState(readStoredDraft)
   const [products, setProducts] = useState<Product[]>([])
   const [salesToday, setSalesToday] = useState<SaleDto[]>([])
+  const [customers, setCustomers] = useState<string[]>([])
+  const [customerOpen, setCustomerOpen] = useState(false)
   const [cart, setCart] = useState<CartLine[]>([])
   const [scanError, setScanError] = useState('')
   const [metode, setMetode] = useState<'tunai' | 'bon'>(initialDraft.metode)
@@ -112,6 +112,7 @@ export function Kasir() {
   useEffect(() => {
     refreshProducts()
     refreshSalesToday()
+    refreshCustomers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -135,6 +136,13 @@ export function Kasir() {
       .catch(() => setError('Gagal memuat data.'))
   }
 
+  function refreshCustomers() {
+    window.api.kasir
+      .listCustomers()
+      .then(setCustomers)
+      .catch(() => setError('Gagal memuat data.'))
+  }
+
   function refreshSalesToday() {
     window.api.kasir
       .listSalesToday()
@@ -144,6 +152,14 @@ export function Kasir() {
 
   const total = useMemo(() => cart.reduce((sum, line) => sum + line.qty * unitPrice(line), 0), [cart])
   const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart])
+
+  // the walk-in name is always offered, even on a fresh database where no sale
+  // has ever carried it; so is a name picked but not yet checked out
+  const customerOptions = useMemo(() => {
+    const names = [DEFAULT_PELANGGAN, namaPelanggan.trim(), ...customers].filter((nama) => nama !== '')
+
+    return [...new Set(names)]
+  }, [customers, namaPelanggan])
 
   const paletteResults = useMemo(() => {
     const q = paletteQuery.trim().toLowerCase()
@@ -195,6 +211,13 @@ export function Kasir() {
       if (e.altKey && e.key.toLowerCase() === 'k' && !paymentOpen) {
         e.preventDefault()
         clearCart()
+
+        return
+      }
+
+      if (e.altKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        setCustomerOpen(true)
 
         return
       }
@@ -305,19 +328,6 @@ export function Kasir() {
     }
   }
 
-  // Bon debt is collected per person, so it must not be filed under the
-  // walk-in name. Switching to bon clears the default (but never a name the
-  // cashier actually typed); switching back to tunai restores it.
-  function changeMetode(next: 'tunai' | 'bon') {
-    setMetode(next)
-
-    if (next === 'bon' && namaPelanggan.trim() === DEFAULT_PELANGGAN) {
-      setNamaPelanggan('')
-    } else if (next === 'tunai' && !namaPelanggan.trim()) {
-      setNamaPelanggan(DEFAULT_PELANGGAN)
-    }
-  }
-
   function resetAfterCheckout() {
     setPaymentOpen(false)
     setCart([])
@@ -358,6 +368,7 @@ export function Kasir() {
       resetAfterCheckout()
       refreshProducts()
       refreshSalesToday()
+      refreshCustomers()
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Gagal checkout')
     } finally {
@@ -397,6 +408,7 @@ export function Kasir() {
         resetAfterCheckout()
         refreshProducts()
         refreshSalesToday()
+        refreshCustomers()
       })
 
     return () => {
@@ -560,6 +572,21 @@ export function Kasir() {
         {/* stays put while the cart scrolls, so the total and Bayar never
             leave the screen on a long transaction */}
         <aside className="flex flex-col gap-4 xl:sticky xl:top-6">
+          <button
+            type="button"
+            onClick={() => setCustomerOpen(true)}
+            className="flex items-center justify-between gap-2 rounded-xl border p-4 text-left hover:bg-muted/50"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <UserRound className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block text-xs text-muted-foreground">Pelanggan</span>
+                <span className="block truncate font-medium">{namaPelanggan.trim() || DEFAULT_PELANGGAN}</span>
+              </span>
+            </span>
+            <kbd className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">Alt+P</kbd>
+          </button>
+
           <div className="rounded-xl border p-5">
             <span className="text-sm text-muted-foreground">Total</span>
             <p className="mt-1 text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
@@ -608,15 +635,26 @@ export function Kasir() {
         onOpenChange={setPaymentOpen}
         total={total}
         metode={metode}
-        setMetode={changeMetode}
+        setMetode={setMetode}
         namaPelanggan={namaPelanggan}
-        setNamaPelanggan={setNamaPelanggan}
+        onEditCustomer={() => {
+          setPaymentOpen(false)
+          setCustomerOpen(true)
+        }}
         dibayar={dibayar}
         setDibayar={setDibayar}
         processing={processing}
         printing={printingSaleId !== null}
         error={checkoutError}
         onSubmit={handleCheckout}
+      />
+
+      <CustomerPicker
+        open={customerOpen}
+        onOpenChange={setCustomerOpen}
+        value={namaPelanggan.trim() || DEFAULT_PELANGGAN}
+        customers={customerOptions}
+        onSelect={setNamaPelanggan}
       />
 
       <CommandPalette
