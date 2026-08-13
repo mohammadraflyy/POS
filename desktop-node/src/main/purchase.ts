@@ -1,8 +1,56 @@
 import { desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { purchases, purchaseItems, products, suppliers, productUnits, stockMovements, units } from './db/schema'
+import {
+  purchases,
+  purchaseItems,
+  products,
+  productPriceHistories,
+  suppliers,
+  productUnits,
+  stockMovements,
+  units,
+} from './db/schema'
 import { getBaseProductUnit, listProductUnits } from './inventory-units'
+
+/**
+ * Weighted-average cost of one `konversi`-sized unit after receiving `qtyDasarMasuk`
+ * base units for `nilaiBeli` rupiah. Works in whole rupiah of inventory value rather
+ * than a per-unit price so a derived-unit purchase (5 DUS at 120.000) is not rounded
+ * twice on its way between units.
+ *
+ * The stock basis stays in base units for every unit, so no fractional stock is ever
+ * materialised: averaging in unit V wants
+ * `(stokDasar/K * lama + nilaiBeli) / (stokDasar/K + qtyDasar/K)`, and multiplying
+ * through by K clears both divisions into the integer form below.
+ */
+export function hitungHargaPokokSatuan(
+  stokDasarLama: number,
+  hargaPokokSatuanLama: number,
+  konversi: number,
+  qtyDasarMasuk: number,
+  nilaiBeli: number,
+): number {
+  // negative stock (possible after a manual adjustment) carries no value to average against
+  const basisStok = Math.max(0, stokDasarLama)
+  const totalQty = basisStok + qtyDasarMasuk
+
+  if (totalQty <= 0) {
+    return hargaPokokSatuanLama
+  }
+
+  return Math.round((basisStok * hargaPokokSatuanLama + nilaiBeli * konversi) / totalQty)
+}
+
+/** the base-unit case of {@link hitungHargaPokokSatuan}, kept for products.hargaPokok */
+export function hitungHargaPokokRataRata(
+  stokLama: number,
+  hargaPokokLama: number,
+  qtyDasar: number,
+  nilaiBeli: number,
+): number {
+  return hitungHargaPokokSatuan(stokLama, hargaPokokLama, 1, qtyDasar, nilaiBeli)
+}
 
 export interface PurchaseItemInput {
   productId: number
@@ -128,8 +176,22 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
 
     let total = 0
 
+    // A purchase can hold several lines for the same product (e.g. 2 DUS and 3 PCS
+    // of the same item), so stock and cost have to compound line by line instead of
+    // each line averaging against the pre-purchase figures.
+    const stokBerjalan = new Map(productRows.map((p) => [p.id, p.stok]))
+    const hargaPokokBerjalan = new Map(productRows.map((p) => [p.id, p.hargaPokok]))
+
     for (const item of resolvedItems) {
       total += item.subtotal
+
+      const qtyDasar = item.qty * item.konversi
+      const stokLama = stokBerjalan.get(item.productId) ?? 0
+      const hargaPokokLama = hargaPokokBerjalan.get(item.productId) ?? 0
+      const hargaPokokBaru = hitungHargaPokokRataRata(stokLama, hargaPokokLama, qtyDasar, item.subtotal)
+
+      stokBerjalan.set(item.productId, stokLama + qtyDasar)
+      hargaPokokBerjalan.set(item.productId, hargaPokokBaru)
 
       tx.insert(purchaseItems)
         .values({
@@ -147,9 +209,28 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
         .run()
 
       tx.update(products)
-        .set({ stok: sql`${products.stok} + ${item.qty * item.konversi}` })
+        .set({ stok: sql`${products.stok} + ${qtyDasar}`, hargaPokok: hargaPokokBaru, updatedAt: now })
         .where(eq(products.id, item.productId))
         .run()
+
+      if (hargaPokokBaru !== hargaPokokLama) {
+        const product = productsById.get(item.productId)!
+
+        tx.insert(productPriceHistories)
+          .values({
+            productId: item.productId,
+            userId: input.userId,
+            hargaPokokLama,
+            hargaPokokBaru,
+            // the purchase never touches the selling price - recorded unchanged so
+            // the audit row still reads as a complete before/after snapshot
+            hargaJualLama: product.hargaJual,
+            hargaJualBaru: product.hargaJual,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+      }
 
       tx.insert(stockMovements)
         .values({
@@ -157,7 +238,7 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
           productUnitId: item.resolvedUnitId,
           quantity: item.qty,
           conversionFactor: item.konversi,
-          baseQuantity: item.qty * item.konversi,
+          baseQuantity: qtyDasar,
           movementType: 'purchase',
           referenceId: purchase.id,
           createdAt: now,

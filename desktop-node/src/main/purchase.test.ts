@@ -2,8 +2,25 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { products, productUnits, purchases, purchaseItems, stockMovements, suppliers, units, users } from './db/schema'
-import { recordPurchase, listPurchases, searchProductsForPurchase, type PurchaseItemInput } from './purchase'
+import {
+  products,
+  productPriceHistories,
+  productUnits,
+  purchases,
+  purchaseItems,
+  stockMovements,
+  suppliers,
+  units,
+  users,
+} from './db/schema'
+import {
+  recordPurchase,
+  listPurchases,
+  searchProductsForPurchase,
+  hitungHargaPokokRataRata,
+  hitungHargaPokokSatuan,
+  type PurchaseItemInput,
+} from './purchase'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
 
@@ -294,6 +311,160 @@ describe('recordPurchase', () => {
 
     const product1 = db.select().from(products).where(eq(products.id, 1)).get()
     expect(product1?.stok).toBe(10) // untouched
+  })
+})
+
+describe('hitungHargaPokokRataRata', () => {
+  it('averages the old inventory value against the money just spent', () => {
+    // 10 pcs worth 150.000 each, plus 10 pcs bought for 1.400.000 total
+    expect(hitungHargaPokokRataRata(10, 1500_00, 10, 14000_00)).toBe(1450_00)
+  })
+
+  it('takes the pure purchase cost when there is no stock left to average against', () => {
+    expect(hitungHargaPokokRataRata(0, 1500_00, 10, 11000_00)).toBe(1100_00)
+  })
+
+  it('ignores negative stock rather than letting it subtract inventory value', () => {
+    expect(hitungHargaPokokRataRata(-5, 1000_00, 10, 5000_00)).toBe(500_00)
+  })
+
+  it('keeps the old cost when nothing is received and nothing is in stock', () => {
+    expect(hitungHargaPokokRataRata(0, 1500_00, 0, 0)).toBe(1500_00)
+  })
+
+  it('rounds to whole rupiah', () => {
+    expect(hitungHargaPokokRataRata(1, 100, 1, 101)).toBe(101) // 201 / 2 = 100,5
+  })
+})
+
+describe('hitungHargaPokokSatuan', () => {
+  it('reproduces hitungHargaPokokRataRata exactly when konversi is 1', () => {
+    expect(hitungHargaPokokSatuan(100, 5000, 1, 200, 1000000)).toBe(hitungHargaPokokRataRata(100, 5000, 200, 1000000))
+  })
+
+  it('scales the average by konversi so a DUS costs 100x what a PCS costs on the same purchase', () => {
+    // empty stock, receiving 200 base units for 1.000.000
+    expect(hitungHargaPokokSatuan(0, 0, 1, 200, 1000000)).toBe(5000)
+    expect(hitungHargaPokokSatuan(0, 0, 10, 200, 1000000)).toBe(50000)
+    expect(hitungHargaPokokSatuan(0, 0, 100, 200, 1000000)).toBe(500000)
+  })
+
+  it('weights the existing stock at the unit-scaled old cost', () => {
+    // 200 base units already on hand at 5.000/pcs, receiving 20 more for 120.000
+    expect(hitungHargaPokokSatuan(200, 5000, 1, 20, 120000)).toBe(5091)
+  })
+
+  it('keeps the old cost when there is nothing to average against', () => {
+    expect(hitungHargaPokokSatuan(0, 7000, 10, 0, 0)).toBe(7000)
+  })
+
+  it('ignores negative stock as an averaging basis', () => {
+    // a manual adjustment can drive stock negative; that carries no inventory value
+    expect(hitungHargaPokokSatuan(-50, 9000, 1, 100, 400000)).toBe(4000)
+  })
+})
+
+describe('recordPurchase harga pokok', () => {
+  it('averages harga pokok on a base-unit purchase', () => {
+    const db = seedDb()
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1400_00 })],
+      userId: 1,
+    })
+
+    // (10 * 1.500 + 10 * 1.400) / 20
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.hargaPokok).toBe(1450_00)
+  })
+
+  it('averages per base unit on a derived-unit purchase, not per package', () => {
+    const db = seedDb()
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      items: [baseItem({ productUnitId: 1, qty: 2, hargaBeli: 9500_00 })],
+      userId: 1,
+    })
+
+    // 2 renteng = 24 pcs for 1.900.000, on top of 10 pcs worth 1.500.000 => 3.400.000 / 34
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.hargaPokok).toBe(1000_00)
+    expect(product?.stok).toBe(34)
+  })
+
+  it('compounds several lines for the same product instead of averaging each against the opening stock', () => {
+    const db = seedDb()
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      items: [
+        baseItem({ qty: 10, hargaBeli: 1400_00 }), // -> 20 pcs worth 2.900.000
+        baseItem({ productUnitId: 1, qty: 1, hargaBeli: 13000_00 }), // + 12 pcs for 1.300.000
+      ],
+      userId: 1,
+    })
+
+    // 4.200.000 / 32 pcs
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.hargaPokok).toBe(1312_50)
+    expect(product?.stok).toBe(32)
+  })
+
+  it('takes the purchase cost outright when the product had no stock', () => {
+    const db = seedDb()
+    db.update(products).set({ stok: 0 }).where(eq(products.id, 2)).run()
+
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      items: [baseItem({ productId: 2, qty: 10, hargaBeli: 11000_00 })],
+      userId: 1,
+    })
+
+    const product = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(product?.hargaPokok).toBe(11000_00)
+  })
+
+  it('logs a price history row carrying the buyer and the untouched selling price', () => {
+    const db = seedDb()
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1400_00 })],
+      userId: 1,
+    })
+
+    const histories = db.select().from(productPriceHistories).where(eq(productPriceHistories.productId, 1)).all()
+    expect(histories).toHaveLength(1)
+    expect(histories[0]).toMatchObject({
+      userId: 1,
+      hargaPokokLama: 1500_00,
+      hargaPokokBaru: 1450_00,
+      hargaJualLama: 2000_00,
+      hargaJualBaru: 2000_00,
+    })
+  })
+
+  it('logs no price history when the purchase leaves harga pokok unchanged', () => {
+    const db = seedDb()
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1500_00 })],
+      userId: 1,
+    })
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.hargaPokok).toBe(1500_00)
+    expect(db.select().from(productPriceHistories).all()).toHaveLength(0)
   })
 })
 
