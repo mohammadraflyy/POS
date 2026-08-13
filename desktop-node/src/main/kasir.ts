@@ -41,6 +41,7 @@ export interface ProductUnitRow {
   unitCode: string
   conversionFactor: number
   hargaJual: number
+  hargaPokok: number
 }
 
 export interface ResolvedItem {
@@ -78,7 +79,9 @@ export function resolveCartItem(
     satuan: productUnit.unitCode,
     konversi: productUnit.conversionFactor,
     hargaJual,
-    hargaPokok: product.hargaPokok,
+    // the cost of the unit actually being sold - a DUS line carries the DUS cost, so
+    // rekap never has to multiply back up through konversi
+    hargaPokok: productUnit.hargaPokok,
     qty,
     qtyDasar,
     priceSource,
@@ -149,6 +152,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
       unitCode: units.code,
       conversionFactor: productUnits.conversionFactor,
       hargaJual: productUnits.hargaJual,
+      hargaPokok: productUnits.hargaPokok,
       isBaseUnit: productUnits.isBaseUnit,
     })
     .from(productUnits)

@@ -397,11 +397,12 @@ describe('getRekap', () => {
     expect(result.summary.piutangBeredar).toBe(15000_00) // 40000 - 25000, despite being outside the range
   })
 
-  it('labaKotor uses qty * konversi * hargaPokok, correctly costing a derived-unit sale', () => {
+  it('labaKotor costs a derived-unit sale from the sold unit own hargaPokok', () => {
     const db = createDb(':memory:', migrationsFolder)
     seedBase(db)
 
-    // Sells 1 DUS (konversi 10) of Kopi Kapal Api (hargaPokok 1000/pcs) for 14000
+    // Sells 1 DUS of Kopi Kapal Api for 14.000. The line snapshots what a DUS cost
+    // (10.000), not what a PCS cost - konversi is no longer applied at read time.
     insertSale(db, {
       id: 1,
       metodePembayaran: 'tunai',
@@ -409,12 +410,31 @@ describe('getRekap', () => {
       total: 14000_00,
       dibayar: 14000_00,
       createdAt: new Date(2026, 0, 15, 10, 0),
-      items: [{ productId: 1, qty: 1, konversi: 10, hargaJual: 14000_00, hargaPokok: 1000_00, subtotal: 14000_00 }],
+      items: [{ productId: 1, qty: 1, konversi: 10, hargaJual: 14000_00, hargaPokok: 10000_00, subtotal: 14000_00 }],
     })
 
     const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
-    // 14000 - (1 * 10 * 1000) = 4000, NOT 14000 - (1 * 1000) = 13000
+    // 14000 - (1 * 10000) = 4000
     expect(result.summary.labaKotor).toBe(4000_00)
+  })
+
+  it('costs a DUS bought as a DUS at its own price, not at base cost x konversi', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    // A DUS bought as a DUS came in cheaper than 10 loose pcs would have: 8.000, not 10.000.
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 14000_00,
+      dibayar: 14000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 10, hargaJual: 14000_00, hargaPokok: 8000_00, subtotal: 14000_00 }],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(result.summary.labaKotor).toBe(6000_00)
   })
 
   it('labaPerKategori falls back to Tanpa Kategori for uncategorized products', () => {

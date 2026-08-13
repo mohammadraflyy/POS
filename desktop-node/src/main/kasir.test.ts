@@ -45,6 +45,10 @@ function seedPcsBaseUnits(
         jumlahKemasan: 1,
         conversionFactor: 1,
         hargaJual: row.hargaJual,
+        // a base row always mirrors products.hargaPokok, conversion factor being 1
+        hargaPokok:
+          db.select({ hargaPokok: products.hargaPokok }).from(products).where(eq(products.id, row.productId)).get()
+            ?.hargaPokok ?? 0,
         isBaseUnit: true,
         createdAt: now,
         updatedAt: now,
@@ -144,8 +148,9 @@ describe('resolveCartItem', () => {
     stok: 30,
   }
 
-  const baseUnit: ProductUnitRow = { id: 1, unitId: 1, unitCode: 'PCS', conversionFactor: 1, hargaJual: 65000_00 }
-  const dusUnit: ProductUnitRow = { id: 9, unitId: 2, unitCode: 'DUS', conversionFactor: 12, hargaJual: 700000_00 }
+  const baseUnit: ProductUnitRow = { id: 1, unitId: 1, unitCode: 'PCS', conversionFactor: 1, hargaJual: 65000_00, hargaPokok: 60000_00 }
+  // a DUS of 12 costs 12x the base cost, which is what a purchase in PCS would leave behind
+  const dusUnit: ProductUnitRow = { id: 9, unitId: 2, unitCode: 'DUS', conversionFactor: 12, hargaJual: 700000_00, hargaPokok: 720000_00 }
 
   it('resolves the base unit with tier pricing', () => {
     const result = resolveCartItem(product, baseUnit, [{ minQty: 5, maxQty: null, hargaJual: 62000_00 }], 5)
@@ -180,7 +185,8 @@ describe('resolveCartItem', () => {
       satuan: 'DUS',
       konversi: 12,
       hargaJual: 700000_00,
-      hargaPokok: 60000_00,
+      // the DUS unit's own cost, not the base cost - that is the whole point of the snapshot
+      hargaPokok: 720000_00,
       qty: 2,
       qtyDasar: 24,
       priceSource: 'normal',
@@ -252,6 +258,8 @@ describe('checkout', () => {
         jumlahKemasan: 40,
         conversionFactor: 40,
         hargaJual: 110000_00,
+        // product 2's base cost is 2.500, so a DUS of 40 costs 100.000
+        hargaPokok: 100000_00,
         isBaseUnit: false,
         createdAt: now,
         updatedAt: now,
@@ -290,6 +298,23 @@ describe('checkout', () => {
     expect(items[0].priceSource).toBe('price_tier')
     expect(items[0].baseQuantity).toBe(5)
     expect(items[0].baseQuantity).toBe(items[0].qty * items[0].konversi)
+  })
+
+  it('snapshots the sold unit cost, not the base cost', () => {
+    const db = seedDb()
+
+    // product 2 costs 2.500 per PCS and its DUS of 40 costs 100.000
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 110000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: 9, qty: 1 }],
+    })
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items[0].konversi).toBe(40)
+    expect(items[0].hargaPokok).toBe(100000_00)
   })
 
   it('records a signed sale stock movement per line, in both the sold unit and base units', () => {
@@ -747,6 +772,8 @@ describe('cancelSale', () => {
         jumlahKemasan: 40,
         conversionFactor: 40,
         hargaJual: 110000_00,
+        // product 2's base cost is 2.500, so a DUS of 40 costs 100.000
+        hargaPokok: 100000_00,
         isBaseUnit: false,
         createdAt: now,
         updatedAt: now,

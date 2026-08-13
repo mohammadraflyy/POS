@@ -105,7 +105,6 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
       namaItem: products.namaItem,
       subtotal: saleItems.subtotal,
       qty: saleItems.qty,
-      konversi: saleItems.konversi,
       hargaPokok: saleItems.hargaPokok,
     })
     .from(saleItems)
@@ -121,7 +120,8 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
   const produkTerlarisMap = new Map<number, { namaItem: string; qtyTerjual: number; totalPenjualan: number }>()
 
   for (const row of saleItemRows) {
-    const laba = row.subtotal - row.qty * row.konversi * row.hargaPokok
+    // hargaPokok is the cost of one of the unit that was sold, so qty alone scales it
+    const laba = row.subtotal - row.qty * row.hargaPokok
     labaKotor += laba
 
     const categoryName = row.categoryName ?? 'Tanpa Kategori'
