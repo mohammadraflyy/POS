@@ -90,6 +90,7 @@ function seedDb() {
         jumlahKemasan: 1,
         conversionFactor: 1,
         hargaJual: 2000_00,
+        hargaPokok: 1500_00,
         isBaseUnit: true,
         createdAt: now,
         updatedAt: now,
@@ -101,6 +102,7 @@ function seedDb() {
         jumlahKemasan: 1,
         conversionFactor: 1,
         hargaJual: 14000_00,
+        hargaPokok: 12000_00,
         isBaseUnit: true,
         createdAt: now,
         updatedAt: now,
@@ -112,6 +114,8 @@ function seedDb() {
         jumlahKemasan: 12,
         conversionFactor: 12,
         hargaJual: 18000_00,
+        // seeded consistently: 12 x the base cost, exactly what migration 0012 backfills
+        hargaPokok: 18000_00,
         isBaseUnit: false,
         createdAt: now,
         updatedAt: now,
@@ -465,6 +469,85 @@ describe('recordPurchase harga pokok', () => {
     const product = db.select().from(products).where(eq(products.id, 1)).get()
     expect(product?.hargaPokok).toBe(1500_00)
     expect(db.select().from(productPriceHistories).all()).toHaveLength(0)
+  })
+})
+
+describe('recordPurchase harga pokok per satuan', () => {
+  /** every unit's cost keyed by its conversion factor, so assertions read as PCS/RENTENG */
+  function biayaPerSatuan(db: ReturnType<typeof seedDb>, productId: number) {
+    return Object.fromEntries(
+      db
+        .select()
+        .from(productUnits)
+        .where(eq(productUnits.productId, productId))
+        .all()
+        .map((unit) => [unit.conversionFactor, unit.hargaPokok]),
+    )
+  }
+
+  it('moves the cost of the purchased unit and every smaller one', () => {
+    const db = seedDb()
+
+    // 5 RENTENG at 25.000 = 125.000 for 60 base units, on top of 10 pcs worth 1.500 each
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: 1, qty: 5, hargaBeli: 25000_00 }],
+    })
+
+    // base: (10 * 1.500 + 125.000) / 70 = 2.000 ; renteng: (10 * 18.000 + 12 * 125.000) / 70 = 24.000
+    expect(biayaPerSatuan(db, 1)).toEqual({ 1: 2000_00, 12: 24000_00 })
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.hargaPokok).toBe(2000_00)
+  })
+
+  it('leaves larger units alone when buying in the base unit', () => {
+    const db = seedDb()
+
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: 101, qty: 10, hargaBeli: 2500_00 }],
+    })
+
+    // base moves to (10 * 1.500 + 25.000) / 20 = 2.000; RENTENG keeps its seeded 18.000
+    expect(biayaPerSatuan(db, 1)).toEqual({ 1: 2000_00, 12: 18000_00 })
+  })
+
+  it('compounds two lines for the same product within one purchase', () => {
+    const db = seedDb()
+
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      userId: 1,
+      items: [
+        { productId: 1, productUnitId: 1, qty: 5, hargaBeli: 25000_00 },
+        { productId: 1, productUnitId: 101, qty: 10, hargaBeli: 2500_00 },
+      ],
+    })
+
+    // after line 1 the base sits at 2.000 with 70 in stock, so line 2 gives
+    // (70 * 2.000 + 25.000) / 80 = 2.062,5 -> 2.062,50; RENTENG stops at line 1's 24.000
+    expect(biayaPerSatuan(db, 1)).toEqual({ 1: 2062_50, 12: 24000_00 })
+  })
+
+  it('treats a null productUnitId as the base unit', () => {
+    const db = seedDb()
+
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 10, hargaBeli: 2500_00 }],
+    })
+
+    expect(biayaPerSatuan(db, 1)).toEqual({ 1: 2000_00, 12: 18000_00 })
   })
 })
 

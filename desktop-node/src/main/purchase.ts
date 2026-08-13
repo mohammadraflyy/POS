@@ -116,6 +116,7 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
       productId: productUnits.productId,
       satuan: units.code,
       konversi: productUnits.conversionFactor,
+      hargaPokok: productUnits.hargaPokok,
       isBaseUnit: productUnits.isBaseUnit,
     })
     .from(productUnits)
@@ -181,6 +182,9 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
     // each line averaging against the pre-purchase figures.
     const stokBerjalan = new Map(productRows.map((p) => [p.id, p.stok]))
     const hargaPokokBerjalan = new Map(productRows.map((p) => [p.id, p.hargaPokok]))
+    // same compounding, keyed by product_units.id: a purchase with two lines for one
+    // product must average the second line against the first line's result
+    const hargaPokokUnitBerjalan = new Map(unitRows.map((u) => [u.id, u.hargaPokok]))
 
     for (const item of resolvedItems) {
       total += item.subtotal
@@ -212,6 +216,30 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
         .set({ stok: sql`${products.stok} + ${qtyDasar}`, hargaPokok: hargaPokokBaru, updatedAt: now })
         .where(eq(products.id, item.productId))
         .run()
+
+      // Cost travels down the chain, never up: the stock physically arrived inside the
+      // purchased packaging, so every smaller unit's cost follows this purchase. Buying
+      // loose pieces says nothing about what a dus costs, so larger units are left alone.
+      for (const unitRow of unitRows) {
+        if (unitRow.productId !== item.productId || unitRow.konversi > item.konversi) {
+          continue
+        }
+
+        const hargaPokokUnitLama = hargaPokokUnitBerjalan.get(unitRow.id) ?? 0
+        const hargaPokokUnitBaru = hitungHargaPokokSatuan(
+          stokLama,
+          hargaPokokUnitLama,
+          unitRow.konversi,
+          qtyDasar,
+          item.subtotal,
+        )
+
+        hargaPokokUnitBerjalan.set(unitRow.id, hargaPokokUnitBaru)
+        tx.update(productUnits)
+          .set({ hargaPokok: hargaPokokUnitBaru, updatedAt: now })
+          .where(eq(productUnits.id, unitRow.id))
+          .run()
+      }
 
       if (hargaPokokBaru !== hargaPokokLama) {
         const product = productsById.get(item.productId)!
