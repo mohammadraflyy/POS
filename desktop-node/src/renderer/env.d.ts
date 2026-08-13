@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { AuthUser } from './types'
+import type { AuthUser, UserRole } from './types'
 
 declare global {
   interface Window {
@@ -9,6 +9,12 @@ declare global {
         login: (username: string, password: string) => Promise<AuthUser>
         logout: () => Promise<void>
         me: () => Promise<AuthUser | null>
+      }
+      users: {
+        list: () => Promise<{ id: number; username: string; name: string; role: UserRole; createdAt: string }[]>
+        create: (input: { username: string; name: string; password: string; role: UserRole }) => Promise<number>
+        update: (id: number, input: { name: string; role: UserRole; password: string | null }) => Promise<void>
+        delete: (id: number) => Promise<void>
       }
       kasir: {
         listProducts: () => Promise<
@@ -169,6 +175,7 @@ declare global {
             jumlahKemasan: number
             konversi: number
             hargaJual: number
+            hargaPokok: number
             isBaseUnit: boolean
           }[]
           priceTiers: { id: number; productUnitId: number; minQty: number; maxQty: number | null; hargaJual: number }[]
@@ -317,6 +324,7 @@ declare global {
           }
           labaPerKategori: { categoryName: string; omzet: number; laba: number }[]
           labaPerHari: { tanggal: string; omzet: number; laba: number }[]
+          labaPerSatuan: { satuan: string; qtyTerjual: number; omzet: number; laba: number; marginPersen: number }[]
           produkTerlaris: { namaItem: string; qtyTerjual: number; totalPenjualan: number }[]
           pembelianPerSupplier: { supplierName: string; totalPembelian: number }[]
           stockValue: {

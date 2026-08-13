@@ -15,7 +15,7 @@ import {
 } from '../inventory-units'
 import { getProductsByIds, bulkSaveProducts, importProducts, importSatuan, type BulkSaveRow } from '../inventory-bulk'
 import { listUnits, createUnit, updateUnit, deactivateUnit } from '../master-satuan'
-import { getCurrentUser } from './auth'
+import { requireAdmin, requireUser } from './auth'
 
 function toRupiah(cents: number): number {
   return cents / 100
@@ -65,6 +65,7 @@ function toUnitDto(unit: ProductUnitRow) {
     jumlahKemasan: unit.jumlahKemasan,
     konversi: unit.conversionFactor,
     hargaJual: toRupiah(unit.hargaJual),
+    hargaPokok: toRupiah(unit.hargaPokok),
     isBaseUnit: unit.isBaseUnit,
   }
 }
@@ -73,9 +74,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle(
     'inventory:listProducts',
     (_event, input: { search?: string; page: number; pageSize?: number }) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireUser()
 
       const result = listProducts(db, input)
 
@@ -104,9 +103,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
         isActive: boolean
       },
     ) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireAdmin()
 
       updateProduct(db, id, {
         kodeItem: input.kodeItem,
@@ -122,33 +119,25 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   )
 
   ipcMain.handle('inventory:deleteProduct', (_event, id: number) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     deleteProduct(db, id)
   })
 
   ipcMain.handle('inventory:bulkDeleteProducts', (_event, ids: number[]) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     return bulkDeleteProducts(db, ids)
   })
 
   ipcMain.handle('inventory:searchProducts', (_event, q: string) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     return searchProductsQuick(db, q).map(toDto)
   })
 
   ipcMain.handle('inventory:getProductDetail', (_event, productId: number) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const detail = getProductDetail(db, productId)
 
@@ -176,9 +165,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle(
     'inventory:addProductUnit',
     (_event, productId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireAdmin()
 
       addProductUnit(db, productId, {
         unitId: input.unitId,
@@ -191,9 +178,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle(
     'inventory:updateProductUnit',
     (_event, productId: number, unitRowId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireAdmin()
 
       updateProductUnit(db, productId, unitRowId, {
         unitId: input.unitId,
@@ -204,9 +189,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   )
 
   ipcMain.handle('inventory:deleteProductUnit', (_event, productId: number, unitId: number) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     deleteProductUnit(db, productId, unitId)
   })
@@ -218,9 +201,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
       productId: number,
       input: { minQty: number; maxQty?: number | null; hargaJual: number; productUnitId?: number },
     ) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireAdmin()
 
       // The tier form is still product-scoped and open-ended, so an omitted unit
       // means the base one and an omitted maxQty means unbounded - the behaviour
@@ -236,17 +217,13 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   )
 
   ipcMain.handle('inventory:deletePriceTier', (_event, productId: number, tierId: number) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     deletePriceTier(db, productId, tierId)
   })
 
   ipcMain.handle('inventory:getProductsByIds', (_event, ids: number[]) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     return getProductsByIds(db, ids).map((p) => ({
       id: p.id,
@@ -280,10 +257,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
         stok: number
       }[],
     ) => {
-      const user = getCurrentUser()
-      if (!user) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      const user = requireAdmin()
 
       const bulkRows: BulkSaveRow[] = rows.map((row) => ({
         key: row.key,
@@ -303,10 +277,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   )
 
   ipcMain.handle('inventory:importProducts', async () => {
-    const user = getCurrentUser()
-    if (!user) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    const user = requireAdmin()
 
     const window = getMainWindow()
     if (!window) {
@@ -326,9 +297,7 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('inventory:importSatuan', async () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     const window = getMainWindow()
     if (!window) {
@@ -348,17 +317,13 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('master-satuan:list', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     return listUnits(db)
   })
 
   ipcMain.handle('master-satuan:create', (_event, input: { code: string; name: string; symbol: string }) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     createUnit(db, input)
   })
@@ -366,18 +331,14 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle(
     'master-satuan:update',
     (_event, id: number, input: { code: string; name: string; symbol: string; isActive: boolean }) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireAdmin()
 
       updateUnit(db, id, input)
     },
   )
 
   ipcMain.handle('master-satuan:deactivate', (_event, id: number) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     deactivateUnit(db, id)
   })

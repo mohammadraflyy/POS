@@ -4,7 +4,7 @@ import XLSX from 'xlsx'
 import * as schema from '../db/schema'
 import { getRekap, buildRekapWorkbook } from '../rekap'
 import { getMainWindow } from '../index'
-import { getCurrentUser } from './auth'
+import { requireAdmin } from './auth'
 
 function toRupiah(cents: number): number {
   return cents / 100
@@ -12,9 +12,7 @@ function toRupiah(cents: number): number {
 
 export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle('rekap:getRekap', (_event, input: { from: string; to: string }) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     const result = getRekap(db, input)
 
@@ -34,6 +32,14 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
         tanggal: row.tanggal,
         omzet: toRupiah(row.omzet),
         laba: toRupiah(row.laba),
+      })),
+      labaPerSatuan: result.labaPerSatuan.map((row) => ({
+        satuan: row.satuan,
+        qtyTerjual: row.qtyTerjual,
+        omzet: toRupiah(row.omzet),
+        laba: toRupiah(row.laba),
+        // a percentage, not money - it must not go through toRupiah
+        marginPersen: row.marginPersen,
       })),
       produkTerlaris: result.produkTerlaris.map((row) => ({
         namaItem: row.namaItem,
@@ -68,9 +74,7 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('rekap:exportExcel', async (_event, input: { from: string; to: string }) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     const window = getMainWindow()
     if (!window) {
