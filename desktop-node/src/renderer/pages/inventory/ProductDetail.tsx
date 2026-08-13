@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { History, Layers, TrendingUp } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, History, Layers, TrendingUp } from 'lucide-react'
+import { Page, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { InputError } from '@/components/input-error'
 import { useConfirm } from '@/hooks/use-confirm'
 import { formatRupiah } from '@/lib/utils'
+import { AppShell } from '../../layouts/AppShell'
+import type { BreadcrumbItem } from '../../types'
 
 interface UnitRow {
   id: number
@@ -71,20 +74,17 @@ interface PriceHistoryRow {
 }
 
 interface ProductDetail {
+  namaItem: string
+  kodeItem: string
   units: UnitRow[]
   priceTiers: PriceTierRow[]
   priceHistory: PriceHistoryRow[]
 }
 
-interface ProductDetailDialogProps {
-  productId: number | null
-  productNama: string | null
-  baseSatuan: string
-  onOpenChange: (open: boolean) => void
-  onChanged: () => void
-}
-
-export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpenChange, onChanged }: ProductDetailDialogProps) {
+export function ProductDetail() {
+  const navigate = useNavigate()
+  const params = useParams()
+  const productId = Number(params.productId)
   const [detail, setDetail] = useState<ProductDetail | null>(null)
   const [masterUnits, setMasterUnits] = useState<MasterUnit[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -101,8 +101,10 @@ export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpen
 
   useEffect(() => {
     setError(null)
-    if (productId === null) {
+    // a hand-typed or stale URL must not fire an IPC call with NaN
+    if (!Number.isInteger(productId) || productId < 1) {
       setDetail(null)
+      setError('Produk tidak ditemukan.')
       return
     }
     reload(productId)
@@ -114,34 +116,45 @@ export function ProductDetailDialog({ productId, productNama, baseSatuan, onOpen
   }, [productId])
 
   function refresh() {
-    if (productId !== null) {
-      reload(productId)
-    }
-    onChanged()
+    reload(productId)
   }
 
+  const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Katalog Produk', href: '/inventory' },
+    { title: detail?.namaItem ?? 'Produk', href: `/inventory/${productId}` },
+  ]
+
   return (
-    <Dialog open={productId !== null} onOpenChange={(open) => !open && onOpenChange(false)}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{productNama} &mdash; Satuan, Harga Bertingkat & Riwayat Harga</DialogTitle>
-        </DialogHeader>
+    <AppShell breadcrumbs={breadcrumbs}>
+      <Page>
+        <PageHeader
+          title={detail?.namaItem ?? 'Memuat...'}
+          description={detail ? `${detail.kodeItem} — satuan, harga bertingkat & riwayat harga` : undefined}
+          actions={
+            <Button type="button" variant="outline" size="sm" onClick={() => navigate('/inventory')}>
+              <ArrowLeft className="size-4" />
+              Kembali
+            </Button>
+          }
+        />
+
         {error && <p className="text-sm text-destructive">{error}</p>}
-        {productId !== null && detail && (
-          <>
+
+        {detail && (
+          <div className="max-w-3xl space-y-2">
             <UnitChainManager
               productId={productId}
-              baseSatuan={detail.units.find((unit) => unit.isBaseUnit)?.satuan ?? baseSatuan}
+              baseSatuan={detail.units.find((unit) => unit.isBaseUnit)?.satuan ?? ''}
               units={detail.units}
               masterUnits={masterUnits}
               onChanged={refresh}
             />
             <PriceTiersManager productId={productId} units={detail.units} tiers={detail.priceTiers} onChanged={refresh} />
             <PriceHistoryList history={detail.priceHistory} />
-          </>
+          </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </Page>
+    </AppShell>
   )
 }
 
@@ -231,6 +244,7 @@ function UnitChainRow({
   const [unitId, setUnitId] = useState(String(unit.unitId))
   const [jumlahKemasan, setJumlahKemasan] = useState(String(unit.jumlahKemasan))
   const [hargaJual, setHargaJual] = useState(String(unit.hargaJual))
+  const [hargaPokok, setHargaPokok] = useState(String(unit.hargaPokok))
   const [error, setError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
   const { confirm, ConfirmDialog } = useConfirm()
@@ -239,6 +253,7 @@ function UnitChainRow({
     setUnitId(String(unit.unitId))
     setJumlahKemasan(String(unit.jumlahKemasan))
     setHargaJual(String(unit.hargaJual))
+    setHargaPokok(String(unit.hargaPokok))
     setError(null)
     setEditing(true)
   }
@@ -264,11 +279,22 @@ function UnitChainRow({
       return
     }
 
+    const modalNum = Number(hargaPokok)
+    if (hargaPokok.trim() === '' || !Number.isFinite(modalNum) || modalNum < 0) {
+      setError('Harga beli wajib diisi dan tidak boleh negatif.')
+      return
+    }
+
     setProcessing(true)
     setError(null)
 
     window.api.inventory
-      .updateProductUnit(productId, unit.id, { unitId: unitIdNum, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
+      .updateProductUnit(productId, unit.id, {
+        unitId: unitIdNum,
+        jumlahKemasan: jumlahNum,
+        hargaJual: hargaNum,
+        hargaPokok: modalNum,
+      })
       .then(() => {
         setEditing(false)
         onChanged()
@@ -309,6 +335,10 @@ function UnitChainRow({
           <div className="grid w-32 gap-1">
             <Label className="text-xs">= jumlah {relativeToLabel}</Label>
             <Input type="number" value={jumlahKemasan} onChange={(e) => setJumlahKemasan(e.target.value)} />
+          </div>
+          <div className="grid w-32 gap-1">
+            <Label className="text-xs">Harga Beli</Label>
+            <Input type="number" value={hargaPokok} onChange={(e) => setHargaPokok(e.target.value)} />
           </div>
           <div className="grid w-32 gap-1">
             <Label className="text-xs">Harga Jual</Label>
@@ -382,6 +412,7 @@ function UnitChainAddForm({
   const [unitId, setUnitId] = useState('')
   const [jumlahKemasan, setJumlahKemasan] = useState('')
   const [hargaJual, setHargaJual] = useState('')
+  const [hargaPokok, setHargaPokok] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
 
@@ -406,11 +437,23 @@ function UnitChainAddForm({
       return
     }
 
+    // blank is meaningful here: it means "derive it from the product's harga pokok"
+    const modalNum = hargaPokok.trim() === '' ? undefined : Number(hargaPokok)
+    if (modalNum !== undefined && (!Number.isFinite(modalNum) || modalNum < 0)) {
+      setError('Harga beli tidak boleh negatif.')
+      return
+    }
+
     setProcessing(true)
     setError(null)
 
     window.api.inventory
-      .addProductUnit(productId, { unitId: unitIdNum, jumlahKemasan: jumlahNum, hargaJual: hargaNum })
+      .addProductUnit(productId, {
+        unitId: unitIdNum,
+        jumlahKemasan: jumlahNum,
+        hargaJual: hargaNum,
+        hargaPokok: modalNum,
+      })
       .then(() => {
         onDone()
         onChanged()
@@ -431,6 +474,15 @@ function UnitChainAddForm({
           <Input type="number" value={jumlahKemasan} onChange={(e) => setJumlahKemasan(e.target.value)} />
         </div>
         <div className="grid w-32 gap-1">
+          <Label className="text-xs">Harga Beli</Label>
+          <Input
+            type="number"
+            placeholder="otomatis"
+            value={hargaPokok}
+            onChange={(e) => setHargaPokok(e.target.value)}
+          />
+        </div>
+        <div className="grid w-32 gap-1">
           <Label className="text-xs">Harga Jual</Label>
           <Input type="number" value={hargaJual} onChange={(e) => setHargaJual(e.target.value)} />
         </div>
@@ -441,6 +493,10 @@ function UnitChainAddForm({
           Batal
         </Button>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Harga beli boleh dikosongkan &mdash; nanti dihitung dari harga pokok produk, dan tiap pembelian akan
+        memperbaruinya.
+      </p>
       <InputError message={error ?? undefined} />
     </form>
   )

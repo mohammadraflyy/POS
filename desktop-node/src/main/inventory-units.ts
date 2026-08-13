@@ -65,18 +65,27 @@ export function getBaseUnitCode(db: BetterSQLite3Database<typeof schema>, produc
 }
 
 /**
- * Re-derives every unit's cost from the product's base cost. A human typing a new harga
- * pokok - in the product form or an Excel import - is stating the truth for the whole
- * product, so per-unit costs left over from earlier purchases must not survive it.
+ * Carries a new base cost across to the units that were never given a cost of their own.
+ *
+ * A unit still sitting at exactly `old base x conversion` has never been priced by hand or
+ * by a purchase, so it should follow the product form. One that differs was set deliberately
+ * - the owner typed what a DUS costs, or a purchase averaged it - and must survive an edit
+ * to the base price. The base row always follows, since it mirrors `products.hargaPokok`.
  */
 export function syncUnitCostsFromBase(
   db: BetterSQLite3Database<typeof schema>,
   productId: number,
-  hargaPokokBase: number,
+  hargaPokokLama: number,
+  hargaPokokBaru: number,
 ): void {
   db.update(productUnits)
-    .set({ hargaPokok: sql`${hargaPokokBase} * ${productUnits.conversionFactor}`, updatedAt: new Date() })
-    .where(eq(productUnits.productId, productId))
+    .set({ hargaPokok: sql`${hargaPokokBaru} * ${productUnits.conversionFactor}`, updatedAt: new Date() })
+    .where(
+      and(
+        eq(productUnits.productId, productId),
+        sql`(${productUnits.isBaseUnit} = 1 or ${productUnits.hargaPokok} = ${hargaPokokLama} * ${productUnits.conversionFactor})`,
+      ),
+    )
     .run()
 }
 
@@ -129,6 +138,11 @@ export interface UpsertProductUnitInput {
   unitId: number
   jumlahKemasan: number
   hargaJual: number
+  /**
+   * Cost of one of this unit. Omit to derive it from the product's base cost -
+   * a purchase in this unit will overwrite it either way.
+   */
+  hargaPokok?: number
 }
 
 function validateUnitInput(input: UpsertProductUnitInput): void {
@@ -137,6 +151,9 @@ function validateUnitInput(input: UpsertProductUnitInput): void {
   }
   if (!Number.isFinite(input.hargaJual) || input.hargaJual < 0) {
     throw new Error('Harga jual wajib diisi dan tidak boleh negatif.')
+  }
+  if (input.hargaPokok !== undefined && (!Number.isFinite(input.hargaPokok) || input.hargaPokok < 0)) {
+    throw new Error('Harga beli tidak boleh negatif.')
   }
 }
 
@@ -166,9 +183,9 @@ export function addProductUnit(db: BetterSQLite3Database<typeof schema>, product
       jumlahKemasan: input.jumlahKemasan,
       conversionFactor,
       hargaJual: input.hargaJual,
-      // a brand new unit has no purchase history of its own, so it starts at the
-      // product's base cost scaled to its size
-      hargaPokok: (product?.hargaPokok ?? 0) * conversionFactor,
+      // buying a DUS is its own price, not twelve times the piece price, so the cost is
+      // typed per unit. Left blank it falls back to the product's base cost scaled up.
+      hargaPokok: input.hargaPokok ?? (product?.hargaPokok ?? 0) * conversionFactor,
       isBaseUnit: false,
       isDefaultSalesUnit: false,
       isDefaultPurchaseUnit: false,
@@ -213,8 +230,6 @@ export function updateProductUnit(
     throw new Error('Satuan ini sudah dipakai untuk produk ini.')
   }
 
-  const product = db.select({ hargaPokok: products.hargaPokok }).from(products).where(eq(products.id, productId)).get()
-  const hargaPokokBase = product?.hargaPokok ?? 0
   let prevConversion = derivedIdx === 0 ? 1 : derivedChain[derivedIdx - 1].conversionFactor
 
   for (let i = derivedIdx; i < derivedChain.length; i++) {
@@ -222,11 +237,13 @@ export function updateProductUnit(
     const unitId = i === derivedIdx ? input.unitId : derivedChain[i].unitId
     const hargaJual = i === derivedIdx ? input.hargaJual : derivedChain[i].hargaJual
     const conversionFactor = jumlahKemasan * prevConversion
+    // Only the edited row's cost is restated. The rows above it are still the same
+    // physical package - a DUS is a DUS whether we believe it holds 10 or 20 pieces -
+    // so what the owner paid for one of them does not change here.
+    const hargaPokok = i === derivedIdx ? (input.hargaPokok ?? derivedChain[i].hargaPokok) : derivedChain[i].hargaPokok
 
     db.update(productUnits)
-      // the unit changed size, so its old per-unit cost describes a package that no
-      // longer exists - re-derive from the base cost instead of scaling a stale value
-      .set({ unitId, jumlahKemasan, conversionFactor, hargaJual, hargaPokok: hargaPokokBase * conversionFactor, updatedAt: now })
+      .set({ unitId, jumlahKemasan, conversionFactor, hargaJual, hargaPokok, updatedAt: now })
       .where(eq(productUnits.id, derivedChain[i].id))
       .run()
 
@@ -402,13 +419,28 @@ export function listPriceHistory(db: BetterSQLite3Database<typeof schema>, produ
 }
 
 export interface ProductDetail {
+  /** the detail screen is a page of its own now, so it has to name the product itself */
+  namaItem: string
+  kodeItem: string
   units: ProductUnitRow[]
   priceTiers: PriceTierRow[]
   priceHistory: PriceHistoryRow[]
 }
 
 export function getProductDetail(db: BetterSQLite3Database<typeof schema>, productId: number): ProductDetail {
+  const product = db
+    .select({ namaItem: products.namaItem, kodeItem: products.kodeItem })
+    .from(products)
+    .where(eq(products.id, productId))
+    .get()
+
+  if (!product) {
+    throw new Error('Produk tidak ditemukan.')
+  }
+
   return {
+    namaItem: product.namaItem,
+    kodeItem: product.kodeItem,
     units: listProductUnits(db, productId),
     priceTiers: listPriceTiers(db, productId),
     priceHistory: listPriceHistory(db, productId),

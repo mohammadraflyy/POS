@@ -142,6 +142,8 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     const detail = getProductDetail(db, productId)
 
     return {
+      namaItem: detail.namaItem,
+      kodeItem: detail.kodeItem,
       units: detail.units.map(toUnitDto),
       priceTiers: detail.priceTiers.map((tier) => ({
         id: tier.id,
@@ -164,26 +166,33 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
 
   ipcMain.handle(
     'inventory:addProductUnit',
-    (_event, productId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) => {
+    (_event, productId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number; hargaPokok?: number }) => {
       requireAdmin()
 
       addProductUnit(db, productId, {
         unitId: input.unitId,
         jumlahKemasan: input.jumlahKemasan,
         hargaJual: toCents(input.hargaJual),
+        hargaPokok: input.hargaPokok === undefined ? undefined : toCents(input.hargaPokok),
       })
     },
   )
 
   ipcMain.handle(
     'inventory:updateProductUnit',
-    (_event, productId: number, unitRowId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) => {
+    (
+      _event,
+      productId: number,
+      unitRowId: number,
+      input: { unitId: number; jumlahKemasan: number; hargaJual: number; hargaPokok?: number },
+    ) => {
       requireAdmin()
 
       updateProductUnit(db, productId, unitRowId, {
         unitId: input.unitId,
         jumlahKemasan: input.jumlahKemasan,
         hargaJual: toCents(input.hargaJual),
+        hargaPokok: input.hargaPokok === undefined ? undefined : toCents(input.hargaPokok),
       })
     },
   )

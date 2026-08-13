@@ -703,6 +703,21 @@ describe('getProductDetail', () => {
     expect(detail.priceTiers).toHaveLength(1)
     expect(detail.priceHistory).toEqual([])
   })
+
+  it('names the product, since the detail screen is its own page and has no list to ask', () => {
+    const db = seedProduct()
+
+    const detail = getProductDetail(db, 1)
+
+    expect(detail.namaItem).toBe('Rokok A')
+    expect(detail.kodeItem).toBe('RKK1')
+  })
+
+  it('throws for an id that does not exist, so a stale URL fails loudly', () => {
+    const db = seedProduct()
+
+    expect(() => getProductDetail(db, 4321)).toThrow('Produk tidak ditemukan.')
+  })
 })
 
 describe('per-unit cost outside purchases', () => {
@@ -716,31 +731,68 @@ describe('per-unit cost outside purchases', () => {
     expect(pak?.hargaPokok).toBe(10000_00)
   })
 
-  it('re-derives cost for every unit whose conversion is recomputed', () => {
+  it('stores a hand-typed cost for the unit instead of deriving it', () => {
+    const db = seedProduct() // products.hargaPokok is 1.000, so a DUS of 100 would derive to 100.000
+    const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+
+    // buying a DUS is its own price - cheaper per piece than 100 loose ones
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 100, hargaJual: 130000_00, hargaPokok: 90000_00 })
+
+    expect(listProductUnits(db, 1).find((unit) => unit.unitCode === 'DUS')?.hargaPokok).toBe(90000_00)
+  })
+
+  it('restates only the edited unit cost, leaving the units above it alone', () => {
     const db = seedProduct()
     const pakUnitId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
     const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
-    addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00 })
-    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 10, hargaJual: 140000_00 })
+    addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00, hargaPokok: 9000_00 })
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 10, hargaJual: 140000_00, hargaPokok: 85000_00 })
 
     const pak = listProductUnits(db, 1).find((unit) => unit.unitCode === 'PAK')!
-    // PAK grows from 10 to 20 base units, so DUS grows from 100 to 200 - both costs follow
-    updateProductUnit(db, 1, pak.id, { unitId: pakUnitId, jumlahKemasan: 20, hargaJual: 14000_00 })
+    // PAK grows from 10 to 20 base units, dragging DUS from 100 to 200 - but a DUS is still
+    // the same physical box, so what was paid for one of them must not be rewritten
+    updateProductUnit(db, 1, pak.id, { unitId: pakUnitId, jumlahKemasan: 20, hargaJual: 14000_00, hargaPokok: 17000_00 })
 
     const after = listProductUnits(db, 1)
-    expect(after.find((unit) => unit.unitCode === 'PAK')?.hargaPokok).toBe(20000_00)
-    expect(after.find((unit) => unit.unitCode === 'DUS')?.hargaPokok).toBe(200000_00)
+    expect(after.find((unit) => unit.unitCode === 'PAK')?.hargaPokok).toBe(17000_00)
+    expect(after.find((unit) => unit.unitCode === 'DUS')?.conversionFactor).toBe(200)
+    expect(after.find((unit) => unit.unitCode === 'DUS')?.hargaPokok).toBe(85000_00)
   })
 
-  it('resets every unit cost when the product cost is stated by hand', () => {
+  it('keeps the old cost when an edit leaves harga pokok out', () => {
     const db = seedProduct()
     const pakUnitId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
-    addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00 })
+    addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00, hargaPokok: 9000_00 })
 
-    syncUnitCostsFromBase(db, 1, 1200_00)
+    const pak = listProductUnits(db, 1).find((unit) => unit.unitCode === 'PAK')!
+    updateProductUnit(db, 1, pak.id, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 15000_00 })
+
+    expect(listProductUnits(db, 1).find((unit) => unit.unitCode === 'PAK')?.hargaPokok).toBe(9000_00)
+  })
+
+  it('rejects a negative harga pokok', () => {
+    const db = seedProduct()
+    const pakUnitId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
+
+    expect(() =>
+      addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00, hargaPokok: -1 }),
+    ).toThrow('Harga beli tidak boleh negatif.')
+  })
+
+  it('carries a new base cost only to units that were never priced on their own', () => {
+    const db = seedProduct() // base cost 1.000
+    const pakUnitId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
+    const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    // PAK takes the derived cost (10 x 1.000), DUS is priced by hand
+    addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00 })
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 10, hargaJual: 140000_00, hargaPokok: 85000_00 })
+
+    syncUnitCostsFromBase(db, 1, 1000_00, 1200_00)
 
     const after = listProductUnits(db, 1)
     expect(after.find((unit) => unit.isBaseUnit)?.hargaPokok).toBe(1200_00)
     expect(after.find((unit) => unit.unitCode === 'PAK')?.hargaPokok).toBe(12000_00)
+    // the hand-typed DUS cost survives the product form
+    expect(after.find((unit) => unit.unitCode === 'DUS')?.hargaPokok).toBe(85000_00)
   })
 })

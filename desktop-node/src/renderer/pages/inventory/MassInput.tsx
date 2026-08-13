@@ -8,10 +8,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { AppShell } from '../../layouts/AppShell'
 import type { BreadcrumbItem } from '../../types'
-import { ProductDetailDialog } from './ProductDetailDialog'
 
 interface DraftRow {
   key: string
@@ -64,8 +64,8 @@ export function MassInput() {
   const [rowErrors, setRowErrors] = useState<Record<string, Record<string, string>>>({})
   const [formError, setFormError] = useState<string | undefined>()
   const [processing, setProcessing] = useState(false)
-  const [detailProductId, setDetailProductId] = useState<number | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const { confirm, ConfirmDialog } = useConfirm()
 
   useEffect(() => {
     const idsParam = searchParams.get('ids')
@@ -121,18 +121,27 @@ export function MassInput() {
     setRows((prev) => prev.filter((row) => row.key !== key))
   }
 
-  function refreshRowCounts(productId: number) {
-    window.api.inventory.getProductsByIds([productId]).then((results) => {
-      const updated = results[0]
-      if (!updated) {
+  /**
+   * The unit/tier editor is its own page now, so opening it leaves this grid - and any
+   * row still waiting to be saved would go with it. Warn before that happens.
+   */
+  async function openProductDetail(productId: number) {
+    const belumTersimpan = rows.filter((row) => row.id === null && (row.kodeItem.trim() || row.namaItem.trim())).length
+
+    if (belumTersimpan > 0) {
+      const lanjut = await confirm({
+        title: 'Baris belum tersimpan',
+        description: `Ada ${belumTersimpan} baris yang belum disimpan. Membuka pengaturan satuan akan meninggalkan halaman ini dan baris itu hilang. Lanjutkan?`,
+        confirmLabel: 'Lanjut',
+        destructive: true,
+      })
+
+      if (!lanjut) {
         return
       }
-      setRows((prev) =>
-        prev.map((row) =>
-          row.id === productId ? { ...row, unitsCount: updated.unitsCount, priceTiersCount: updated.priceTiersCount } : row,
-        ),
-      )
-    })
+    }
+
+    navigate(`/inventory/${productId}`)
   }
 
   function validateClientSide(): Record<string, Record<string, string>> {
@@ -253,11 +262,12 @@ export function MassInput() {
       name: 'Satuan/Harga Bertingkat',
       width: 170,
       renderCell: ({ row }) => {
-        if (row.id === null) {
+        const productId = row.id
+        if (productId === null) {
           return <span className="text-xs text-muted-foreground">Simpan baris dulu</span>
         }
         return (
-          <button type="button" className="flex h-full items-center gap-1" onClick={() => setDetailProductId(row.id)}>
+          <button type="button" className="flex h-full items-center gap-1" onClick={() => openProductDetail(productId)}>
             <Badge variant={row.unitsCount > 0 ? 'secondary' : 'outline'} className="text-[10px]">
               {row.unitsCount} unit
             </Badge>
@@ -349,13 +359,7 @@ export function MassInput() {
         </div>
       </Page>
 
-      <ProductDetailDialog
-        productId={detailProductId}
-        productNama={rows.find((r) => r.id === detailProductId)?.namaItem ?? null}
-        baseSatuan={rows.find((r) => r.id === detailProductId)?.satuan ?? ''}
-        onOpenChange={(open) => !open && setDetailProductId(null)}
-        onChanged={() => detailProductId !== null && refreshRowCounts(detailProductId)}
-      />
+      {ConfirmDialog}
     </AppShell>
   )
 }

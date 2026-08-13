@@ -244,9 +244,9 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
         .run()
 
       syncBaseProductUnit(db, row.id, row.satuan, row.hargaJual)
-      // an imported harga pokok is a hand-stated truth for the whole product, same as
-      // the product form - per-unit costs from earlier purchases must not survive it
-      syncUnitCostsFromBase(db, row.id, row.hargaPokok)
+      // same rule as the product form: units that were never priced on their own follow
+      // the new base cost, deliberately-set ones keep theirs
+      syncUnitCostsFromBase(db, row.id, existingProduct.hargaPokok, row.hargaPokok)
 
       updated++
 

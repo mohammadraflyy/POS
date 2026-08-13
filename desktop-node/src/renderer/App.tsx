@@ -6,8 +6,10 @@ import { BonPayment } from './pages/BonPayment'
 import { Settings } from './pages/Settings'
 import { Inventory } from './pages/Inventory'
 import { MassInput } from './pages/inventory/MassInput'
+import { ProductDetail } from './pages/inventory/ProductDetail'
 import { Supplier } from './pages/Supplier'
 import { MasterSatuan } from './pages/MasterSatuan'
+import { Users } from './pages/Users'
 import { Purchase } from './pages/Purchase'
 import { StockOpname } from './pages/StockOpname'
 import { Rekap } from './pages/Rekap'
@@ -25,11 +27,14 @@ export function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/inventory/mass-input" element={<MassInput />} />
+        {/* declared after mass-input so the literal segment always wins over :productId */}
+        <Route path="/inventory/:productId" element={<ProductDetail />} />
         <Route path="/supplier" element={<Supplier />} />
         <Route path="/master-satuan" element={<MasterSatuan />} />
         <Route path="/purchase" element={<Purchase />} />
         <Route path="/stock-opname" element={<StockOpname />} />
         <Route path="/rekap" element={<Rekap />} />
+        <Route path="/users" element={<Users />} />
       </Routes>
     </HashRouter>
   )

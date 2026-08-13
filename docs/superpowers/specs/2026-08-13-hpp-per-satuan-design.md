@@ -105,9 +105,11 @@ The existing running-totals loop already compounds `stok` and cost line by line 
 
 ### Cost when a unit is edited or created outside a purchase
 
-- **New unit added** (`addProductUnit`, base-unit creation, unit chain recompute in `inventory-units.ts`): seed `harga_pokok = products.harga_pokok * conversion_factor`.
-- **`conversion_factor` recomputed** because a lower link in the chain changed: re-derive that unit's cost the same way. A unit whose size changed no longer has a meaningful cost history at its old size.
-- **Manual `harga_pokok` edit** on the product (product form in `inventory.ts`, bulk import in `inventory-bulk.ts`): reset *every* unit of that product to `harga_pokok_baru * conversion_factor`. A human overriding the cost is stating the truth for the whole product; letting stale per-unit costs survive that would produce numbers nobody can explain.
+> **Amended 2026-08-13, same day**, after the user clarified the requirement: *"harga beli dan harga jual multi"* — the purchase price is typed per unit, not only derived from purchases. Cost is therefore **owned by the unit**, and the three rules below were rewritten to stop overwriting what the owner typed. The superseded wording is struck through so the change stays legible.
+
+- **New unit added** (`addProductUnit`): take `input.hargaPokok` when given; otherwise seed `harga_pokok = products.harga_pokok * conversion_factor`. Blank in the UI means "derive it".
+- **`conversion_factor` recomputed** because a lower link in the chain changed: only the *edited* row's cost is restated (from `input.hargaPokok`, or kept when omitted). The rows above keep theirs — a DUS is the same physical box whether we believe it holds 10 or 20 pieces, so what was paid for one of them does not change. ~~Re-derive every recomputed unit from the base cost.~~
+- **Manual `harga_pokok` edit** on the product (product form in `inventory.ts`, bulk import in `inventory-bulk.ts`): carry the new base cost only to the base row and to units still sitting at exactly `old base x conversion_factor` — i.e. never priced by hand or by a purchase. A unit that differs was set deliberately and survives the edit. ~~Reset every unit to `harga_pokok_baru * conversion_factor`.~~ `syncUnitCostsFromBase` therefore takes both the old and the new base cost.
 - **Stock opname / manual stock adjustment**: no cost change. An adjustment moves quantity, not value. (It does shift the averaging basis for the *next* purchase, which is the existing behaviour for base cost and is correct.)
 
 ## 3. Profit per sale line

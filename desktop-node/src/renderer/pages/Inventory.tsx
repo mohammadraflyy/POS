@@ -16,7 +16,6 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
-import { ProductDetailDialog } from './inventory/ProductDetailDialog'
 
 interface ProductRow {
   id: number
@@ -88,7 +87,6 @@ export function Inventory() {
   const [paletteQuery, setPaletteQuery] = useState('')
   const [paletteResults, setPaletteResults] = useState<ProductRow[]>([])
 
-  const [detailProductId, setDetailProductId] = useState<number | null>(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<string | null>(null)
   const [importingSatuan, setImportingSatuan] = useState(false)
@@ -415,7 +413,7 @@ export function Inventory() {
           <button
             type="button"
             className="flex h-full items-center gap-1"
-            onClick={() => setDetailProductId(row.id)}
+            onClick={() => navigate(`/inventory/${row.id}`)}
           >
             <Badge variant={product.unitsCount > 0 ? 'secondary' : 'outline'} className="text-[10px]">
               {product.unitsCount} unit
@@ -611,14 +609,6 @@ export function Inventory() {
           )}
         </CommandList>
       </CommandDialog>
-
-      <ProductDetailDialog
-        productId={detailProductId}
-        productNama={rawProducts.find((p) => p.id === detailProductId)?.namaItem ?? null}
-        baseSatuan={rawProducts.find((p) => p.id === detailProductId)?.satuan ?? ''}
-        onOpenChange={(open) => !open && setDetailProductId(null)}
-        onChanged={() => loadPage(currentPage)}
-      />
 
       {ConfirmDialog}
     </AppShell>

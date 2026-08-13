@@ -210,8 +210,9 @@ export function updateProduct(db: BetterSQLite3Database<typeof schema>, id: numb
   // on the base product_units row, with products.hargaJual kept as a cache of it
   // (design spec decision 2), so the two writes must stay in step.
   syncBaseProductUnit(db, id, input.satuan, input.hargaJual)
-  // a hand-typed harga pokok overrides whatever the purchase history had averaged out
-  syncUnitCostsFromBase(db, id, input.hargaPokok)
+  // carries the new base cost to the units that were never priced on their own; a DUS
+  // whose cost the owner typed (or a purchase averaged) keeps it
+  syncUnitCostsFromBase(db, id, existingProduct?.hargaPokok ?? 0, input.hargaPokok)
 
   if (existingProduct && (existingProduct.hargaPokok !== input.hargaPokok || existingProduct.hargaJual !== input.hargaJual)) {
     const now = new Date()
