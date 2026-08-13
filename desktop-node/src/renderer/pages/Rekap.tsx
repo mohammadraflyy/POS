@@ -30,6 +30,14 @@ interface LabaPerHariRow {
   laba: number
 }
 
+interface LabaPerSatuanRow {
+  satuan: string
+  qtyTerjual: number
+  omzet: number
+  laba: number
+  marginPersen: number
+}
+
 interface ProdukTerlarisRow {
   namaItem: string
   qtyTerjual: number
@@ -78,6 +86,7 @@ export function Rekap() {
   const [summary, setSummary] = useState<RekapSummary | null>(null)
   const [labaPerKategori, setLabaPerKategori] = useState<LabaPerKategoriRow[]>([])
   const [labaPerHari, setLabaPerHari] = useState<LabaPerHariRow[]>([])
+  const [labaPerSatuan, setLabaPerSatuan] = useState<LabaPerSatuanRow[]>([])
   const [produkTerlaris, setProdukTerlaris] = useState<ProdukTerlarisRow[]>([])
   const [pembelianPerSupplier, setPembelianPerSupplier] = useState<PembelianPerSupplierRow[]>([])
   const [stockValue, setStockValue] = useState<{ totalNilai: number; produk: StockValueRow[] } | null>(null)
@@ -91,6 +100,7 @@ export function Rekap() {
       setSummary(result.summary)
       setLabaPerKategori(result.labaPerKategori)
       setLabaPerHari(result.labaPerHari)
+      setLabaPerSatuan(result.labaPerSatuan)
       setProdukTerlaris(result.produkTerlaris)
       setPembelianPerSupplier(result.pembelianPerSupplier)
       setStockValue(result.stockValue)
@@ -154,6 +164,36 @@ export function Rekap() {
       key: 'laba',
       name: 'Laba',
       renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.laba)}</span>,
+    },
+  ]
+
+  const labaPerSatuanColumns: Column<LabaPerSatuanRow>[] = [
+    { key: 'satuan', name: 'Satuan', width: 110 },
+    {
+      key: 'qtyTerjual',
+      name: 'Qty Terjual',
+      renderCell: ({ row }) => <span className="w-full text-right">{row.qtyTerjual}</span>,
+    },
+    {
+      key: 'omzet',
+      name: 'Omzet',
+      renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.omzet)}</span>,
+    },
+    {
+      key: 'laba',
+      name: 'Laba',
+      renderCell: ({ row }) => (
+        <span className={`w-full text-right${row.laba < 0 ? ' text-destructive' : ''}`}>{formatRupiah(row.laba)}</span>
+      ),
+    },
+    {
+      key: 'marginPersen',
+      name: 'Margin',
+      renderCell: ({ row }) => (
+        <span className={`w-full text-right${row.laba < 0 ? ' text-destructive' : ''}`}>
+          {row.marginPersen.toFixed(1)}%
+        </span>
+      ),
     },
   ]
 
@@ -331,6 +371,13 @@ export function Rekap() {
             columns={labaPerHariColumns}
             rows={labaPerHari}
             rowKey={(row) => row.tanggal}
+            emptyMessage="Belum ada penjualan."
+          />
+          <ReportTable<LabaPerSatuanRow>
+            title="Laba per Satuan"
+            columns={labaPerSatuanColumns}
+            rows={labaPerSatuan}
+            rowKey={(row) => row.satuan}
             emptyMessage="Belum ada penjualan."
           />
         </div>

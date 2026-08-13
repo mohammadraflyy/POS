@@ -18,7 +18,30 @@ interface UnitRow {
   jumlahKemasan: number
   konversi: number
   hargaJual: number
+  hargaPokok: number
   isBaseUnit: boolean
+}
+
+/** margin as a percentage of cost, or null when there is no cost to compare against */
+function marginPersen(hargaJual: number, hargaPokok: number): number | null {
+  return hargaPokok > 0 ? ((hargaJual - hargaPokok) / hargaPokok) * 100 : null
+}
+
+/** the selling price badge plus the modal it has to beat, flagged red when it does not */
+function PriceWithMargin({ hargaJual, hargaPokok }: { hargaJual: number; hargaPokok: number }) {
+  const margin = marginPersen(hargaJual, hargaPokok)
+  const rugi = hargaPokok > 0 && hargaJual < hargaPokok
+
+  return (
+    <div className="flex flex-col items-end">
+      <Badge variant={rugi ? 'destructive' : 'secondary'}>{formatRupiah(hargaJual)}</Badge>
+      <span className={`text-[10px] ${rugi ? 'text-destructive' : 'text-muted-foreground'}`}>
+        modal {formatRupiah(hargaPokok)}
+        {margin !== null && ` · ${margin.toFixed(1)}%`}
+        {rugi && ' · di bawah modal'}
+      </span>
+    </div>
+  )
 }
 
 interface MasterUnit {
@@ -312,7 +335,7 @@ function UnitChainRow({
         </span>
       </span>
       <div className="flex items-center gap-2">
-        <Badge variant="secondary">{formatRupiah(unit.hargaJual)}</Badge>
+        <PriceWithMargin hargaJual={unit.hargaJual} hargaPokok={unit.hargaPokok} />
         <Button type="button" variant="ghost" size="sm" onClick={startEdit}>
           Edit
         </Button>
@@ -549,8 +572,10 @@ function PriceTiersManager({
             >
               <span className="text-sm font-medium">Beli {tierRange(tier, unitLabel)}</span>
               <div className="flex items-center gap-2">
-                <Badge variant="secondary">
+                {/* a tier is priced per this unit, so it is the unit's own modal it has to beat */}
+                <Badge variant={selectedUnit && tier.hargaJual < selectedUnit.hargaPokok ? 'destructive' : 'secondary'}>
                   {formatRupiah(tier.hargaJual)} / {unitLabel}
+                  {selectedUnit && tier.hargaJual < selectedUnit.hargaPokok && ' · di bawah modal'}
                 </Badge>
                 <Button
                   type="button"
