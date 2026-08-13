@@ -300,4 +300,49 @@ describe('createDb', () => {
       { id: 2, qty: 2, konversi: 12, base_quantity: 24, price_source: 'normal' },
     ])
   })
+
+  it('backfills product_units.harga_pokok from base cost x conversion and bakes konversi into sale_items.harga_pokok', () => {
+    const { partialFolder, dbFile, cleanup } = partialMigrationsBefore('0012_friendly_sally_floyd')
+
+    const partialDb = createDb(dbFile, partialFolder)
+    partialDb.run(sql`INSERT INTO products (id, kode_item, nama_item, harga_pokok, harga_jual, stok, is_active, created_at, updated_at)
+      VALUES (1, 'P1', 'Kopi ABC', 500000, 700000, 300, 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO units (id, code, name, symbol, is_active, created_at, updated_at)
+      VALUES (1, 'PCS', 'Pieces', 'pcs', 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO units (id, code, name, symbol, is_active, created_at, updated_at)
+      VALUES (2, 'DUS', 'Dus', 'dus', 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO product_units (id, product_id, unit_id, jumlah_kemasan, conversion_factor, harga_jual, is_base_unit, is_default_sales_unit, is_default_purchase_unit, created_at, updated_at)
+      VALUES (10, 1, 1, 1, 1, 700000, 1, 1, 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO product_units (id, product_id, unit_id, jumlah_kemasan, conversion_factor, harga_jual, is_base_unit, is_default_sales_unit, is_default_purchase_unit, created_at, updated_at)
+      VALUES (11, 1, 2, 100, 100, 68000000, 0, 0, 0, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO sales (id, metode_pembayaran, status, total, dibayar, created_at, updated_at)
+      VALUES (1, 'tunai', 'selesai', 68700000, 68700000, unixepoch(), unixepoch())`)
+    // one base-unit line (konversi 1) and one DUS line (konversi 100)
+    partialDb.run(sql`INSERT INTO sale_items (id, sale_id, product_id, product_unit_id, qty, konversi, base_quantity, satuan, harga_jual, harga_pokok, subtotal, created_at, updated_at)
+      VALUES (1, 1, 1, 10, 1, 1, 1, 'PCS', 700000, 500000, 700000, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO sale_items (id, sale_id, product_id, product_unit_id, qty, konversi, base_quantity, satuan, harga_jual, harga_pokok, subtotal, created_at, updated_at)
+      VALUES (2, 1, 1, 11, 1, 100, 100, 'DUS', 68000000, 500000, 68000000, unixepoch(), unixepoch())`)
+    partialDb.$client.close()
+
+    const fullDb = createDb(dbFile, migrationsFolder)
+    const unitCosts = fullDb.all<{ id: number; harga_pokok: number }>(
+      sql`SELECT id, harga_pokok FROM product_units ORDER BY id`,
+    )
+    const saleCosts = fullDb.all<{ id: number; harga_pokok: number }>(
+      sql`SELECT id, harga_pokok FROM sale_items ORDER BY id`,
+    )
+    fullDb.$client.close()
+    cleanup()
+
+    expect(unitCosts).toEqual([
+      { id: 10, harga_pokok: 500000 },
+      { id: 11, harga_pokok: 50000000 },
+    ])
+    // profit is unchanged: it used to be subtotal - qty * konversi * harga_pokok,
+    // and is now subtotal - qty * harga_pokok against these baked-in values
+    expect(saleCosts).toEqual([
+      { id: 1, harga_pokok: 500000 },
+      { id: 2, harga_pokok: 50000000 },
+    ])
+  })
 })

@@ -12,6 +12,7 @@ export const users = sqliteTable('users', {
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   name: text('name').notNull(),
+  role: text('role', { enum: ['admin', 'kasir'] }).notNull().default('kasir'),
   ...timestamps(),
 })
 
@@ -50,6 +51,12 @@ export const productUnits = sqliteTable('product_units', {
   jumlahKemasan: integer('jumlah_kemasan').notNull(),
   conversionFactor: integer('conversion_factor').notNull(),
   hargaJual: integer('harga_jual').notNull(),
+  /**
+   * Cost of ONE of this unit, in cents - 500.000 for a DUS, 5.000 for a PCS.
+   * Moved by purchases in this unit or any larger one (see hitungHargaPokokSatuan);
+   * the base row always mirrors products.hargaPokok.
+   */
+  hargaPokok: integer('harga_pokok').notNull().default(0),
   isBaseUnit: integer('is_base_unit', { mode: 'boolean' }).notNull().default(false),
   isDefaultSalesUnit: integer('is_default_sales_unit', { mode: 'boolean' }).notNull().default(false),
   isDefaultPurchaseUnit: integer('is_default_purchase_unit', { mode: 'boolean' }).notNull().default(false),
@@ -138,6 +145,7 @@ export const saleItems = sqliteTable('sale_items', {
   baseQuantity: integer('base_quantity').notNull().default(0),
   satuan: text('satuan'),
   hargaJual: integer('harga_jual').notNull(),
+  /** cost of ONE of the unit that was sold, snapshotted at checkout - not the base-unit cost */
   hargaPokok: integer('harga_pokok').notNull(),
   /** where hargaJual came from, so a later tier edit can never re-explain a past sale */
   priceSource: text('price_source', { enum: ['normal', 'price_tier', 'manual'] }).notNull().default('normal'),
