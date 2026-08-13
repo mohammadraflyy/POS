@@ -115,7 +115,18 @@ function insertSale(
     total: number
     dibayar: number
     createdAt: Date
-    items: { productId: number; qty: number; konversi: number; hargaJual: number; hargaPokok: number; subtotal: number }[]
+    items: {
+      productId: number
+      qty: number
+      konversi: number
+      hargaJual: number
+      hargaPokok: number
+      subtotal: number
+      /** omit to leave the line unattached to a unit row, as most fixtures do */
+      productUnitId?: number
+      /** the satuan snapshot, which is all a line has left once its unit row is gone */
+      satuan?: string
+    }[]
   },
 ) {
   db.insert(sales)
@@ -138,10 +149,10 @@ function insertSale(
         id: input.id * 100 + i,
         saleId: input.id,
         productId: item.productId,
-        productUnitId: null,
+        productUnitId: item.productUnitId ?? null,
         qty: item.qty,
         konversi: item.konversi,
-        satuan: null,
+        satuan: item.satuan ?? null,
         hargaJual: item.hargaJual,
         hargaPokok: item.hargaPokok,
         subtotal: item.subtotal,
@@ -258,7 +269,7 @@ describe('getSalesHistory', () => {
 })
 
 describe('buildRekapWorkbook', () => {
-  it('produces a workbook with all six expected sheets', () => {
+  it('produces a workbook with all seven expected sheets', () => {
     const db = createDb(':memory:', migrationsFolder)
     seedBase(db)
 
@@ -269,6 +280,7 @@ describe('buildRekapWorkbook', () => {
       'Riwayat Transaksi',
       'Laba per Kategori',
       'Laba per Hari',
+      'Laba per Satuan',
       'Produk Terlaris',
       'Pembelian per Supplier',
       'Nilai Stock',
@@ -435,6 +447,55 @@ describe('getRekap', () => {
 
     const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
     expect(result.summary.labaKotor).toBe(6000_00)
+  })
+
+  it('breaks profit down per satuan, sorted by laba descending', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 35000_00,
+      dibayar: 35000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [
+        // 1 DUS at 14.000 against a DUS cost of 10.000
+        { productId: 1, productUnitId: 1, qty: 1, konversi: 10, hargaJual: 14000_00, hargaPokok: 10000_00, subtotal: 14000_00 },
+        // 14 PCS at 1.500 against a PCS cost of 1.000
+        { productId: 1, productUnitId: 101, qty: 14, konversi: 1, hargaJual: 1500_00, hargaPokok: 1000_00, subtotal: 21000_00 },
+      ],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(result.labaPerSatuan).toEqual([
+      { satuan: 'PCS', qtyTerjual: 14, omzet: 21000_00, laba: 7000_00, marginPersen: expect.closeTo(33.33, 2) },
+      { satuan: 'DUS', qtyTerjual: 1, omzet: 14000_00, laba: 4000_00, marginPersen: expect.closeTo(28.57, 2) },
+    ])
+  })
+
+  it('falls back to the sale_items satuan snapshot when the unit row is gone', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    // sold below cost through a unit row that has since been deleted
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 45000_00,
+      dibayar: 45000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 30, satuan: 'SAK', hargaJual: 45000_00, hargaPokok: 48000_00, subtotal: 45000_00 }],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(result.labaPerSatuan).toEqual([
+      { satuan: 'SAK', qtyTerjual: 1, omzet: 45000_00, laba: -3000_00, marginPersen: expect.closeTo(-6.67, 2) },
+    ])
   })
 
   it('labaPerKategori falls back to Tanpa Kategori for uncategorized products', () => {

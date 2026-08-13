@@ -23,6 +23,15 @@ export interface LabaPerHariRow {
   laba: number
 }
 
+export interface LabaPerSatuanRow {
+  satuan: string
+  qtyTerjual: number
+  omzet: number
+  laba: number
+  /** laba as a percentage of omzet, 0 when nothing was sold in this unit */
+  marginPersen: number
+}
+
 export interface ProdukTerlarisRow {
   namaItem: string
   qtyTerjual: number
@@ -62,6 +71,7 @@ export interface RekapResult {
   summary: RekapSummary
   labaPerKategori: LabaPerKategoriRow[]
   labaPerHari: LabaPerHariRow[]
+  labaPerSatuan: LabaPerSatuanRow[]
   produkTerlaris: ProdukTerlarisRow[]
   pembelianPerSupplier: PembelianPerSupplierRow[]
   stockValue: StockValueSummary
@@ -106,17 +116,23 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
       subtotal: saleItems.subtotal,
       qty: saleItems.qty,
       hargaPokok: saleItems.hargaPokok,
+      // the live unit label, falling back to the snapshot for lines whose unit row was deleted
+      unitCode: units.code,
+      satuanSnapshot: saleItems.satuan,
     })
     .from(saleItems)
     .innerJoin(sales, eq(saleItems.saleId, sales.id))
     .innerJoin(products, eq(saleItems.productId, products.id))
     .leftJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(productUnits, eq(saleItems.productUnitId, productUnits.id))
+    .leftJoin(units, eq(productUnits.unitId, units.id))
     .where(and(eq(sales.status, 'selesai'), gte(sales.createdAt, rangeStart), lte(sales.createdAt, rangeEnd)))
     .all()
 
   let labaKotor = 0
   const labaPerKategoriMap = new Map<string, { omzet: number; laba: number }>()
   const labaPerHariMap = new Map<string, { omzet: number; laba: number }>()
+  const labaPerSatuanMap = new Map<string, { qtyTerjual: number; omzet: number; laba: number }>()
   const produkTerlarisMap = new Map<number, { namaItem: string; qtyTerjual: number; totalPenjualan: number }>()
 
   for (const row of saleItemRows) {
@@ -137,6 +153,13 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     hariEntry.laba += laba
     labaPerHariMap.set(tanggal, hariEntry)
 
+    const satuan = row.unitCode ?? row.satuanSnapshot ?? 'Tanpa Satuan'
+    const satuanEntry = labaPerSatuanMap.get(satuan) ?? { qtyTerjual: 0, omzet: 0, laba: 0 }
+    satuanEntry.qtyTerjual += row.qty
+    satuanEntry.omzet += row.subtotal
+    satuanEntry.laba += laba
+    labaPerSatuanMap.set(satuan, satuanEntry)
+
     const produkEntry = produkTerlarisMap.get(row.productId) ?? { namaItem: row.namaItem, qtyTerjual: 0, totalPenjualan: 0 }
     produkEntry.qtyTerjual += row.qty
     produkEntry.totalPenjualan += row.subtotal
@@ -150,6 +173,10 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
   const labaPerHari: LabaPerHariRow[] = Array.from(labaPerHariMap.entries())
     .map(([tanggal, v]) => ({ tanggal, ...v }))
     .sort((a, b) => (a.tanggal < b.tanggal ? -1 : a.tanggal > b.tanggal ? 1 : 0))
+
+  const labaPerSatuan: LabaPerSatuanRow[] = Array.from(labaPerSatuanMap.entries())
+    .map(([satuan, v]) => ({ satuan, ...v, marginPersen: v.omzet === 0 ? 0 : (v.laba / v.omzet) * 100 }))
+    .sort((a, b) => b.laba - a.laba)
 
   const produkTerlaris: ProdukTerlarisRow[] = Array.from(produkTerlarisMap.values())
     .sort((a, b) => b.qtyTerjual - a.qtyTerjual)
@@ -180,6 +207,7 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     },
     labaPerKategori,
     labaPerHari,
+    labaPerSatuan,
     produkTerlaris,
     pembelianPerSupplier,
     stockValue,
@@ -280,6 +308,17 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
         Tanggal: row.tanggal,
         Omzet: toRupiahExport(row.omzet),
         Laba: toRupiahExport(row.laba),
+      })),
+    },
+    {
+      name: 'Laba per Satuan',
+      headers: ['Satuan', 'Qty Terjual', 'Omzet', 'Laba', 'Margin %'],
+      rows: rekap.labaPerSatuan.map((row) => ({
+        Satuan: row.satuan,
+        'Qty Terjual': row.qtyTerjual,
+        Omzet: toRupiahExport(row.omzet),
+        Laba: toRupiahExport(row.laba),
+        'Margin %': Number(row.marginPersen.toFixed(2)),
       })),
     },
     {
