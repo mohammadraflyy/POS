@@ -1,4 +1,4 @@
-import { and, eq, inArray, desc } from 'drizzle-orm'
+import { and, eq, inArray, desc, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { productUnits, productPriceTiers, productPriceHistories, units, users, products } from './db/schema'
@@ -13,6 +13,7 @@ export interface ProductUnitRow {
   jumlahKemasan: number
   conversionFactor: number
   hargaJual: number
+  hargaPokok: number
   isBaseUnit: boolean
   isDefaultSalesUnit: boolean
   isDefaultPurchaseUnit: boolean
@@ -29,6 +30,7 @@ function unitRowSelect(db: BetterSQLite3Database<typeof schema>) {
       jumlahKemasan: productUnits.jumlahKemasan,
       conversionFactor: productUnits.conversionFactor,
       hargaJual: productUnits.hargaJual,
+      hargaPokok: productUnits.hargaPokok,
       isBaseUnit: productUnits.isBaseUnit,
       isDefaultSalesUnit: productUnits.isDefaultSalesUnit,
       isDefaultPurchaseUnit: productUnits.isDefaultPurchaseUnit,
@@ -63,6 +65,22 @@ export function getBaseUnitCode(db: BetterSQLite3Database<typeof schema>, produc
 }
 
 /**
+ * Re-derives every unit's cost from the product's base cost. A human typing a new harga
+ * pokok - in the product form or an Excel import - is stating the truth for the whole
+ * product, so per-unit costs left over from earlier purchases must not survive it.
+ */
+export function syncUnitCostsFromBase(
+  db: BetterSQLite3Database<typeof schema>,
+  productId: number,
+  hargaPokokBase: number,
+): void {
+  db.update(productUnits)
+    .set({ hargaPokok: sql`${hargaPokokBase} * ${productUnits.conversionFactor}`, updatedAt: new Date() })
+    .where(eq(productUnits.productId, productId))
+    .run()
+}
+
+/**
  * Points a product's base row at the unit named by `satuanText` (creating that
  * unit on first sight) and mirrors `hargaJual` onto it. Product forms and the
  * Excel import both still submit one satuan + one price per product, so both
@@ -89,6 +107,8 @@ export function syncBaseProductUnit(
   }
 
   // pre-migration data, or a product created before base rows existed - heal it
+  const product = db.select({ hargaPokok: products.hargaPokok }).from(products).where(eq(products.id, productId)).get()
+
   db.insert(productUnits)
     .values({
       productId,
@@ -96,6 +116,8 @@ export function syncBaseProductUnit(
       jumlahKemasan: 1,
       conversionFactor: 1,
       hargaJual,
+      // the base row mirrors products.hargaPokok, conversion factor being 1
+      hargaPokok: product?.hargaPokok ?? 0,
       isBaseUnit: true,
       createdAt: now,
       updatedAt: now,
@@ -134,6 +156,7 @@ export function addProductUnit(db: BetterSQLite3Database<typeof schema>, product
   const derivedChain = chain.filter((u) => !u.isBaseUnit)
   const prevConversion = derivedChain.length > 0 ? derivedChain[derivedChain.length - 1].conversionFactor : 1
   const conversionFactor = input.jumlahKemasan * prevConversion
+  const product = db.select({ hargaPokok: products.hargaPokok }).from(products).where(eq(products.id, productId)).get()
   const now = new Date()
 
   db.insert(productUnits)
@@ -143,6 +166,9 @@ export function addProductUnit(db: BetterSQLite3Database<typeof schema>, product
       jumlahKemasan: input.jumlahKemasan,
       conversionFactor,
       hargaJual: input.hargaJual,
+      // a brand new unit has no purchase history of its own, so it starts at the
+      // product's base cost scaled to its size
+      hargaPokok: (product?.hargaPokok ?? 0) * conversionFactor,
       isBaseUnit: false,
       isDefaultSalesUnit: false,
       isDefaultPurchaseUnit: false,
@@ -187,6 +213,8 @@ export function updateProductUnit(
     throw new Error('Satuan ini sudah dipakai untuk produk ini.')
   }
 
+  const product = db.select({ hargaPokok: products.hargaPokok }).from(products).where(eq(products.id, productId)).get()
+  const hargaPokokBase = product?.hargaPokok ?? 0
   let prevConversion = derivedIdx === 0 ? 1 : derivedChain[derivedIdx - 1].conversionFactor
 
   for (let i = derivedIdx; i < derivedChain.length; i++) {
@@ -196,7 +224,9 @@ export function updateProductUnit(
     const conversionFactor = jumlahKemasan * prevConversion
 
     db.update(productUnits)
-      .set({ unitId, jumlahKemasan, conversionFactor, hargaJual, updatedAt: now })
+      // the unit changed size, so its old per-unit cost describes a package that no
+      // longer exists - re-derive from the base cost instead of scaling a stale value
+      .set({ unitId, jumlahKemasan, conversionFactor, hargaJual, hargaPokok: hargaPokokBase * conversionFactor, updatedAt: now })
       .where(eq(productUnits.id, derivedChain[i].id))
       .run()
 

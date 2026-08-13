@@ -16,6 +16,7 @@ import {
   listPriceTiers,
   listPriceHistory,
   getProductDetail,
+  syncUnitCostsFromBase,
 } from './inventory-units'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
@@ -701,5 +702,45 @@ describe('getProductDetail', () => {
     expect(detail.units.find((u) => !u.isBaseUnit)).toMatchObject({ unitId: rentengId, conversionFactor: 12 })
     expect(detail.priceTiers).toHaveLength(1)
     expect(detail.priceHistory).toEqual([])
+  })
+})
+
+describe('per-unit cost outside purchases', () => {
+  it('seeds a newly added unit from the base cost times its conversion', () => {
+    const db = seedProduct() // products.hargaPokok is 1.000
+    const pakUnitId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
+
+    addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00 })
+
+    const pak = listProductUnits(db, 1).find((unit) => unit.unitCode === 'PAK')
+    expect(pak?.hargaPokok).toBe(10000_00)
+  })
+
+  it('re-derives cost for every unit whose conversion is recomputed', () => {
+    const db = seedProduct()
+    const pakUnitId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
+    const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00 })
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 10, hargaJual: 140000_00 })
+
+    const pak = listProductUnits(db, 1).find((unit) => unit.unitCode === 'PAK')!
+    // PAK grows from 10 to 20 base units, so DUS grows from 100 to 200 - both costs follow
+    updateProductUnit(db, 1, pak.id, { unitId: pakUnitId, jumlahKemasan: 20, hargaJual: 14000_00 })
+
+    const after = listProductUnits(db, 1)
+    expect(after.find((unit) => unit.unitCode === 'PAK')?.hargaPokok).toBe(20000_00)
+    expect(after.find((unit) => unit.unitCode === 'DUS')?.hargaPokok).toBe(200000_00)
+  })
+
+  it('resets every unit cost when the product cost is stated by hand', () => {
+    const db = seedProduct()
+    const pakUnitId = seedUnit(db, { code: 'PAK', name: 'Pak', symbol: 'pak' })
+    addProductUnit(db, 1, { unitId: pakUnitId, jumlahKemasan: 10, hargaJual: 14000_00 })
+
+    syncUnitCostsFromBase(db, 1, 1200_00)
+
+    const after = listProductUnits(db, 1)
+    expect(after.find((unit) => unit.isBaseUnit)?.hargaPokok).toBe(1200_00)
+    expect(after.find((unit) => unit.unitCode === 'PAK')?.hargaPokok).toBe(12000_00)
   })
 })

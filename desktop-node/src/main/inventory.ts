@@ -2,7 +2,7 @@ import { and, eq, like, ne, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { categories, products, productPriceHistories, productUnits, productPriceTiers, units } from './db/schema'
-import { syncBaseProductUnit } from './inventory-units'
+import { syncBaseProductUnit, syncUnitCostsFromBase } from './inventory-units'
 
 export interface ProductListItem {
   id: number
@@ -210,6 +210,8 @@ export function updateProduct(db: BetterSQLite3Database<typeof schema>, id: numb
   // on the base product_units row, with products.hargaJual kept as a cache of it
   // (design spec decision 2), so the two writes must stay in step.
   syncBaseProductUnit(db, id, input.satuan, input.hargaJual)
+  // a hand-typed harga pokok overrides whatever the purchase history had averaged out
+  syncUnitCostsFromBase(db, id, input.hargaPokok)
 
   if (existingProduct && (existingProduct.hargaPokok !== input.hargaPokok || existingProduct.hargaJual !== input.hargaJual)) {
     const now = new Date()

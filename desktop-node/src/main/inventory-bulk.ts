@@ -3,7 +3,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
 import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments, units } from './db/schema'
-import { getBaseUnitCode, syncBaseProductUnit } from './inventory-units'
+import { getBaseUnitCode, syncBaseProductUnit, syncUnitCostsFromBase } from './inventory-units'
 import { resolveOrCreateUnit } from './master-satuan'
 
 type Db = BetterSQLite3Database<typeof schema>
@@ -244,6 +244,9 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
         .run()
 
       syncBaseProductUnit(db, row.id, row.satuan, row.hargaJual)
+      // an imported harga pokok is a hand-stated truth for the whole product, same as
+      // the product form - per-unit costs from earlier purchases must not survive it
+      syncUnitCostsFromBase(db, row.id, row.hargaPokok)
 
       updated++
 
