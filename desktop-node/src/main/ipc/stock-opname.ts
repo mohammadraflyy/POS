@@ -2,21 +2,17 @@ import { ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { listCategories, searchProductsForOpname, recordStockAdjustment } from '../stock-opname'
-import { getCurrentUser } from './auth'
+import { requireUser } from './auth'
 
 export function registerStockOpnameIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle('stock-opname:listCategories', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     return listCategories(db)
   })
 
   ipcMain.handle('stock-opname:searchProducts', (_event, input: { q: string; categoryIds: number[] }) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     return searchProductsForOpname(db, input)
   })
@@ -24,10 +20,7 @@ export function registerStockOpnameIpc(db: BetterSQLite3Database<typeof schema>)
   ipcMain.handle(
     'stock-opname:recordAdjustment',
     (_event, input: { productId: number; stokSesudah: number; alasan: string | null }) => {
-      const user = getCurrentUser()
-      if (!user) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      const user = requireUser()
 
       return recordStockAdjustment(db, {
         productId: input.productId,

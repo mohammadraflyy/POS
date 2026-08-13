@@ -16,7 +16,7 @@ import {
 } from '../kasir'
 import { buildReceiptEscPos, SAMPLE_RECEIPT, type PaperWidth } from '../escpos'
 import { printRaw } from '../print-windows'
-import { getCurrentUser } from './auth'
+import { requireAdmin, requireUser } from './auth'
 import { getMainWindow } from '../index'
 
 function toRupiah(cents: number): number {
@@ -28,7 +28,7 @@ function toCents(rupiah: number): number {
 }
 
 interface CheckoutRendererInput {
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   namaPelanggan: string | null
   dibayar: number | null
   items: { productId: number; productUnitId: number | null; qty: number }[]
@@ -87,9 +87,7 @@ async function resolvePrinterName(savedName: string | null): Promise<string> {
 
 export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle('kasir:listProducts', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const productRows = db.select().from(products).where(eq(products.isActive, true)).orderBy(products.namaItem).all()
     const unitRows = db
@@ -145,17 +143,13 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('kasir:listCustomers', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     return listCustomers(db)
   })
 
   ipcMain.handle('kasir:listSalesToday', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const startOfDay = new Date()
     startOfDay.setHours(0, 0, 0, 0)
@@ -186,10 +180,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('kasir:checkout', (_event, input: CheckoutRendererInput) => {
-    const user = getCurrentUser()
-    if (!user) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    const user = requireUser()
 
     const checkoutInput: CheckoutInput = {
       metodePembayaran: input.metodePembayaran,
@@ -205,17 +196,13 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('kasir:cancelSale', (_event, saleId: number) => {
-    const user = getCurrentUser()
-    if (!user) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
+
     cancelSale(db, saleId)
   })
 
   ipcMain.handle('kasir:deleteSale', (_event, saleId: number) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     deleteSale(db, saleId)
   })
@@ -234,9 +221,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('kasir:printReceipt', async (_event, saleId: number) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
 
@@ -262,9 +247,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('kasir:listPrinters', async () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const window = getMainWindow()
 
@@ -277,9 +260,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('kasir:testPrint', async () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const setting = db.select().from(storeSettings).get()
     const storeInfo = {
@@ -303,14 +284,12 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         dari?: string
         sampai?: string
         status?: 'selesai' | 'dibatalkan'
-        metodePembayaran?: 'tunai' | 'bon'
+        metodePembayaran?: 'tunai' | 'bon' | 'qris' | 'transfer'
         search?: string
         page: number
       },
     ) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireUser()
 
       const pageSize = 20
       const page = Math.max(1, input.page)
@@ -388,9 +367,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   )
 
   ipcMain.handle('kasir:getSaleDetail', (_event, saleId: number) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
 
@@ -436,9 +413,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle(
     'kasir:recordBonPayment',
     (_event, input: { saleId: number; jumlah: number; keterangan: string | null }) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireUser()
 
       recordBonPayment(db, input.saleId, toCents(input.jumlah), input.keterangan)
     },
@@ -457,27 +432,21 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         receiptWidth: '58mm' | '80mm'
       },
     ) => {
-      if (!getCurrentUser()) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      requireAdmin()
 
       updateStoreSettings(db, input)
     },
   )
 
   ipcMain.handle('kasir:purgeSalesBefore', (_event, before: string) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     const deleted = purgeSalesBefore(db, new Date(`${before}T00:00:00`))
     return { deleted }
   })
 
   ipcMain.handle('kasir:purgeTodaySales', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireAdmin()
 
     return purgeTodaySales(db)
   })

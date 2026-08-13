@@ -36,7 +36,7 @@ declare global {
           {
             id: number
             namaPelanggan: string | null
-            metodePembayaran: 'tunai' | 'bon'
+            metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
             status: 'selesai' | 'dibatalkan'
             total: number
             dibayar: number
@@ -44,7 +44,7 @@ declare global {
           }[]
         >
         checkout: (input: {
-          metodePembayaran: 'tunai' | 'bon'
+          metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           namaPelanggan: string | null
           dibayar: number | null
           items: { productId: number; productUnitId: number | null; qty: number }[]
@@ -52,7 +52,7 @@ declare global {
           saleId: number
           total: number
           dibayar: number
-          metodePembayaran: 'tunai' | 'bon'
+          metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           namaPelanggan: string | null
           createdAt: string
           kasirName: string | null
@@ -75,7 +75,7 @@ declare global {
           dari?: string
           sampai?: string
           status?: 'selesai' | 'dibatalkan'
-          metodePembayaran?: 'tunai' | 'bon'
+          metodePembayaran?: 'tunai' | 'bon' | 'qris' | 'transfer'
           search?: string
           page: number
         }) => Promise<{
@@ -83,7 +83,7 @@ declare global {
             id: number
             createdAt: string
             namaPelanggan: string | null
-            metodePembayaran: 'tunai' | 'bon'
+            metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
             status: 'selesai' | 'dibatalkan'
             total: number
             dibayar: number
@@ -96,7 +96,7 @@ declare global {
         getSaleDetail: (saleId: number) => Promise<{
           id: number
           namaPelanggan: string | null
-          metodePembayaran: 'tunai' | 'bon'
+          metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           status: 'selesai' | 'dibatalkan'
           total: number
           dibayar: number
@@ -324,6 +324,7 @@ declare global {
         getRekap: (input: { from: string; to: string }) => Promise<{
           summary: {
             omzetTunai: number
+            omzetNonTunai: number
             piutangBeredar: number
             jumlahTransaksi: number
             labaKotor: number
@@ -341,7 +342,7 @@ declare global {
             id: number
             createdAt: string
             namaPelanggan: string | null
-            metodePembayaran: 'tunai' | 'bon'
+            metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
             status: 'selesai' | 'dibatalkan'
             total: number
             dibayar: number
@@ -353,6 +354,7 @@ declare global {
         getDashboard: () => Promise<{
           summary: {
             omzetTunai: number
+            omzetNonTunai: number
             piutangBeredar: number
             jumlahTransaksi: number
             labaKotor: number
@@ -362,7 +364,7 @@ declare global {
           transaksiTerbaru: {
             id: number
             namaPelanggan: string | null
-            metodePembayaran: 'tunai' | 'bon'
+            metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
             status: 'selesai' | 'dibatalkan'
             total: number
             dibayar: number

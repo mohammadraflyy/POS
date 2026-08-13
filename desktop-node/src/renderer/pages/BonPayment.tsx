@@ -16,7 +16,7 @@ import type { BreadcrumbItem } from '../types'
 interface SaleDetail {
   id: number
   namaPelanggan: string | null
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   status: 'selesai' | 'dibatalkan'
   total: number
   dibayar: number

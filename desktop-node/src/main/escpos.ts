@@ -1,3 +1,5 @@
+import type { MetodePembayaran } from './kasir'
+
 export type PaperWidth = '58mm' | '80mm'
 
 export interface EscPosReceiptItem {
@@ -12,7 +14,7 @@ export interface EscPosReceiptSale {
   saleId: number
   total: number
   dibayar: number
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: MetodePembayaran
   namaPelanggan: string | null
   createdAt: string
   kasirName: string | null
@@ -125,7 +127,10 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
   out.push(...textLine(padLine('TOTAL', formatRupiah(sale.total), width)))
   out.push(...setBold(false))
 
-  if (sale.metodePembayaran === 'tunai') {
+  if (sale.metodePembayaran === 'qris' || sale.metodePembayaran === 'transfer') {
+    // settled in full, so there is no change line to print - just name how it was paid
+    out.push(...textLine(padLine(sale.metodePembayaran === 'qris' ? 'QRIS' : 'Transfer', formatRupiah(sale.total), width)))
+  } else if (sale.metodePembayaran === 'tunai') {
     out.push(...textLine(padLine('Tunai', formatRupiah(sale.dibayar), width)))
     const kembalian = sale.dibayar - sale.total
     out.push(...textLine(padLine('Kembali', formatRupiah(Math.max(kembalian, 0)), width)))

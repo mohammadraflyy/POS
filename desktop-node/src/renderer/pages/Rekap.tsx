@@ -13,6 +13,7 @@ import type { BreadcrumbItem } from '../types'
 
 interface RekapSummary {
   omzetTunai: number
+  omzetNonTunai: number
   piutangBeredar: number
   jumlahTransaksi: number
   labaKotor: number
@@ -62,7 +63,7 @@ interface SalesHistoryRow {
   id: number
   createdAt: string
   namaPelanggan: string | null
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   status: 'selesai' | 'dibatalkan'
   total: number
   dibayar: number
@@ -300,11 +301,17 @@ export function Rekap() {
         )}
         {exportMessage && <p className="text-sm text-muted-foreground">{exportMessage}</p>}
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
           <Card>
             <CardHeader>
               <CardDescription>Omzet Tunai</CardDescription>
               <CardTitle className="text-2xl">{formatRupiah(summary?.omzetTunai ?? 0)}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardDescription>QRIS / Transfer</CardDescription>
+              <CardTitle className="text-2xl">{formatRupiah(summary?.omzetNonTunai ?? 0)}</CardTitle>
             </CardHeader>
           </Card>
           <Card>

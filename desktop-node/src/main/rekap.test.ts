@@ -110,7 +110,7 @@ function insertSale(
   db: ReturnType<typeof createDb>,
   input: {
     id: number
-    metodePembayaran: 'tunai' | 'bon'
+    metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
     status: 'selesai' | 'dibatalkan'
     total: number
     dibayar: number
@@ -391,6 +391,47 @@ describe('getRekap', () => {
     expect(result.summary.jumlahTransaksi).toBe(2)
   })
 
+  it('keeps qris and transfer out of omzetTunai and sums them into omzetNonTunai', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 30000_00,
+      dibayar: 30000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 30000_00, hargaPokok: 1000_00, subtotal: 30000_00 }],
+    })
+    insertSale(db, {
+      id: 2,
+      metodePembayaran: 'qris',
+      status: 'selesai',
+      total: 20000_00,
+      dibayar: 20000_00,
+      createdAt: new Date(2026, 0, 15, 11, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 20000_00, hargaPokok: 1000_00, subtotal: 20000_00 }],
+    })
+    insertSale(db, {
+      id: 3,
+      metodePembayaran: 'transfer',
+      status: 'selesai',
+      total: 5000_00,
+      dibayar: 5000_00,
+      createdAt: new Date(2026, 0, 15, 12, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 5000_00, hargaPokok: 1000_00, subtotal: 5000_00 }],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    // the drawer only ever held the cash sale
+    expect(result.summary.omzetTunai).toBe(30000_00)
+    expect(result.summary.omzetNonTunai).toBe(25000_00)
+    // and neither counts as debt
+    expect(result.summary.piutangBeredar).toBe(0)
+  })
+
   it('piutangBeredar is all-time, unaffected by the date range', () => {
     const db = createDb(':memory:', migrationsFolder)
     seedBase(db)
@@ -649,7 +690,7 @@ describe('getRekap', () => {
     seedBase(db)
 
     const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
-    expect(result.summary).toEqual({ omzetTunai: 0, piutangBeredar: 0, jumlahTransaksi: 0, labaKotor: 0 })
+    expect(result.summary).toEqual({ omzetTunai: 0, omzetNonTunai: 0, piutangBeredar: 0, jumlahTransaksi: 0, labaKotor: 0 })
     expect(result.labaPerKategori).toEqual([])
     expect(result.labaPerHari).toEqual([])
     expect(result.produkTerlaris).toEqual([])

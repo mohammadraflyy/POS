@@ -63,7 +63,7 @@ function insertSale(
   input: {
     id: number
     status: 'selesai' | 'dibatalkan'
-    metodePembayaran: 'tunai' | 'bon'
+    metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
     total: number
     dibayar: number
     createdAt: Date

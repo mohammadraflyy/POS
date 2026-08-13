@@ -1,11 +1,14 @@
-import { and, desc, eq, gt, gte, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
 import { categories, products, productUnits, purchases, saleItems, sales, suppliers, units } from './db/schema'
+import { METODE_NON_TUNAI, type MetodePembayaran } from './kasir'
 
 export interface RekapSummary {
   omzetTunai: number
+  /** qris + transfer: real takings, but not cash in the drawer */
+  omzetNonTunai: number
   piutangBeredar: number
   jumlahTransaksi: number
   labaKotor: number
@@ -61,7 +64,7 @@ export interface SalesHistoryRow {
   id: number
   createdAt: string
   namaPelanggan: string | null
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: MetodePembayaran
   status: 'selesai' | 'dibatalkan'
   total: number
   dibayar: number
@@ -89,6 +92,20 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
       and(
         eq(sales.status, 'selesai'),
         eq(sales.metodePembayaran, 'tunai'),
+        gte(sales.createdAt, rangeStart),
+        lte(sales.createdAt, rangeEnd),
+      ),
+    )
+    .get()
+
+  // qris and transfer are takings the till never sees; the cash book needs them apart
+  const omzetNonTunaiRow = db
+    .select({ total: sql<number>`coalesce(sum(${sales.total}), 0)` })
+    .from(sales)
+    .where(
+      and(
+        eq(sales.status, 'selesai'),
+        inArray(sales.metodePembayaran, [...METODE_NON_TUNAI]),
         gte(sales.createdAt, rangeStart),
         lte(sales.createdAt, rangeEnd),
       ),
@@ -201,6 +218,7 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
   return {
     summary: {
       omzetTunai: omzetTunaiRow?.total ?? 0,
+      omzetNonTunai: omzetNonTunaiRow?.total ?? 0,
       piutangBeredar: piutangRow?.piutang ?? 0,
       jumlahTransaksi: jumlahTransaksiRow?.count ?? 0,
       labaKotor,

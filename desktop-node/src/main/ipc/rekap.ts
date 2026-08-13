@@ -19,6 +19,7 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
     return {
       summary: {
         omzetTunai: toRupiah(result.summary.omzetTunai),
+        omzetNonTunai: toRupiah(result.summary.omzetNonTunai),
         piutangBeredar: toRupiah(result.summary.piutangBeredar),
         jumlahTransaksi: result.summary.jumlahTransaksi,
         labaKotor: toRupiah(result.summary.labaKotor),

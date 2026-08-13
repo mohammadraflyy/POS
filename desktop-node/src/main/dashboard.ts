@@ -3,6 +3,7 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { products, productUnits, saleItems, sales, units } from './db/schema'
 import { getRekap, type ProdukTerlarisRow, type RekapSummary } from './rekap'
+import type { MetodePembayaran } from './kasir'
 
 export interface StokMenipisRow {
   id: number
@@ -15,7 +16,7 @@ export interface StokMenipisRow {
 export interface TransaksiTerbaruRow {
   id: number
   namaPelanggan: string | null
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: MetodePembayaran
   status: 'selesai' | 'dibatalkan'
   total: number
   dibayar: number

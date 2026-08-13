@@ -26,7 +26,7 @@ interface SaleHistoryRow {
   id: number
   createdAt: string
   namaPelanggan: string | null
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   status: 'selesai' | 'dibatalkan'
   total: number
   dibayar: number
@@ -66,7 +66,7 @@ export function KasirHistory() {
         dari: dari || undefined,
         sampai: sampai || undefined,
         status: (status || undefined) as 'selesai' | 'dibatalkan' | undefined,
-        metodePembayaran: (metode || undefined) as 'tunai' | 'bon' | undefined,
+        metodePembayaran: (metode || undefined) as 'tunai' | 'bon' | 'qris' | 'transfer' | undefined,
         page,
       })
       .then((result) => {

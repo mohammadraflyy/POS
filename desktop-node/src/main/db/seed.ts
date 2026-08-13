@@ -21,6 +21,7 @@ export function seedDefaultAdmin(db: any) {
       username: 'admin',
       passwordHash,
       name: 'Admin',
+      role: 'admin',
       createdAt: now,
       updatedAt: now,
     })

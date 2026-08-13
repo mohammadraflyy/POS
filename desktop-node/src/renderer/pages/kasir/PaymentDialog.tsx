@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Banknote, CornerDownLeft, HandCoins, Pencil, Printer } from 'lucide-react'
+import { ArrowLeftRight, Banknote, CornerDownLeft, HandCoins, Pencil, Printer, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -17,8 +17,8 @@ export interface PaymentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   total: number
-  metode: 'tunai' | 'bon'
-  setMetode: (metode: 'tunai' | 'bon') => void
+  metode: 'tunai' | 'bon' | 'qris' | 'transfer'
+  setMetode: (metode: 'tunai' | 'bon' | 'qris' | 'transfer') => void
   namaPelanggan: string
   /** hands the cashier back to the customer picker on the kasir page */
   onEditCustomer: () => void
@@ -45,9 +45,11 @@ export function PaymentDialog({
   error,
   onSubmit,
 }: PaymentDialogProps) {
-  const totalBayar = metode === 'tunai' ? Number(dibayar || 0) : 0
+  // qris/transfer land on the exact total; only cash can overpay and only bon can underpay
+  const totalBayar = metode === 'tunai' ? Number(dibayar || 0) : metode === 'bon' ? 0 : total
   const selisih = total - totalBayar
-  const isLunas = metode === 'tunai' && selisih <= 0
+  // qris and transfer arrive for the exact amount, so they are settled the moment they are chosen
+  const isLunas = (metode === 'tunai' && selisih <= 0) || metode === 'qris' || metode === 'transfer'
   // Bon debt is collected per person, so it must never be filed under the
   // walk-in name - that debt would be uncollectable.
   const bonNeedsCustomer =
@@ -134,6 +136,14 @@ export function PaymentDialog({
         e.preventDefault()
         setMetode('bon')
         break
+      case 'q':
+        e.preventDefault()
+        setMetode('qris')
+        break
+      case 'r':
+        e.preventDefault()
+        setMetode('transfer')
+        break
       case 's':
         e.preventDefault()
         runAction('simpan')
@@ -176,6 +186,27 @@ export function PaymentDialog({
               <HandCoins className="size-4" />
               Bon
               <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+B</kbd>
+            </Button>
+            {/* both settle the exact amount, so there is no cash field and no change */}
+            <Button
+              type="button"
+              variant={metode === 'qris' ? 'default' : 'outline'}
+              disabled={processing || printing}
+              onClick={() => setMetode('qris')}
+            >
+              <QrCode className="size-4" />
+              QRIS
+              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+Q</kbd>
+            </Button>
+            <Button
+              type="button"
+              variant={metode === 'transfer' ? 'default' : 'outline'}
+              disabled={processing || printing}
+              onClick={() => setMetode('transfer')}
+            >
+              <ArrowLeftRight className="size-4" />
+              Transfer
+              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+R</kbd>
             </Button>
           </div>
 
@@ -224,7 +255,7 @@ export function PaymentDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-xl bg-green-500/15 px-5 py-3.5 dark:bg-green-500/20">
               <span className="text-sm font-semibold text-green-700 dark:text-green-400">
-                {metode === 'tunai' ? 'Dibayar' : 'Bon'}
+                {metode === 'bon' ? 'Bon' : metode === 'qris' ? 'QRIS' : metode === 'transfer' ? 'Transfer' : 'Dibayar'}
               </span>
               <span className="text-2xl font-bold text-green-700 tabular-nums dark:text-green-400">
                 {formatRupiah(totalBayar)}

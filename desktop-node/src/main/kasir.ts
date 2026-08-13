@@ -112,8 +112,13 @@ export interface CartItemInput {
   qty: number
 }
 
+/** settled in full at checkout, but the money never lands in the drawer */
+export const METODE_NON_TUNAI = ['qris', 'transfer'] as const
+
+export type MetodePembayaran = 'tunai' | 'bon' | 'qris' | 'transfer'
+
 export interface CheckoutInput {
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: MetodePembayaran
   namaPelanggan: string | null
   dibayar: number | null
   userId: number
@@ -262,7 +267,12 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         .run()
     }
 
-    tx.update(sales).set({ total }).where(eq(sales.id, sale.id)).run()
+    // qris and transfer settle the exact amount at checkout - nothing owed, no change given
+    const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
+    tx.update(sales)
+      .set({ total, dibayar: lunasNonTunai ? total : dibayarAwal })
+      .where(eq(sales.id, sale.id))
+      .run()
 
     if (input.metodePembayaran === 'tunai' && dibayarAwal < total) {
       throw new Error('Uang bayar kurang dari total belanja.')

@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { recordPurchase, listPurchases, searchProductsForPurchase, type PurchaseItemInput } from '../purchase'
-import { getCurrentUser } from './auth'
+import { requireUser } from './auth'
 
 function toRupiah(cents: number): number {
   return cents / 100
@@ -24,10 +24,7 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
         items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
       },
     ) => {
-      const user = getCurrentUser()
-      if (!user) {
-        throw new Error('Silakan login terlebih dahulu.')
-      }
+      const user = requireUser()
 
       const items: PurchaseItemInput[] = input.items.map((item) => ({
         productId: item.productId,
@@ -47,9 +44,7 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
   )
 
   ipcMain.handle('purchase:listPurchases', (_event, input: { page: number; pageSize?: number }) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const result = listPurchases(db, input)
 
@@ -69,9 +64,7 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
   })
 
   ipcMain.handle('purchase:searchProducts', (_event, q: string) => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     return searchProductsForPurchase(db, q).map((product) => ({
       id: product.id,

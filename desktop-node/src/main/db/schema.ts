@@ -136,7 +136,12 @@ export const sales = sqliteTable('sales', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
   namaPelanggan: text('nama_pelanggan'),
-  metodePembayaran: text('metode_pembayaran', { enum: ['tunai', 'bon'] }).notNull(),
+  /**
+   * How the sale was settled. `tunai` is cash in the drawer, `bon` is customer credit,
+   * and `qris`/`transfer` are settled in full but never touch the till - the cash book
+   * subtracts them from takings for exactly that reason.
+   */
+  metodePembayaran: text('metode_pembayaran', { enum: ['tunai', 'bon', 'qris', 'transfer'] }).notNull(),
   status: text('status', { enum: ['selesai', 'dibatalkan'] }).notNull().default('selesai'),
   total: integer('total').notNull().default(0),
   dibayar: integer('dibayar').notNull().default(0),

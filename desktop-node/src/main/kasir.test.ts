@@ -300,6 +300,38 @@ describe('checkout', () => {
     expect(items[0].baseQuantity).toBe(items[0].qty * items[0].konversi)
   })
 
+  it('settles a qris sale in full, so it leaves no piutang and needs no cash tendered', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'qris',
+      namaPelanggan: null,
+      // no cash changes hands, so the caller has nothing to tender
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.metodePembayaran).toBe('qris')
+    expect(sale?.dibayar).toBe(result.total)
+  })
+
+  it('settles a transfer sale the same way', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'transfer',
+      namaPelanggan: null,
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.dibayar).toBe(result.total)
+  })
+
   it('snapshots the sold unit cost, not the base cost', () => {
     const db = seedDb()
 

@@ -1,9 +1,12 @@
 import type { LucideIcon } from 'lucide-react'
 
+export type UserRole = 'admin' | 'kasir'
+
 export interface AuthUser {
   id: number
   username: string
   name: string
+  role: UserRole
 }
 
 export interface NavItem {

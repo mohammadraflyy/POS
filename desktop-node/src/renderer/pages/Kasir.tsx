@@ -30,7 +30,7 @@ import {
 interface SaleDto {
   id: number
   namaPelanggan: string | null
-  metodePembayaran: 'tunai' | 'bon'
+  metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   status: 'selesai' | 'dibatalkan'
   total: number
   dibayar: number
@@ -43,7 +43,7 @@ const DRAFT_STORAGE_KEY = 'kasir:draft'
 /** the whole in-progress sale, kept across navigation and app restarts */
 interface KasirDraft {
   cart: StoredCartLine[]
-  metode: 'tunai' | 'bon'
+  metode: 'tunai' | 'bon' | 'qris' | 'transfer'
   namaPelanggan: string
   dibayar: string
   jumlah: string
@@ -88,7 +88,7 @@ export function Kasir() {
   const [customerOpen, setCustomerOpen] = useState(false)
   const [cart, setCart] = useState<CartLine[]>([])
   const [scanError, setScanError] = useState('')
-  const [metode, setMetode] = useState<'tunai' | 'bon'>(initialDraft.metode)
+  const [metode, setMetode] = useState<'tunai' | 'bon' | 'qris' | 'transfer'>(initialDraft.metode)
   const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
   const [dibayar, setDibayar] = useState(initialDraft.dibayar)
   const [processing, setProcessing] = useState(false)
@@ -502,8 +502,38 @@ export function Kasir() {
       )}
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
-      <div className="grid flex-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid flex-1 items-start gap-6">
         <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-col gap-4">
+            <button
+              type="button"
+              onClick={() => setCustomerOpen(true)}
+              className="flex items-center justify-between gap-2 rounded-xl border p-4 text-left hover:bg-muted/50"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <UserRound className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0">
+                  <span className="block text-xs text-muted-foreground">Pelanggan</span>
+                  <span className="block truncate font-medium">{namaPelanggan.trim() || DEFAULT_PELANGGAN}</span>
+                </span>
+              </span>
+              <kbd className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">Alt+P</kbd>
+            </button>
+
+            <div className="rounded-xl border p-5">
+              <span className="text-sm text-muted-foreground">Total</span>
+              <p className="mt-1 text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
+              <Button
+                type="button"
+                size="lg"
+                className="mt-4 h-14 w-full text-lg"
+                disabled={cart.length === 0}
+                onClick={() => setPaymentOpen(true)}
+              >
+                Bayar
+              </Button>
+            </div>
+          </div>
           <div className="flex items-center justify-between gap-2">
             <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <ShoppingCart className="size-4" />
@@ -568,66 +598,6 @@ export function Kasir() {
             </span>
           </div>
         </div>
-
-        {/* stays put while the cart scrolls, so the total and Bayar never
-            leave the screen on a long transaction */}
-        <aside className="flex flex-col gap-4 xl:sticky xl:top-6">
-          <button
-            type="button"
-            onClick={() => setCustomerOpen(true)}
-            className="flex items-center justify-between gap-2 rounded-xl border p-4 text-left hover:bg-muted/50"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <UserRound className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0">
-                <span className="block text-xs text-muted-foreground">Pelanggan</span>
-                <span className="block truncate font-medium">{namaPelanggan.trim() || DEFAULT_PELANGGAN}</span>
-              </span>
-            </span>
-            <kbd className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">Alt+P</kbd>
-          </button>
-
-          <div className="rounded-xl border p-5">
-            <span className="text-sm text-muted-foreground">Total</span>
-            <p className="mt-1 text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
-            <Button
-              type="button"
-              size="lg"
-              className="mt-4 h-14 w-full text-lg"
-              disabled={cart.length === 0}
-              onClick={() => setPaymentOpen(true)}
-            >
-              Bayar
-            </Button>
-          </div>
-
-          <section className="space-y-2">
-            <h2 className="text-sm font-medium text-muted-foreground">Transaksi Hari Ini</h2>
-            <div className="max-h-80 overflow-y-auto rounded-xl border">
-              {salesToday.length === 0 ? (
-                <p className="p-4 text-center text-sm text-muted-foreground">Belum ada transaksi.</p>
-              ) : (
-                salesToday.map((sale) => (
-                  <div key={sale.id} className="flex items-center justify-between gap-2 border-b p-2.5 last:border-0">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium tabular-nums">{formatRupiah(sale.total)}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        #{sale.id} &middot; {sale.metodePembayaran}
-                      </p>
-                    </div>
-                    {sale.status === 'selesai' ? (
-                      <Button type="button" variant="ghost" size="sm" onClick={() => handleCancel(sale.id)}>
-                        Batal
-                      </Button>
-                    ) : (
-                      <Badge variant="outline">Dibatalkan</Badge>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </aside>
       </div>
 
       <PaymentDialog

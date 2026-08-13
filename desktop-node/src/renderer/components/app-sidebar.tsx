@@ -9,6 +9,7 @@ import {
   Ruler,
   Settings,
   ShoppingCart,
+  Users,
 } from 'lucide-react'
 import { AppLogo } from './app-logo'
 import { NavMain } from './nav-main'
@@ -35,6 +36,8 @@ const laporanNavItems: NavItem[] = [{ title: 'Rekap', href: '/rekap', icon: Clip
 
 const lainnyaNavItems: NavItem[] = [{ title: 'Pengaturan', href: '/settings', icon: Settings }]
 
+const adminNavItems: NavItem[] = [{ title: 'Pengguna', href: '/users', icon: Users }]
+
 export function AppSidebar({ storeName, user }: { storeName: string; user: AuthUser }) {
   return (
     <Sidebar collapsible="icon" variant="inset">
@@ -48,8 +51,11 @@ export function AppSidebar({ storeName, user }: { storeName: string; user: AuthU
         <NavMain items={overviewNavItems} label="Ringkasan" />
         <NavMain items={penjualanNavItems} label="Penjualan" />
         <NavMain items={pembelianNavItems} label="Pembelian & Stok" />
-        <NavMain items={laporanNavItems} label="Laporan" />
+        {/* the rekap IPC handlers reject non-admins outright; hiding the link keeps
+            a kasir from walking into a page that can only show an error */}
+        {user.role === 'admin' && <NavMain items={laporanNavItems} label="Laporan" />}
         <NavMain items={lainnyaNavItems} label="Lainnya" />
+        {user.role === 'admin' && <NavMain items={adminNavItems} label="Admin" />}
       </SidebarContent>
 
       <SidebarFooter>

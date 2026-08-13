@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { getDashboard } from '../dashboard'
-import { getCurrentUser } from './auth'
+import { requireUser } from './auth'
 
 function toRupiah(cents: number): number {
   return cents / 100
@@ -10,9 +10,7 @@ function toRupiah(cents: number): number {
 
 export function registerDashboardIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle('dashboard:getDashboard', () => {
-    if (!getCurrentUser()) {
-      throw new Error('Silakan login terlebih dahulu.')
-    }
+    requireUser()
 
     const result = getDashboard(db)
 

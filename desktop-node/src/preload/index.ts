@@ -13,12 +13,20 @@ const api = {
     logout: () => invoke('auth:logout'),
     me: () => invoke('auth:me'),
   },
+  users: {
+    list: () => invoke('users:list'),
+    create: (input: { username: string; name: string; password: string; role: 'admin' | 'kasir' }) =>
+      invoke('users:create', input),
+    update: (id: number, input: { name: string; role: 'admin' | 'kasir'; password: string | null }) =>
+      invoke('users:update', id, input),
+    delete: (id: number) => invoke('users:delete', id),
+  },
   kasir: {
     listProducts: () => invoke('kasir:listProducts'),
     listSalesToday: () => invoke('kasir:listSalesToday'),
     listCustomers: () => invoke<string[]>('kasir:listCustomers'),
     checkout: (input: {
-      metodePembayaran: 'tunai' | 'bon'
+      metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
       namaPelanggan: string | null
       dibayar: number | null
       items: { productId: number; productUnitId: number | null; qty: number }[]
@@ -33,7 +41,7 @@ const api = {
       dari?: string
       sampai?: string
       status?: 'selesai' | 'dibatalkan'
-      metodePembayaran?: 'tunai' | 'bon'
+      metodePembayaran?: 'tunai' | 'bon' | 'qris' | 'transfer'
       search?: string
       page: number
     }) => invoke('kasir:listSalesHistory', filters),

@@ -187,9 +187,6 @@ function UnitChainManager({
       <div className="flex items-center gap-2">
         <Layers className="size-4 text-muted-foreground" />
         <Label className="text-sm font-semibold">Satuan Turunan</Label>
-        <span className="text-xs text-muted-foreground">
-          mis. 1 Renteng = 12 {baseSatuan}, 1 Dus = 10 Renteng &mdash; boleh sejajar juga, mis. 1 Sak = 25 {baseSatuan}
-        </span>
       </div>
 
       {flattened.length > 0 ? (
