@@ -136,9 +136,9 @@ In `pages/inventory/ProductDetailDialog.tsx`:
 
 - Each unit row shows its `hargaPokok` and margin percent (`(hargaJual - hargaPokok) / hargaPokok * 100`, shown as `-` when cost is `0`).
 - `hargaJual < hargaPokok` renders in destructive colour with a short "di bawah modal" label.
-- Each price tier row is checked against its own unit's `hargaPokok` and flagged the same way.
+- Each price tier row is checked against its own unit's `hargaPokok` and flagged the same way. The tier DTO needs no new field — a tier already carries `productUnitId`, and the dialog already holds the unit list, so it reads the cost from there.
 
-The IPC unit DTO and tier DTO grow a `hargaPokok` field, mirrored in `preload/index.ts` and `renderer/env.d.ts`. (Prior bug worth remembering: `env.d.ts` can declare a field the handler never sends and TypeScript will not catch it — add the field on the handler side first.)
+The IPC unit DTO grows a `hargaPokok` field, mirrored in `preload/index.ts` and `renderer/env.d.ts`. (Prior bug worth remembering: `env.d.ts` can declare a field the handler never sends and TypeScript will not catch it — add the field on the handler side first.)
 
 ## Explicitly out of scope
 
