@@ -11,7 +11,7 @@ import {
   stockMovements,
   units,
 } from './db/schema'
-import { getBaseProductUnit, listProductUnits } from './inventory-units'
+import { getBaseProductUnit, listProductUnits, unitsInside } from './inventory-units'
 
 /**
  * Weighted-average cost of one `konversi`-sized unit after receiving `qtyDasarMasuk`
@@ -117,6 +117,7 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
       satuan: units.code,
       konversi: productUnits.conversionFactor,
       hargaPokok: productUnits.hargaPokok,
+      parentUnitId: productUnits.parentUnitId,
       isBaseUnit: productUnits.isBaseUnit,
     })
     .from(productUnits)
@@ -217,14 +218,15 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
         .where(eq(products.id, item.productId))
         .run()
 
-      // Cost travels down the chain, never up: the stock physically arrived inside the
-      // purchased packaging, so every smaller unit's cost follows this purchase. Buying
-      // loose pieces says nothing about what a dus costs, so larger units are left alone.
-      for (const unitRow of unitRows) {
-        if (unitRow.productId !== item.productId || unitRow.konversi > item.konversi) {
-          continue
-        }
+      // Cost travels inward, never outward: the stock physically arrived inside the
+      // purchased packaging, so the units it is built from follow this purchase. Larger
+      // units are untouched (loose pieces say nothing about a dus), and so are siblings -
+      // buying a SAK delivers pieces, not rentengs.
+      const productChain = unitRows.filter((row) => row.productId === item.productId)
+      const purchasedUnit = productChain.find((row) => row.id === item.resolvedUnitId)
+      const affected = purchasedUnit ? [purchasedUnit, ...unitsInside(productChain, item.resolvedUnitId)] : []
 
+      for (const unitRow of affected) {
         const hargaPokokUnitLama = hargaPokokUnitBerjalan.get(unitRow.id) ?? 0
         const hargaPokokUnitBaru = hitungHargaPokokSatuan(
           stokLama,

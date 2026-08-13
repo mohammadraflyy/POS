@@ -174,6 +174,7 @@ declare global {
             id: number
             unitId: number
             satuan: string
+            parentUnitId: number | null
             jumlahKemasan: number
             konversi: number
             hargaJual: number
@@ -193,12 +194,12 @@ declare global {
         }>
         addProductUnit: (
           productId: number,
-          input: { unitId: number; jumlahKemasan: number; hargaJual: number; hargaPokok?: number },
+          input: { unitId: number; jumlahKemasan: number; hargaJual: number; hargaPokok?: number; parentUnitId?: number | null },
         ) => Promise<void>
         updateProductUnit: (
           productId: number,
           unitRowId: number,
-          input: { unitId: number; jumlahKemasan: number; hargaJual: number; hargaPokok?: number },
+          input: { unitId: number; jumlahKemasan: number; hargaJual: number; hargaPokok?: number; parentUnitId?: number | null },
         ) => Promise<void>
         deleteProductUnit: (productId: number, unitId: number) => Promise<void>
         addPriceTier: (

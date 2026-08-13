@@ -10,6 +10,8 @@ export interface ProductUnitRow {
   unitCode: string
   unitName: string
   unitSymbol: string
+  /** the smaller unit this one is measured in; null means the base unit */
+  parentUnitId: number | null
   jumlahKemasan: number
   conversionFactor: number
   hargaJual: number
@@ -27,6 +29,7 @@ function unitRowSelect(db: BetterSQLite3Database<typeof schema>) {
       unitCode: units.code,
       unitName: units.name,
       unitSymbol: units.symbol,
+      parentUnitId: productUnits.parentUnitId,
       jumlahKemasan: productUnits.jumlahKemasan,
       conversionFactor: productUnits.conversionFactor,
       hargaJual: productUnits.hargaJual,
@@ -143,6 +146,109 @@ export interface UpsertProductUnitInput {
    * a purchase in this unit will overwrite it either way.
    */
   hargaPokok?: number
+  /**
+   * The smaller unit this one is measured in. `null` means the base unit; omitting it
+   * on `addProductUnit` stacks the new unit on the largest one that exists, which is
+   * what "add another packaging on top" meant before units could branch.
+   */
+  parentUnitId?: number | null
+}
+
+/**
+ * Every unit that is measured in `unitRowId`, directly or through another unit -
+ * a DUS measured in RENTENG is a container of RENTENG, and a BAL measured in DUS
+ * is one too. Resizing or deleting a unit has to reach all of them.
+ */
+function unitsContaining(chain: ProductUnitRow[], unitRowId: number): ProductUnitRow[] {
+  const found: ProductUnitRow[] = []
+  let frontier = [unitRowId]
+
+  while (frontier.length > 0) {
+    const children = chain.filter((row) => row.parentUnitId !== null && frontier.includes(row.parentUnitId))
+    // a cycle would spin here forever; the parent validation below is what prevents one
+    const fresh = children.filter((row) => !found.some((seen) => seen.id === row.id))
+    if (fresh.length === 0) {
+      break
+    }
+    found.push(...fresh)
+    frontier = fresh.map((row) => row.id)
+  }
+
+  return found
+}
+
+/** the minimum a row needs for the tree walks; `purchase.ts` selects its own narrower shape */
+export interface UnitTreeNode {
+  id: number
+  parentUnitId: number | null
+  isBaseUnit: boolean
+}
+
+/**
+ * The chain of smaller units a purchase in `unitRowId` physically delivers, base last.
+ * Siblings are deliberately excluded: buying a SAK puts pieces on the shelf, but says
+ * nothing about what a RENTENG costs, because no renteng came out of that sak.
+ */
+export function unitsInside<T extends UnitTreeNode>(chain: T[], unitRowId: number): T[] {
+  const inside: T[] = []
+  let current = chain.find((row) => row.id === unitRowId)
+
+  while (current) {
+    const parent = current.parentUnitId === null ? null : chain.find((row) => row.id === current!.parentUnitId)
+    if (!parent || inside.some((seen) => seen.id === parent.id)) {
+      break
+    }
+    inside.push(parent)
+    current = parent
+  }
+
+  const base = chain.find((row) => row.isBaseUnit)
+  if (base && base.id !== unitRowId && !inside.some((seen) => seen.id === base.id)) {
+    inside.push(base)
+  }
+
+  return inside
+}
+
+/**
+ * Resolves the parent a caller asked for and returns its conversion factor.
+ * Rejects anything that would leave the tree malformed - a parent from another
+ * product, a unit pointing at itself, or a loop through its own containers.
+ */
+function resolveParentConversion(
+  chain: ProductUnitRow[],
+  parentUnitId: number | null | undefined,
+  fallbackConversion: number,
+  selfId?: number,
+): { parentUnitId: number | null; conversion: number } {
+  if (parentUnitId === undefined) {
+    return { parentUnitId: null, conversion: fallbackConversion }
+  }
+
+  if (parentUnitId === null) {
+    return { parentUnitId: null, conversion: 1 }
+  }
+
+  const parent = chain.find((row) => row.id === parentUnitId)
+  if (!parent) {
+    throw new Error('Satuan acuan tidak ditemukan pada produk ini.')
+  }
+
+  if (parent.isBaseUnit) {
+    // the base row is the implicit root; pointing at it explicitly is the same as null
+    return { parentUnitId: null, conversion: 1 }
+  }
+
+  if (selfId !== undefined) {
+    if (parent.id === selfId) {
+      throw new Error('Satuan tidak bisa mengacu ke dirinya sendiri.')
+    }
+    if (unitsContaining(chain, selfId).some((row) => row.id === parent.id)) {
+      throw new Error('Satuan acuan tidak boleh satuan yang justru berisi satuan ini.')
+    }
+  }
+
+  return { parentUnitId: parent.id, conversion: parent.conversionFactor }
 }
 
 function validateUnitInput(input: UpsertProductUnitInput): void {
@@ -171,8 +277,14 @@ export function addProductUnit(db: BetterSQLite3Database<typeof schema>, product
   }
 
   const derivedChain = chain.filter((u) => !u.isBaseUnit)
-  const prevConversion = derivedChain.length > 0 ? derivedChain[derivedChain.length - 1].conversionFactor : 1
-  const conversionFactor = input.jumlahKemasan * prevConversion
+  // no parent given means the historical behaviour: stack on the largest unit so far
+  const largestConversion = derivedChain.length > 0 ? derivedChain[derivedChain.length - 1].conversionFactor : 1
+  const largestId = derivedChain.length > 0 ? derivedChain[derivedChain.length - 1].id : null
+  const parent =
+    input.parentUnitId === undefined
+      ? { parentUnitId: largestId, conversion: largestConversion }
+      : resolveParentConversion(chain, input.parentUnitId, largestConversion)
+  const conversionFactor = input.jumlahKemasan * parent.conversion
   const product = db.select({ hargaPokok: products.hargaPokok }).from(products).where(eq(products.id, productId)).get()
   const now = new Date()
 
@@ -180,6 +292,7 @@ export function addProductUnit(db: BetterSQLite3Database<typeof schema>, product
     .values({
       productId,
       unitId: input.unitId,
+      parentUnitId: parent.parentUnitId,
       jumlahKemasan: input.jumlahKemasan,
       conversionFactor,
       hargaJual: input.hargaJual,
@@ -223,32 +336,59 @@ export function updateProductUnit(
   }
 
   validateUnitInput(input)
-  const derivedChain = chain.filter((u) => !u.isBaseUnit)
-  const derivedIdx = derivedChain.findIndex((u) => u.id === unitRowId)
+  const target = chain[idx]
 
   if (chain.some((u) => u.id !== unitRowId && u.unitId === input.unitId)) {
     throw new Error('Satuan ini sudah dipakai untuk produk ini.')
   }
 
-  let prevConversion = derivedIdx === 0 ? 1 : derivedChain[derivedIdx - 1].conversionFactor
+  const parent = resolveParentConversion(
+    chain,
+    // leaving it out keeps the unit where it hangs; passing null moves it onto the base
+    input.parentUnitId === undefined ? target.parentUnitId : input.parentUnitId,
+    1,
+    unitRowId,
+  )
+  const conversionFactor = input.jumlahKemasan * parent.conversion
 
-  for (let i = derivedIdx; i < derivedChain.length; i++) {
-    const jumlahKemasan = i === derivedIdx ? input.jumlahKemasan : derivedChain[i].jumlahKemasan
-    const unitId = i === derivedIdx ? input.unitId : derivedChain[i].unitId
-    const hargaJual = i === derivedIdx ? input.hargaJual : derivedChain[i].hargaJual
-    const conversionFactor = jumlahKemasan * prevConversion
-    // Only the edited row's cost is restated. The rows above it are still the same
-    // physical package - a DUS is a DUS whether we believe it holds 10 or 20 pieces -
-    // so what the owner paid for one of them does not change here.
-    const hargaPokok = i === derivedIdx ? (input.hargaPokok ?? derivedChain[i].hargaPokok) : derivedChain[i].hargaPokok
-
-    db.update(productUnits)
-      .set({ unitId, jumlahKemasan, conversionFactor, hargaJual, hargaPokok, updatedAt: now })
-      .where(eq(productUnits.id, derivedChain[i].id))
+  db.transaction((tx) => {
+    tx.update(productUnits)
+      .set({
+        unitId: input.unitId,
+        parentUnitId: parent.parentUnitId,
+        jumlahKemasan: input.jumlahKemasan,
+        conversionFactor,
+        hargaJual: input.hargaJual,
+        // Only the edited row's cost is restated. Its containers are still the same
+        // physical package - a DUS is a DUS whether we believe it holds 10 or 20
+        // pieces - so what the owner paid for one of them does not change here.
+        hargaPokok: input.hargaPokok ?? target.hargaPokok,
+        updatedAt: now,
+      })
+      .where(eq(productUnits.id, unitRowId))
       .run()
 
-    prevConversion = conversionFactor
-  }
+    // Resizing a unit changes how many base units every container of it holds.
+    // unitsContaining walks outward level by level, so a parent is always rewritten
+    // before the unit measured in it reads the new figure.
+    const conversionById = new Map<number, number>([[unitRowId, conversionFactor]])
+
+    for (const row of unitsContaining(chain, unitRowId)) {
+      const parentConversion =
+        row.parentUnitId === null
+          ? 1
+          : (conversionById.get(row.parentUnitId) ??
+            chain.find((candidate) => candidate.id === row.parentUnitId)?.conversionFactor ??
+            1)
+      const rowConversion = row.jumlahKemasan * parentConversion
+      conversionById.set(row.id, rowConversion)
+
+      tx.update(productUnits)
+        .set({ conversionFactor: rowConversion, updatedAt: now })
+        .where(eq(productUnits.id, row.id))
+        .run()
+    }
+  })
 }
 
 export function deleteProductUnit(db: BetterSQLite3Database<typeof schema>, productId: number, unitRowId: number): void {
@@ -261,9 +401,8 @@ export function deleteProductUnit(db: BetterSQLite3Database<typeof schema>, prod
     throw new Error('Satuan dasar tidak bisa dihapus.')
   }
 
-  const derivedChain = chain.filter((u) => !u.isBaseUnit)
-  const idx = derivedChain.findIndex((u) => u.id === unitRowId)
-  const idsToDelete = derivedChain.slice(idx).map((u) => u.id)
+  // whatever is measured in this unit loses its yardstick, so it goes with it
+  const idsToDelete = [unitRowId, ...unitsContaining(chain, unitRowId).map((row) => row.id)]
   db.delete(productUnits).where(inArray(productUnits.id, idsToDelete)).run()
 }
 

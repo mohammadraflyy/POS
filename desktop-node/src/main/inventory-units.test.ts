@@ -720,6 +720,112 @@ describe('getProductDetail', () => {
   })
 })
 
+describe('satuan bercabang', () => {
+  it('measures a unit against the base when parentUnitId is null, so two packagings can sit side by side', () => {
+    const db = seedProduct()
+    const rtgUnitId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const sakUnitId = seedUnit(db, { code: 'SAK', name: 'Sak', symbol: 'sak' })
+
+    addProductUnit(db, 1, { unitId: rtgUnitId, jumlahKemasan: 12, hargaJual: 15000_00, parentUnitId: null })
+    addProductUnit(db, 1, { unitId: sakUnitId, jumlahKemasan: 25, hargaJual: 30000_00, parentUnitId: null })
+
+    const after = listProductUnits(db, 1)
+    // neither contains the other: 25 is not a multiple of 12
+    expect(after.find((unit) => unit.unitCode === 'RTG')?.conversionFactor).toBe(12)
+    expect(after.find((unit) => unit.unitCode === 'SAK')?.conversionFactor).toBe(25)
+    expect(after.find((unit) => unit.unitCode === 'SAK')?.parentUnitId).toBeNull()
+  })
+
+  it('multiplies through the named parent rather than the largest unit', () => {
+    const db = seedProduct()
+    const rtgUnitId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const sakUnitId = seedUnit(db, { code: 'SAK', name: 'Sak', symbol: 'sak' })
+    const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+
+    addProductUnit(db, 1, { unitId: rtgUnitId, jumlahKemasan: 12, hargaJual: 15000_00, parentUnitId: null })
+    addProductUnit(db, 1, { unitId: sakUnitId, jumlahKemasan: 25, hargaJual: 30000_00, parentUnitId: null })
+    const rtg = listProductUnits(db, 1).find((unit) => unit.unitCode === 'RTG')!
+    // 1 DUS = 20 RTG, even though SAK is a bigger unit that already exists
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 20, hargaJual: 220000_00, parentUnitId: rtg.id })
+
+    const dus = listProductUnits(db, 1).find((unit) => unit.unitCode === 'DUS')!
+    expect(dus.conversionFactor).toBe(240)
+    expect(dus.parentUnitId).toBe(rtg.id)
+  })
+
+  it('stacks on the largest unit when no parent is named, as it always did', () => {
+    const db = seedProduct()
+    const rtgUnitId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+
+    addProductUnit(db, 1, { unitId: rtgUnitId, jumlahKemasan: 12, hargaJual: 15000_00 })
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 20, hargaJual: 220000_00 })
+
+    expect(listProductUnits(db, 1).find((unit) => unit.unitCode === 'DUS')?.conversionFactor).toBe(240)
+  })
+
+  it('recomputes every container when a unit is resized, and leaves siblings alone', () => {
+    const db = seedProduct()
+    const rtgUnitId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const sakUnitId = seedUnit(db, { code: 'SAK', name: 'Sak', symbol: 'sak' })
+    const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    addProductUnit(db, 1, { unitId: rtgUnitId, jumlahKemasan: 12, hargaJual: 15000_00, parentUnitId: null })
+    addProductUnit(db, 1, { unitId: sakUnitId, jumlahKemasan: 25, hargaJual: 30000_00, parentUnitId: null })
+    const rtg = listProductUnits(db, 1).find((unit) => unit.unitCode === 'RTG')!
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 20, hargaJual: 220000_00, parentUnitId: rtg.id })
+
+    // a renteng now holds 10 pieces instead of 12
+    updateProductUnit(db, 1, rtg.id, { unitId: rtgUnitId, jumlahKemasan: 10, hargaJual: 15000_00, parentUnitId: null })
+
+    const after = listProductUnits(db, 1)
+    expect(after.find((unit) => unit.unitCode === 'RTG')?.conversionFactor).toBe(10)
+    expect(after.find((unit) => unit.unitCode === 'DUS')?.conversionFactor).toBe(200)
+    // SAK is measured in pieces directly, so it never moved
+    expect(after.find((unit) => unit.unitCode === 'SAK')?.conversionFactor).toBe(25)
+  })
+
+  it('deletes the units measured in the one removed, but not its siblings', () => {
+    const db = seedProduct()
+    const rtgUnitId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const sakUnitId = seedUnit(db, { code: 'SAK', name: 'Sak', symbol: 'sak' })
+    const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    addProductUnit(db, 1, { unitId: rtgUnitId, jumlahKemasan: 12, hargaJual: 15000_00, parentUnitId: null })
+    addProductUnit(db, 1, { unitId: sakUnitId, jumlahKemasan: 25, hargaJual: 30000_00, parentUnitId: null })
+    const rtg = listProductUnits(db, 1).find((unit) => unit.unitCode === 'RTG')!
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 20, hargaJual: 220000_00, parentUnitId: rtg.id })
+
+    deleteProductUnit(db, 1, rtg.id)
+
+    const left = listProductUnits(db, 1)
+      .map((unit) => unit.unitCode)
+      .sort()
+    expect(left).toEqual(['BASE1', 'SAK'])
+  })
+
+  it('refuses a parent that is itself measured in this unit, which would close a loop', () => {
+    const db = seedProduct()
+    const rtgUnitId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+    const dusUnitId = seedUnit(db, { code: 'DUS', name: 'Dus', symbol: 'dus' })
+    addProductUnit(db, 1, { unitId: rtgUnitId, jumlahKemasan: 12, hargaJual: 15000_00, parentUnitId: null })
+    const rtg = listProductUnits(db, 1).find((unit) => unit.unitCode === 'RTG')!
+    addProductUnit(db, 1, { unitId: dusUnitId, jumlahKemasan: 20, hargaJual: 220000_00, parentUnitId: rtg.id })
+    const dus = listProductUnits(db, 1).find((unit) => unit.unitCode === 'DUS')!
+
+    expect(() =>
+      updateProductUnit(db, 1, rtg.id, { unitId: rtgUnitId, jumlahKemasan: 12, hargaJual: 15000_00, parentUnitId: dus.id }),
+    ).toThrow('Satuan acuan tidak boleh satuan yang justru berisi satuan ini.')
+  })
+
+  it('refuses a parent that does not belong to this product', () => {
+    const db = seedProduct()
+    const rtgUnitId = seedUnit(db, { code: 'RTG', name: 'Renteng', symbol: 'rtg' })
+
+    expect(() =>
+      addProductUnit(db, 1, { unitId: rtgUnitId, jumlahKemasan: 12, hargaJual: 15000_00, parentUnitId: 9999 }),
+    ).toThrow('Satuan acuan tidak ditemukan pada produk ini.')
+  })
+})
+
 describe('per-unit cost outside purchases', () => {
   it('seeds a newly added unit from the base cost times its conversion', () => {
     const db = seedProduct() // products.hargaPokok is 1.000

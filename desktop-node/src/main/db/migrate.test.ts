@@ -345,4 +345,39 @@ describe('createDb', () => {
       { id: 2, harga_pokok: 50000000 },
     ])
   })
+
+  it('backfills parent_unit_id to the chain each derived unit was implicitly measured in', () => {
+    const { partialFolder, dbFile, cleanup } = partialMigrationsBefore('0013_calm_silhouette')
+
+    const partialDb = createDb(dbFile, partialFolder)
+    partialDb.run(sql`INSERT INTO products (id, kode_item, nama_item, harga_pokok, harga_jual, stok, is_active, created_at, updated_at)
+      VALUES (1, 'P1', 'Kopi ABC', 100000, 150000, 300, 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO units (id, code, name, symbol, is_active, created_at, updated_at)
+      VALUES (1, 'PCS', 'Pieces', 'pcs', 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO units (id, code, name, symbol, is_active, created_at, updated_at)
+      VALUES (2, 'RTG', 'Renteng', 'rtg', 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO units (id, code, name, symbol, is_active, created_at, updated_at)
+      VALUES (3, 'DUS', 'Dus', 'dus', 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO product_units (id, product_id, unit_id, jumlah_kemasan, conversion_factor, harga_jual, harga_pokok, is_base_unit, is_default_sales_unit, is_default_purchase_unit, created_at, updated_at)
+      VALUES (10, 1, 1, 1, 1, 150000, 100000, 1, 1, 1, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO product_units (id, product_id, unit_id, jumlah_kemasan, conversion_factor, harga_jual, harga_pokok, is_base_unit, is_default_sales_unit, is_default_purchase_unit, created_at, updated_at)
+      VALUES (11, 1, 2, 12, 12, 1500000, 1200000, 0, 0, 0, unixepoch(), unixepoch())`)
+    partialDb.run(sql`INSERT INTO product_units (id, product_id, unit_id, jumlah_kemasan, conversion_factor, harga_jual, harga_pokok, is_base_unit, is_default_sales_unit, is_default_purchase_unit, created_at, updated_at)
+      VALUES (12, 1, 3, 20, 240, 25000000, 22000000, 0, 0, 0, unixepoch(), unixepoch())`)
+    partialDb.$client.close()
+
+    const fullDb = createDb(dbFile, migrationsFolder)
+    const rows = fullDb.all<{ id: number; parent_unit_id: number | null }>(
+      sql`SELECT id, parent_unit_id FROM product_units ORDER BY id`,
+    )
+    fullDb.$client.close()
+    cleanup()
+
+    // the base row has no parent; RTG was measured in the base; DUS was measured in RTG
+    expect(rows).toEqual([
+      { id: 10, parent_unit_id: null },
+      { id: 11, parent_unit_id: null },
+      { id: 12, parent_unit_id: 11 },
+    ])
+  })
 })

@@ -18,6 +18,8 @@ interface UnitRow {
   id: number
   unitId: number
   satuan: string
+  /** the smaller unit this one is measured in; null means the base unit */
+  parentUnitId: number | null
   jumlahKemasan: number
   konversi: number
   hargaJual: number
@@ -173,30 +175,35 @@ function UnitChainManager({
 }) {
   const [adding, setAdding] = useState(false)
 
-  // the base row lives in the same table now, but it is not part of the derived chain -
+  // the base row lives in the same table now, but it is not part of the derived tree -
   // its unit and conversion are fixed, and its price is edited on the product form
   const derived = units.filter((unit) => !unit.isBaseUnit)
   const largest = derived.length > 0 ? derived[derived.length - 1] : null
   const usedUnitIds = units.map((unit) => unit.unitId)
+  const flattened = flattenUnitTree(derived)
 
   return (
     <div className="space-y-3 border-t pt-4">
       <div className="flex items-center gap-2">
         <Layers className="size-4 text-muted-foreground" />
         <Label className="text-sm font-semibold">Satuan Turunan</Label>
-        <span className="text-xs text-muted-foreground">mis. 1 Renteng = 12 {baseSatuan}, 1 Dus = 10 Renteng</span>
+        <span className="text-xs text-muted-foreground">
+          mis. 1 Renteng = 12 {baseSatuan}, 1 Dus = 10 Renteng &mdash; boleh sejajar juga, mis. 1 Sak = 25 {baseSatuan}
+        </span>
       </div>
 
-      {derived.length > 0 ? (
+      {flattened.length > 0 ? (
         <div className="space-y-1.5">
-          {derived.map((unit, idx) => (
+          {flattened.map(({ unit, depth }) => (
             <UnitChainRow
               key={unit.id}
               productId={productId}
               unit={unit}
-              relativeToLabel={idx === 0 ? baseSatuan : derived[idx - 1].satuan}
+              depth={depth}
+              relativeToLabel={derived.find((row) => row.id === unit.parentUnitId)?.satuan ?? baseSatuan}
               baseSatuan={baseSatuan}
-              unitsAbove={derived.slice(idx + 1)}
+              containers={unitsContaining(derived, unit.id)}
+              parentOptions={parentOptionsFor(derived, baseSatuan, unit.id)}
               unitOptions={masterUnits.filter((option) => option.id === unit.unitId || !usedUnitIds.includes(option.id))}
               onChanged={onChanged}
             />
@@ -209,7 +216,8 @@ function UnitChainManager({
       {adding ? (
         <UnitChainAddForm
           productId={productId}
-          relativeToLabel={largest?.satuan ?? baseSatuan}
+          defaultParentId={largest?.id ?? null}
+          parentOptions={parentOptionsFor(derived, baseSatuan)}
           unitOptions={masterUnits.filter((option) => !usedUnitIds.includes(option.id))}
           onDone={() => setAdding(false)}
           onChanged={onChanged}
@@ -223,25 +231,85 @@ function UnitChainManager({
   )
 }
 
+/** every unit measured in `unitRowId`, directly or through another one */
+function unitsContaining(derived: UnitRow[], unitRowId: number): UnitRow[] {
+  const found: UnitRow[] = []
+  let frontier = [unitRowId]
+
+  while (frontier.length > 0) {
+    const children = derived.filter(
+      (row) => row.parentUnitId !== null && frontier.includes(row.parentUnitId) && !found.some((seen) => seen.id === row.id),
+    )
+    if (children.length === 0) {
+      break
+    }
+    found.push(...children)
+    frontier = children.map((row) => row.id)
+  }
+
+  return found
+}
+
+/**
+ * Depth-first order with an indent level, so siblings sit side by side under the unit
+ * they are measured in instead of pretending to be one straight ladder.
+ */
+function flattenUnitTree(derived: UnitRow[]): { unit: UnitRow; depth: number }[] {
+  const out: { unit: UnitRow; depth: number }[] = []
+
+  function walk(parentId: number | null, depth: number) {
+    for (const unit of derived.filter((row) => row.parentUnitId === parentId)) {
+      out.push({ unit, depth })
+      walk(unit.id, depth + 1)
+    }
+  }
+
+  walk(null, 0)
+
+  // a row whose parent went missing would vanish otherwise; show it flat rather than lose it
+  for (const unit of derived) {
+    if (!out.some((entry) => entry.unit.id === unit.id)) {
+      out.push({ unit, depth: 0 })
+    }
+  }
+
+  return out
+}
+
+/** what a unit may be measured in: the base unit, or anything that does not contain it */
+function parentOptionsFor(derived: UnitRow[], baseSatuan: string, selfId?: number): { id: number | null; label: string }[] {
+  const blocked = selfId === undefined ? [] : [selfId, ...unitsContaining(derived, selfId).map((row) => row.id)]
+
+  return [
+    { id: null, label: baseSatuan },
+    ...derived.filter((row) => !blocked.includes(row.id)).map((row) => ({ id: row.id, label: row.satuan })),
+  ]
+}
+
 function UnitChainRow({
   productId,
   unit,
+  depth,
   relativeToLabel,
   baseSatuan,
-  unitsAbove,
+  containers,
+  parentOptions,
   unitOptions,
   onChanged,
 }: {
   productId: number
   unit: UnitRow
+  depth: number
   relativeToLabel: string
   baseSatuan: string
-  unitsAbove: UnitRow[]
+  containers: UnitRow[]
+  parentOptions: { id: number | null; label: string }[]
   unitOptions: MasterUnit[]
   onChanged: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [unitId, setUnitId] = useState(String(unit.unitId))
+  const [parentUnitId, setParentUnitId] = useState(unit.parentUnitId === null ? 'base' : String(unit.parentUnitId))
   const [jumlahKemasan, setJumlahKemasan] = useState(String(unit.jumlahKemasan))
   const [hargaJual, setHargaJual] = useState(String(unit.hargaJual))
   const [hargaPokok, setHargaPokok] = useState(String(unit.hargaPokok))
@@ -251,6 +319,7 @@ function UnitChainRow({
 
   function startEdit() {
     setUnitId(String(unit.unitId))
+    setParentUnitId(unit.parentUnitId === null ? 'base' : String(unit.parentUnitId))
     setJumlahKemasan(String(unit.jumlahKemasan))
     setHargaJual(String(unit.hargaJual))
     setHargaPokok(String(unit.hargaPokok))
@@ -294,6 +363,7 @@ function UnitChainRow({
         jumlahKemasan: jumlahNum,
         hargaJual: hargaNum,
         hargaPokok: modalNum,
+        parentUnitId: parentUnitId === 'base' ? null : Number(parentUnitId),
       })
       .then(() => {
         setEditing(false)
@@ -307,8 +377,8 @@ function UnitChainRow({
     const ok = await confirm({
       title: 'Hapus Satuan',
       description:
-        unitsAbove.length > 0
-          ? `Hapus satuan "${unit.satuan}"? Ini juga akan menghapus ${unitsAbove.map((u) => `"${u.satuan}"`).join(', ')}.`
+        containers.length > 0
+          ? `Hapus satuan "${unit.satuan}"? Ini juga akan menghapus ${containers.map((u) => `"${u.satuan}"`).join(', ')}.`
           : `Hapus satuan "${unit.satuan}"?`,
       confirmLabel: 'Hapus',
       destructive: true,
@@ -333,7 +403,11 @@ function UnitChainRow({
             <UnitSelect value={unitId} options={unitOptions} onChange={setUnitId} />
           </div>
           <div className="grid w-32 gap-1">
-            <Label className="text-xs">= jumlah {relativeToLabel}</Label>
+            <Label className="text-xs">Relatif ke</Label>
+            <ParentSelect value={parentUnitId} options={parentOptions} onChange={setParentUnitId} />
+          </div>
+          <div className="grid w-24 gap-1">
+            <Label className="text-xs">Jumlah</Label>
             <Input type="number" value={jumlahKemasan} onChange={(e) => setJumlahKemasan(e.target.value)} />
           </div>
           <div className="grid w-32 gap-1">
@@ -357,7 +431,11 @@ function UnitChainRow({
   }
 
   return (
-    <div className="flex items-center justify-between rounded-lg border px-3 py-2 transition-colors hover:bg-accent/50">
+    <div
+      // indent shows what is measured in what; siblings line up at the same depth
+      style={{ marginInlineStart: depth * 20 }}
+      className="flex items-center justify-between rounded-lg border px-3 py-2 transition-colors hover:bg-accent/50"
+    >
       <span className="text-sm font-medium">
         1 {unit.satuan} = {unit.jumlahKemasan} {relativeToLabel}{' '}
         <span className="font-normal text-muted-foreground">
@@ -396,20 +474,50 @@ function UnitSelect({ value, options, onChange }: { value: string; options: Mast
   )
 }
 
+/** picks the smaller unit a packaging is counted in; "base" is the product's base unit */
+function ParentSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string
+  options: { id: number | null; label: string }[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger>
+        <SelectValue placeholder="Pilih acuan" />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.id ?? 'base'} value={option.id === null ? 'base' : String(option.id)}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 function UnitChainAddForm({
   productId,
-  relativeToLabel,
+  defaultParentId,
+  parentOptions,
   unitOptions,
   onDone,
   onChanged,
 }: {
   productId: number
-  relativeToLabel: string
+  defaultParentId: number | null
+  parentOptions: { id: number | null; label: string }[]
   unitOptions: MasterUnit[]
   onDone: () => void
   onChanged: () => void
 }) {
   const [unitId, setUnitId] = useState('')
+  // defaults to the largest existing unit, which is what "add another packaging" usually means
+  const [parentUnitId, setParentUnitId] = useState(defaultParentId === null ? 'base' : String(defaultParentId))
   const [jumlahKemasan, setJumlahKemasan] = useState('')
   const [hargaJual, setHargaJual] = useState('')
   const [hargaPokok, setHargaPokok] = useState('')
@@ -453,6 +561,7 @@ function UnitChainAddForm({
         jumlahKemasan: jumlahNum,
         hargaJual: hargaNum,
         hargaPokok: modalNum,
+        parentUnitId: parentUnitId === 'base' ? null : Number(parentUnitId),
       })
       .then(() => {
         onDone()
@@ -470,7 +579,11 @@ function UnitChainAddForm({
           <UnitSelect value={unitId} options={unitOptions} onChange={setUnitId} />
         </div>
         <div className="grid w-32 gap-1">
-          <Label className="text-xs">= jumlah {relativeToLabel}</Label>
+          <Label className="text-xs">Relatif ke</Label>
+          <ParentSelect value={parentUnitId} options={parentOptions} onChange={setParentUnitId} />
+        </div>
+        <div className="grid w-24 gap-1">
+          <Label className="text-xs">Jumlah</Label>
           <Input type="number" value={jumlahKemasan} onChange={(e) => setJumlahKemasan(e.target.value)} />
         </div>
         <div className="grid w-32 gap-1">

@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 
 function timestamps() {
   return {
@@ -48,7 +49,15 @@ export const productUnits = sqliteTable('product_units', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   productId: integer('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
   unitId: integer('unit_id').notNull().references(() => units.id, { onDelete: 'restrict' }),
+  /**
+   * The smaller unit this one is measured in - "1 DUS = jumlahKemasan of parent".
+   * NULL means it is measured directly in the base unit. Two units sharing a parent
+   * are siblings: a SAK and a RENTENG can both hold pieces without either containing
+   * the other. The base row's own parent is always NULL.
+   */
+  parentUnitId: integer('parent_unit_id').references((): AnySQLiteColumn => productUnits.id, { onDelete: 'cascade' }),
   jumlahKemasan: integer('jumlah_kemasan').notNull(),
+  /** absolute ratio to the base unit: jumlahKemasan x the parent's conversionFactor */
   conversionFactor: integer('conversion_factor').notNull(),
   hargaJual: integer('harga_jual').notNull(),
   /**

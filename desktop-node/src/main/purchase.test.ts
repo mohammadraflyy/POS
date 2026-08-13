@@ -549,6 +549,47 @@ describe('recordPurchase harga pokok per satuan', () => {
 
     expect(biayaPerSatuan(db, 1)).toEqual({ 1: 2000_00, 12: 18000_00 })
   })
+
+  it('does not carry the cost across to a sibling packaging', () => {
+    const db = seedDb()
+    const now = new Date()
+    // A SAK holds 25 pcs and is measured straight in the base unit, so it sits beside
+    // RENTENG rather than above it - no renteng ever comes out of a sak.
+    db.insert(units)
+      .values({ id: 4, code: 'SAK', name: 'Sak', symbol: 'sak', createdAt: now, updatedAt: now })
+      .run()
+    db.insert(productUnits)
+      .values({
+        id: 2,
+        productId: 1,
+        unitId: 4,
+        parentUnitId: null,
+        jumlahKemasan: 25,
+        conversionFactor: 25,
+        hargaJual: 40000_00,
+        hargaPokok: 37500_00,
+        isBaseUnit: false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-13',
+      catatan: null,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: 2, qty: 5, hargaBeli: 30000_00 }],
+    })
+
+    const after = biayaPerSatuan(db, 1)
+    // RENTENG is smaller than a SAK, and the old size-based rule would have rewritten
+    // it. It must not move: the purchase delivered pieces, not rentengs.
+    expect(after[12]).toBe(18000_00)
+    // the SAK itself and the pieces inside it did move
+    expect(after[25]).not.toBe(37500_00)
+    expect(after[1]).not.toBe(1500_00)
+  })
 })
 
 describe('listPurchases', () => {
