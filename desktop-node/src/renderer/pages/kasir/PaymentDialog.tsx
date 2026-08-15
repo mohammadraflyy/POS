@@ -261,6 +261,14 @@ export function PaymentDialog({
               value={tanggal}
               disabled={processing || printing}
               onChange={(e) => setTanggal(e.target.value)}
+              onKeyDown={(e) => {
+                // Keep the form-level PageUp/PageDown/Enter shortcuts from
+                // firing while the native date/time segments are being
+                // driven - Enter here must not silently save a real sale.
+                if (e.key === 'Enter' || e.key === 'PageUp' || e.key === 'PageDown') {
+                  e.stopPropagation()
+                }
+              }}
             />
           </div>
 
