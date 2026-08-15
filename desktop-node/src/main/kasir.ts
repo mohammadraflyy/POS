@@ -151,22 +151,13 @@ export interface CheckoutResult {
   total: number
 }
 
-export function checkout(db: BetterSQLite3Database<typeof schema>, input: CheckoutInput): CheckoutResult {
-  if (input.items.length < 1) {
-    throw new Error('Keranjang tidak boleh kosong.')
-  }
-
-  for (const item of input.items) {
-    if (!(item.qty > 0)) {
-      throw new Error('Qty harus lebih dari 0.')
-    }
-  }
-
-  if (input.metodePembayaran === 'bon' && !input.namaPelanggan?.trim()) {
-    throw new Error('Nama pelanggan wajib diisi untuk transaksi bon.')
-  }
-
-  const productIds = input.items.map((item) => item.productId)
+/**
+ * Turns cart lines into priced, stock-checked sale lines. Shared by `checkout` and
+ * `addItemsToSale` so a line added to an existing bon is priced by exactly the same
+ * tier rules and cost snapshot as one rung up at the till.
+ */
+function resolveItems(db: BetterSQLite3Database<typeof schema>, items: CartItemInput[]): ResolvedItem[] {
+  const productIds = items.map((item) => item.productId)
   const productRows = db.select().from(products).where(inArray(products.id, productIds)).all()
   const productsById = new Map(productRows.map((product) => [product.id, product]))
 
@@ -185,6 +176,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     .innerJoin(units, eq(productUnits.unitId, units.id))
     .where(inArray(productUnits.productId, productIds))
     .all()
+
   const tierRows = db
     .select()
     .from(productPriceTiers)
@@ -194,7 +186,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   const resolvedItems: ResolvedItem[] = []
   const qtyDasarByProduct = new Map<number, number>()
 
-  for (const item of input.items) {
+  for (const item of items) {
     const product = productsById.get(item.productId)
 
     if (!product) {
@@ -218,12 +210,34 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     const resolved = resolveCartItem(product, unit, tiers, item.qty)
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
     const totalQtyDasar = previousQtyDasar + resolved.qtyDasar
+
     if (product.stok < totalQtyDasar) {
       throw new Error(`Stok ${product.namaItem} tidak cukup.`)
     }
+
     qtyDasarByProduct.set(product.id, totalQtyDasar)
     resolvedItems.push(resolved)
   }
+
+  return resolvedItems
+}
+
+export function checkout(db: BetterSQLite3Database<typeof schema>, input: CheckoutInput): CheckoutResult {
+  if (input.items.length < 1) {
+    throw new Error('Keranjang tidak boleh kosong.')
+  }
+
+  for (const item of input.items) {
+    if (!(item.qty > 0)) {
+      throw new Error('Qty harus lebih dari 0.')
+    }
+  }
+
+  if (input.metodePembayaran === 'bon' && !input.namaPelanggan?.trim()) {
+    throw new Error('Nama pelanggan wajib diisi untuk transaksi bon.')
+  }
+
+  const resolvedItems = resolveItems(db, input.items)
 
   const now = input.tanggal ? parseTanggalTransaksi(input.tanggal) : new Date()
 
