@@ -639,6 +639,7 @@ describe('checkout', () => {
 
   it('rejects a sale dated in the future', () => {
     const db = seedDb()
+    // 24h buffer keeps this in the future regardless of the machine's timezone offset
     const besok = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
 
     expect(() =>
@@ -651,6 +652,9 @@ describe('checkout', () => {
         items: [{ productId: 2, productUnitId: null, qty: 1 }],
       }),
     ).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
+    expect(db.select().from(saleItems).all()).toHaveLength(0)
+    expect(db.select().from(stockMovements).all()).toHaveLength(0)
   })
 
   it('rejects a tanggal that is not a date at all', () => {
@@ -666,6 +670,9 @@ describe('checkout', () => {
         items: [{ productId: 2, productUnitId: null, qty: 1 }],
       }),
     ).toThrow('Tanggal transaksi tidak valid.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
+    expect(db.select().from(saleItems).all()).toHaveLength(0)
+    expect(db.select().from(stockMovements).all()).toHaveLength(0)
   })
 
   it('uses the current time when tanggal is omitted', () => {
