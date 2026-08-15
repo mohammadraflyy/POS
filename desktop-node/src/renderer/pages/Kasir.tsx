@@ -48,6 +48,14 @@ const EMPTY_DRAFT: KasirDraft = {
   jumlah: '1.00',
 }
 
+/** current local time in the `YYYY-MM-DDTHH:mm` shape a datetime-local input wants */
+function nowForInput(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+}
+
 function readStoredDraft(): KasirDraft {
   try {
     const raw = localStorage.getItem(DRAFT_STORAGE_KEY)
@@ -81,6 +89,7 @@ export function Kasir() {
   const [metode, setMetode] = useState<'tunai' | 'bon' | 'qris' | 'transfer'>(initialDraft.metode)
   const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
   const [dibayar, setDibayar] = useState(initialDraft.dibayar)
+  const [tanggal, setTanggal] = useState(nowForInput())
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
@@ -315,6 +324,7 @@ export function Kasir() {
     setCart([])
     setNamaPelanggan(DEFAULT_PELANGGAN)
     setDibayar('')
+    setTanggal(nowForInput())
   }
 
   async function handleCheckout(shouldPrint: boolean) {
@@ -330,6 +340,7 @@ export function Kasir() {
         // the main process could never reject it
         namaPelanggan: metode === 'bon' ? namaPelanggan.trim() || null : namaPelanggan.trim() || DEFAULT_PELANGGAN,
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
+        tanggal,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
@@ -569,6 +580,8 @@ export function Kasir() {
         }}
         dibayar={dibayar}
         setDibayar={setDibayar}
+        tanggal={tanggal}
+        setTanggal={setTanggal}
         processing={processing}
         printing={printingSaleId !== null}
         error={checkoutError}
