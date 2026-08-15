@@ -15,6 +15,7 @@
 - Working directory for every command is `C:\Work\POS\desktop-node`.
 - **better-sqlite3 ABI dance.** Main-process tests need the Node ABI build; the app needs the Electron ABI build. Before running vitest: `npm run rebuild:node`. After you finish testing and before launching the app: `npm run rebuild:electron`. Skipping the second step makes the app fail to boot.
 - Run tests with `npx vitest run <file>` or `npx vitest run <file> -t "<test name>"`. The `npm test` script is `vitest run` over the whole suite.
+- Typecheck with `npx tsc --noEmit -p tsconfig.json` — that one project covers main, preload, and renderer. There is no `tsconfig.web.json`; `tsconfig.node.json` covers only `electron.vite.config.ts` and is not worth running per task. `noUnusedLocals` and `noUnusedParameters` are on, so an unused import or variable fails the build.
 - **No database migration in this plan.** Every column used already exists. Do not run `npm run db:generate`.
 - Money is stored as integer cents in the database. `toRupiah`/`toCents` conversion happens only in the IPC layer (`src/main/ipc/*.ts`), never in `src/main/*.ts` business logic.
 - `src/renderer/env.d.ts` is a hand-written mirror of what IPC handlers return. TypeScript will not catch drift between them. Any field added to a handler's return value must be added to `env.d.ts` in the same task.
@@ -200,11 +201,10 @@ In `src/renderer/env.d.ts`, in the `inventory` block right after the `searchProd
 
 ```bash
 npx vitest run src/main/inventory.test.ts
-npx tsc --noEmit -p tsconfig.web.json
-npx tsc --noEmit -p tsconfig.node.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
-Expected: all tests PASS, both tsc runs clean.
+Expected: all tests PASS, tsc clean.
 
 - [ ] **Step 7: Commit**
 
@@ -314,7 +314,7 @@ Leave the rest of the effect untouched.
 - [ ] **Step 4: Verify types**
 
 ```bash
-npx tsc --noEmit -p tsconfig.web.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: clean.
@@ -507,8 +507,7 @@ Note: the existing `purchase.searchProducts` declaration in `env.d.ts` lists a `
 
 ```bash
 npx vitest run src/main/purchase.test.ts
-npx tsc --noEmit -p tsconfig.web.json
-npx tsc --noEmit -p tsconfig.node.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: all PASS, tsc clean.
@@ -589,7 +588,7 @@ Leave the supplier palette's `CommandInput` alone.
 - [ ] **Step 3: Verify types**
 
 ```bash
-npx tsc --noEmit -p tsconfig.web.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: clean. If `CommandInput` rejects `onKeyDown`, check `src/renderer/components/ui/command.tsx` — it forwards props to cmdk's input, so the prop passes through.
@@ -807,8 +806,7 @@ In `src/preload/index.ts`, add `tanggal?: string | null` to the `checkout` input
 
 ```bash
 npx vitest run src/main/kasir.test.ts
-npx tsc --noEmit -p tsconfig.web.json
-npx tsc --noEmit -p tsconfig.node.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: all PASS, tsc clean.
@@ -911,7 +909,7 @@ Insert this block directly after the customer `<button>` that ends around line 2
 - [ ] **Step 4: Verify types**
 
 ```bash
-npx tsc --noEmit -p tsconfig.web.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: clean.
@@ -1091,8 +1089,7 @@ In `src/renderer/env.d.ts`, in the `kasir` block after `deleteSale`:
 
 ```bash
 npx vitest run src/main/kasir.test.ts
-npx tsc --noEmit -p tsconfig.web.json
-npx tsc --noEmit -p tsconfig.node.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: all PASS, tsc clean.
@@ -1194,8 +1191,7 @@ Replace the `getSaleDetail` declaration with:
 - [ ] **Step 3: Verify**
 
 ```bash
-npx tsc --noEmit -p tsconfig.web.json
-npx tsc --noEmit -p tsconfig.node.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: clean, including `BonPayment.tsx`.
@@ -1475,7 +1471,7 @@ The guard keeps a click on an action button from also navigating. If this versio
 - [ ] **Step 5: Verify types**
 
 ```bash
-npx tsc --noEmit -p tsconfig.web.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: clean.
@@ -1882,8 +1878,7 @@ In `src/renderer/env.d.ts`, in the `kasir` block after `recordBonPayment`:
 
 ```bash
 npx vitest run src/main/kasir.test.ts
-npx tsc --noEmit -p tsconfig.web.json
-npx tsc --noEmit -p tsconfig.node.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: all PASS, tsc clean.
@@ -2080,7 +2075,7 @@ A plain `<select>` is used rather than the shadcn `Select` component because the
 - [ ] **Step 3: Verify types**
 
 ```bash
-npx tsc --noEmit -p tsconfig.web.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: clean.
@@ -2265,7 +2260,7 @@ Add next to `{ConfirmDialog}` at the bottom of the returned JSX:
 - [ ] **Step 5: Verify types**
 
 ```bash
-npx tsc --noEmit -p tsconfig.web.json
+npx tsc --noEmit -p tsconfig.json
 ```
 
 Expected: clean.
