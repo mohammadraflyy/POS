@@ -167,6 +167,20 @@ declare global {
             priceTiersCount: number
           }[]
         >
+        findByBarcode: (barcode: string) => Promise<{
+          id: number
+          kodeItem: string
+          barcode: string | null
+          namaItem: string
+          categoryName: string | null
+          satuan: string
+          hargaPokok: number
+          hargaJual: number
+          stok: number
+          isActive: boolean
+          unitsCount: number
+          priceTiersCount: number
+        } | null>
         getProductDetail: (productId: number) => Promise<{
           namaItem: string
           kodeItem: string

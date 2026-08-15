@@ -280,3 +280,23 @@ export function searchProductsQuick(db: BetterSQLite3Database<typeof schema>, q:
 
   return rows.map(toListItem)
 }
+
+/**
+ * Exact-barcode lookup for a hardware scanner. Deliberately `eq` and not `like`: a scan
+ * that matched two products would add the wrong one and there is no human in the loop to
+ * catch it. An empty barcode returns null rather than the first row in the table.
+ */
+export function findProductByBarcode(
+  db: BetterSQLite3Database<typeof schema>,
+  barcode: string,
+): ProductListItem | null {
+  const trimmed = barcode.trim()
+
+  if (trimmed === '') {
+    return null
+  }
+
+  const row = productListSelect(db).where(eq(products.barcode, trimmed)).get()
+
+  return row ? toListItem(row) : null
+}

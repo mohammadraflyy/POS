@@ -78,6 +78,7 @@ const api = {
     deleteProduct: (id: number) => invoke('inventory:deleteProduct', id),
     bulkDeleteProducts: (ids: number[]) => invoke('inventory:bulkDeleteProducts', ids),
     searchProducts: (q: string) => invoke('inventory:searchProducts', q),
+    findByBarcode: (barcode: string) => invoke('inventory:findByBarcode', barcode),
     getProductDetail: (productId: number) => invoke('inventory:getProductDetail', productId),
     addProductUnit: (productId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) =>
       invoke('inventory:addProductUnit', productId, input),

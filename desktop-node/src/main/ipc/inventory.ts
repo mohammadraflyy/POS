@@ -2,7 +2,14 @@ import { dialog, ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { getMainWindow } from '../index'
-import { listProducts, updateProduct, deleteProduct, bulkDeleteProducts, searchProductsQuick } from '../inventory'
+import {
+  listProducts,
+  updateProduct,
+  deleteProduct,
+  bulkDeleteProducts,
+  searchProductsQuick,
+  findProductByBarcode,
+} from '../inventory'
 import {
   getProductDetail,
   addProductUnit,
@@ -135,6 +142,14 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     requireUser()
 
     return searchProductsQuick(db, q).map(toDto)
+  })
+
+  ipcMain.handle('inventory:findByBarcode', (_event, barcode: string) => {
+    requireUser()
+
+    const product = findProductByBarcode(db, barcode)
+
+    return product ? toDto(product) : null
   })
 
   ipcMain.handle('inventory:getProductDetail', (_event, productId: number) => {
