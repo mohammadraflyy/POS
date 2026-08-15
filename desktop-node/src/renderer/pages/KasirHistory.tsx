@@ -33,13 +33,20 @@ interface SaleHistoryRow {
   items: SaleHistoryItem[]
 }
 
-const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 380
+const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 120 + 140 + 120 + 380
 const MIN_ITEM_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [
   { title: 'Penjualan', href: '/kasir' },
   { title: 'Riwayat Transaksi', href: '/history' },
 ]
+
+const METODE_LABEL: Record<SaleHistoryRow['metodePembayaran'], string> = {
+  tunai: 'Tunai',
+  bon: 'Bon',
+  qris: 'QRIS',
+  transfer: 'Transfer',
+}
 
 export function KasirHistory() {
   const navigate = useNavigate()
@@ -176,10 +183,17 @@ export function KasirHistory() {
       renderCell: ({ row }) => row.items.map((i) => `${i.namaItem} x${i.qty}`).join(', '),
     },
     {
+      key: 'namaPelanggan',
+      name: 'Pelanggan',
+      width: 200,
+      renderCell: ({ row }) => row.namaPelanggan ?? 'UMUM',
+    },
+    {
       key: 'metodePembayaran',
       name: 'Metode',
-      width: 200,
-      renderCell: ({ row }) => (row.metodePembayaran === 'bon' ? `Pending Payment (${row.namaPelanggan})` : 'Tunai'),
+      width: 120,
+      // the old ternary here predated qris and transfer and rendered both as "Tunai"
+      renderCell: ({ row }) => METODE_LABEL[row.metodePembayaran],
     },
     {
       key: 'status',
@@ -306,6 +320,11 @@ export function KasirHistory() {
               columns={columns}
               rows={rows}
               rowKeyGetter={(row) => row.id}
+              onCellClick={({ row, column }) => {
+                if (column.key !== 'aksi') {
+                  navigate(`/sale/${row.id}`)
+                }
+              }}
               renderers={{
                 noRowsFallback: (
                   <div className="col-span-full p-6 text-center text-sm text-muted-foreground">Tidak ada transaksi.</div>

@@ -3,6 +3,7 @@ import { Login } from './pages/Login'
 import { Kasir } from './pages/Kasir'
 import { KasirHistory } from './pages/KasirHistory'
 import { BonPayment } from './pages/BonPayment'
+import { SaleDetail } from './pages/SaleDetail'
 import { Settings } from './pages/Settings'
 import { Inventory } from './pages/Inventory'
 import { MassInput } from './pages/inventory/MassInput'
@@ -26,6 +27,7 @@ export function App() {
         <Route path="/kasir" element={<Kasir />} />
         <Route path="/history" element={<KasirHistory />} />
         <Route path="/bon-payment/:saleId" element={<BonPayment />} />
+        <Route path="/sale/:saleId" element={<SaleDetail />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/inventory/mass-input" element={<MassInput />} />
