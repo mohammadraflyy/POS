@@ -22,7 +22,9 @@ Fakta yang sudah diverifikasi di kode, bukan asumsi:
 - `sales.namaPelanggan` sudah ada di skema. Nilainya ditampilkan di Riwayat tetapi
   didempet ke dalam kolom "Metode" sebagai `Pending Payment (nama)`.
 - Handler IPC `kasir:getSaleDetail` sudah ada dan sudah mengembalikan item serta riwayat
-  pembayaran bon, tetapi tidak ada satu pun halaman renderer yang memanggilnya.
+  pembayaran bon. Pemakainya sekarang hanya `BonPayment.tsx`, yang mendeklarasikan
+  antarmuka `SaleDetail`-nya sendiri secara lokal; field baru yang ditambahkan ke handler
+  tidak akan merusak halaman itu, tetapi field tersebut harus ikut ditambahkan di `env.d.ts`.
 - `products.barcode` sudah ada dan unik. `searchProductsQuick` (inventory) dan
   `searchProductsForPurchase` (purchase) keduanya sudah mencocokkan barcode lewat `LIKE`.
 - `dropdown-menu.tsx` sudah terpasang di `components/ui/` dan sudah dipakai di `StockOpname.tsx`.
