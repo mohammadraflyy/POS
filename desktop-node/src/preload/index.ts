@@ -132,6 +132,7 @@ const api = {
     }) => invoke('purchase:recordPurchase', input),
     listPurchases: (input: { page: number; pageSize?: number }) => invoke('purchase:listPurchases', input),
     searchProducts: (q: string) => invoke('purchase:searchProducts', q),
+    findProductByBarcode: (barcode: string) => invoke('purchase:findProductByBarcode', barcode),
     listSupplierDebts: (supplierId?: number | null) => invoke('purchase:listSupplierDebts', supplierId ?? null),
     recordSupplierPayment: (input: { supplierId: number; jumlah: number; tanggal: string; keterangan: string | null }) =>
       invoke('purchase:recordSupplierPayment', input),

@@ -341,6 +341,14 @@ declare global {
             units: { id: number; level: number; satuan: string; konversi: number }[]
           }[]
         >
+        findProductByBarcode: (barcode: string) => Promise<{
+          id: number
+          kodeItem: string
+          namaItem: string
+          satuan: string
+          hargaPokok: number
+          units: { id: number; satuan: string; konversi: number }[]
+        } | null>
       }
       expense: {
         recordExpense: (input: {
