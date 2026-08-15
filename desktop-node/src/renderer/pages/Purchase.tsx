@@ -80,6 +80,9 @@ export function Purchase() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [paletteResults, setPaletteResults] = useState<SearchResult[]>([])
+  // cmdk's own highlighted row, mirrored here now that Enter is handled by hand
+  // instead of cmdk's native (synchronous) Enter handler.
+  const [paletteHighlighted, setPaletteHighlighted] = useState('')
 
   const [newSupplierOpen, setNewSupplierOpen] = useState(false)
   const [newSupplierNama, setNewSupplierNama] = useState('')
@@ -277,12 +280,20 @@ export function Purchase() {
   }
 
   // The palette's search runs in a useEffect, so a scanner's trailing Enter lands
-  // before the results do. Handle Enter with its own exact-barcode lookup, and leave
-  // the palette open so consecutive scans stack up.
+  // before the results do. cmdk's own Enter handler runs synchronously on the same
+  // bubble, so a late preventDefault() (after the await) is already too late - cmdk
+  // has selected the highlighted row by then. Own Enter completely instead: block
+  // cmdk synchronously, then decide ourselves whether it was a barcode scan (exact
+  // match - add that product, and leave the palette open so consecutive scans stack
+  // up) or a human search (no exact barcode match - fall back to whatever row cmdk
+  // has highlighted, same as its native behaviour would have added).
   async function handlePaletteKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter') {
       return
     }
+
+    e.preventDefault()
+    e.stopPropagation()
 
     const typed = paletteQuery.trim()
 
@@ -292,14 +303,18 @@ export function Purchase() {
 
     const scanned = await window.api.purchase.findProductByBarcode(typed)
 
-    if (!scanned) {
+    if (scanned) {
+      addItem(scanned)
+      setPaletteOpen(true)
+      setPaletteQuery('')
       return
     }
 
-    e.preventDefault()
-    addItem(scanned)
-    setPaletteOpen(true)
-    setPaletteQuery('')
+    const highlighted = paletteResults.find((p) => p.id.toString() === paletteHighlighted)
+
+    if (highlighted) {
+      addItem(highlighted)
+    }
   }
 
   return (
@@ -480,6 +495,8 @@ export function Purchase() {
         title="Cari Produk"
         description="Cari produk untuk ditambahkan ke pembelian"
         shouldFilter={false}
+        value={paletteHighlighted}
+        onValueChange={setPaletteHighlighted}
       >
         <CommandInput
           value={paletteQuery}
