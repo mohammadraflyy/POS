@@ -127,9 +127,21 @@ const api = {
       tanggal: string
       catatan: string | null
       items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+      dibayar?: number | null
     }) => invoke('purchase:recordPurchase', input),
     listPurchases: (input: { page: number; pageSize?: number }) => invoke('purchase:listPurchases', input),
     searchProducts: (q: string) => invoke('purchase:searchProducts', q),
+    listSupplierDebts: (supplierId?: number | null) => invoke('purchase:listSupplierDebts', supplierId ?? null),
+    recordSupplierPayment: (input: { supplierId: number; jumlah: number; tanggal: string; keterangan: string | null }) =>
+      invoke('purchase:recordSupplierPayment', input),
+    listSupplierPayments: (supplierId: number) => invoke('purchase:listSupplierPayments', supplierId),
+  },
+  expense: {
+    recordExpense: (input: { tanggal: string; kategori: string; jumlah: number; keterangan: string | null }) =>
+      invoke('expense:recordExpense', input),
+    listExpenses: (input: { from?: string; to?: string; page: number; pageSize?: number }) =>
+      invoke('expense:listExpenses', input),
+    deleteExpense: (id: number) => invoke('expense:deleteExpense', id),
   },
   stockOpname: {
     listCategories: () => invoke('stock-opname:listCategories'),

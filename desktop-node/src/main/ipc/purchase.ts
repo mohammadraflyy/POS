@@ -1,7 +1,15 @@
 import { ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
-import { recordPurchase, listPurchases, searchProductsForPurchase, type PurchaseItemInput } from '../purchase'
+import {
+  recordPurchase,
+  listPurchases,
+  searchProductsForPurchase,
+  recordSupplierPayment,
+  listSupplierDebts,
+  listSupplierPayments,
+  type PurchaseItemInput,
+} from '../purchase'
 import { requireUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -22,6 +30,7 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
         tanggal: string
         catatan: string | null
         items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+        dibayar?: number | null
       },
     ) => {
       const user = requireUser()
@@ -39,6 +48,8 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
         catatan: input.catatan,
         items,
         userId: user.id,
+        // null and undefined both mean "not specified", which records the invoice as settled
+        dibayar: input.dibayar === null || input.dibayar === undefined ? undefined : toCents(input.dibayar),
       })
     },
   )
@@ -53,6 +64,8 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
         id: purchase.id,
         tanggal: purchase.tanggal,
         total: toRupiah(purchase.total),
+        dibayar: toRupiah(purchase.dibayar),
+        sisa: toRupiah(purchase.sisa),
         catatan: purchase.catatan,
         supplierName: purchase.supplierName,
         itemSummary: purchase.itemSummary,
@@ -61,6 +74,51 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
       lastPage: result.lastPage,
       total: result.total,
     }
+  })
+
+  ipcMain.handle('purchase:listSupplierDebts', (_event, supplierId?: number | null) => {
+    requireUser()
+
+    return listSupplierDebts(db, supplierId ?? undefined).map((debt) => ({
+      purchaseId: debt.purchaseId,
+      supplierId: debt.supplierId,
+      supplierName: debt.supplierName,
+      tanggal: debt.tanggal,
+      total: toRupiah(debt.total),
+      dibayar: toRupiah(debt.dibayar),
+      sisa: toRupiah(debt.sisa),
+    }))
+  })
+
+  ipcMain.handle(
+    'purchase:recordSupplierPayment',
+    (_event, input: { supplierId: number; jumlah: number; tanggal: string; keterangan: string | null }) => {
+      const user = requireUser()
+
+      const result = recordSupplierPayment(db, {
+        supplierId: input.supplierId,
+        jumlah: toCents(input.jumlah),
+        tanggal: input.tanggal,
+        keterangan: input.keterangan,
+        userId: user.id,
+      })
+
+      return {
+        alokasi: result.alokasi.map((a) => ({ purchaseId: a.purchaseId, jumlah: toRupiah(a.jumlah) })),
+      }
+    },
+  )
+
+  ipcMain.handle('purchase:listSupplierPayments', (_event, supplierId: number) => {
+    requireUser()
+
+    return listSupplierPayments(db, supplierId).map((payment) => ({
+      id: payment.id,
+      purchaseId: payment.purchaseId,
+      jumlah: toRupiah(payment.jumlah),
+      tanggal: payment.tanggal,
+      keterangan: payment.keterangan,
+    }))
   })
 
   ipcMain.handle('purchase:searchProducts', (_event, q: string) => {

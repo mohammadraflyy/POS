@@ -6,10 +6,12 @@ import {
   History,
   LayoutGrid,
   PackagePlus,
+  Receipt,
   Ruler,
   Settings,
   ShoppingCart,
   Users,
+  Wallet,
 } from 'lucide-react'
 import { AppLogo } from './app-logo'
 import { NavMain } from './nav-main'
@@ -26,6 +28,7 @@ const penjualanNavItems: NavItem[] = [
 
 const pembelianNavItems: NavItem[] = [
   { title: 'Pembelian', href: '/purchase', icon: PackagePlus },
+  { title: 'Hutang Supplier', href: '/hutang-supplier', icon: Receipt },
   { title: 'Supplier', href: '/supplier', icon: Building2 },
   { title: 'Katalog Produk', href: '/inventory', icon: Boxes },
   { title: 'Master Satuan', href: '/master-satuan', icon: Ruler },
@@ -33,6 +36,8 @@ const pembelianNavItems: NavItem[] = [
 ]
 
 const laporanNavItems: NavItem[] = [{ title: 'Rekap', href: '/rekap', icon: ClipboardList }]
+
+const kasNavItems: NavItem[] = [{ title: 'Pengeluaran', href: '/pengeluaran', icon: Wallet }]
 
 const lainnyaNavItems: NavItem[] = [{ title: 'Pengaturan', href: '/settings', icon: Settings }]
 
@@ -51,6 +56,7 @@ export function AppSidebar({ storeName, user }: { storeName: string; user: AuthU
         <NavMain items={overviewNavItems} label="Ringkasan" />
         <NavMain items={penjualanNavItems} label="Penjualan" />
         <NavMain items={pembelianNavItems} label="Pembelian & Stok" />
+        <NavMain items={kasNavItems} label="Kas" />
         {/* the rekap IPC handlers reject non-admins outright; hiding the link keeps
             a kasir from walking into a page that can only show an error */}
         {user.role === 'admin' && <NavMain items={laporanNavItems} label="Laporan" />}

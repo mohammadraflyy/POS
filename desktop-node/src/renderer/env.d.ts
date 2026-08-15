@@ -280,12 +280,15 @@ declare global {
           tanggal: string
           catatan: string | null
           items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+          dibayar?: number | null
         }) => Promise<{ purchaseId: number }>
         listPurchases: (input: { page: number; pageSize?: number }) => Promise<{
           data: {
             id: number
             tanggal: string
             total: number
+            dibayar: number
+            sisa: number
             catatan: string | null
             supplierName: string | null
             itemSummary: string
@@ -294,6 +297,26 @@ declare global {
           lastPage: number
           total: number
         }>
+        listSupplierDebts: (supplierId?: number | null) => Promise<
+          {
+            purchaseId: number
+            supplierId: number | null
+            supplierName: string | null
+            tanggal: string
+            total: number
+            dibayar: number
+            sisa: number
+          }[]
+        >
+        recordSupplierPayment: (input: {
+          supplierId: number
+          jumlah: number
+          tanggal: string
+          keterangan: string | null
+        }) => Promise<{ alokasi: { purchaseId: number; jumlah: number }[] }>
+        listSupplierPayments: (supplierId: number) => Promise<
+          { id: number; purchaseId: number; jumlah: number; tanggal: string; keterangan: string | null }[]
+        >
         searchProducts: (q: string) => Promise<
           {
             id: number
@@ -304,6 +327,29 @@ declare global {
             units: { id: number; level: number; satuan: string; konversi: number }[]
           }[]
         >
+      }
+      expense: {
+        recordExpense: (input: {
+          tanggal: string
+          kategori: string
+          jumlah: number
+          keterangan: string | null
+        }) => Promise<{ expenseId: number }>
+        listExpenses: (input: { from?: string; to?: string; page: number; pageSize?: number }) => Promise<{
+          data: {
+            id: number
+            tanggal: string
+            kategori: string
+            jumlah: number
+            keterangan: string | null
+            userName: string | null
+          }[]
+          currentPage: number
+          lastPage: number
+          total: number
+          totalJumlah: number
+        }>
+        deleteExpense: (id: number) => Promise<void>
       }
       stockOpname: {
         listCategories: () => Promise<{ id: number; nama: string }[]>

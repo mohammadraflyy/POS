@@ -8,6 +8,7 @@ import {
   productUnits,
   purchases,
   purchaseItems,
+  purchasePayments,
   stockMovements,
   suppliers,
   units,
@@ -19,6 +20,9 @@ import {
   searchProductsForPurchase,
   hitungHargaPokokRataRata,
   hitungHargaPokokSatuan,
+  recordSupplierPayment,
+  listSupplierDebts,
+  listSupplierPayments,
   type PurchaseItemInput,
 } from './purchase'
 
@@ -646,5 +650,174 @@ describe('searchProductsForPurchase', () => {
     const db = seedDb()
     const results = searchProductsForPurchase(db, 'gula')
     expect(results[0].units).toEqual([])
+  })
+})
+
+describe('purchase debt', () => {
+  function buyOnCredit(
+    db: ReturnType<typeof seedDb>,
+    over: { supplierId?: number | null; tanggal?: string; qty?: number; hargaBeli?: number; dibayar?: number } = {},
+  ) {
+    const { supplierId = 1, tanggal = '2026-08-08', qty = 10, hargaBeli = 1400_00, dibayar } = over
+
+    return recordPurchase(db, {
+      supplierId,
+      tanggal,
+      catatan: null,
+      items: [baseItem({ qty, hargaBeli })],
+      userId: 1,
+      dibayar,
+    })
+  }
+
+  it('treats a purchase with no dibayar given as paid in full', () => {
+    const db = seedDb()
+    const { purchaseId } = buyOnCredit(db)
+
+    const purchase = db.select().from(purchases).where(eq(purchases.id, purchaseId)).get()
+    expect(purchase).toMatchObject({ total: 14000_00, dibayar: 14000_00 })
+    expect(listSupplierDebts(db)).toEqual([])
+  })
+
+  it('records the unpaid remainder as debt when dibayar is below total', () => {
+    const db = seedDb()
+    const { purchaseId } = buyOnCredit(db, { dibayar: 4000_00 })
+
+    expect(listSupplierDebts(db)).toEqual([
+      {
+        purchaseId,
+        supplierId: 1,
+        supplierName: 'CV Sumber Makmur',
+        tanggal: '2026-08-08',
+        total: 14000_00,
+        dibayar: 4000_00,
+        sisa: 10000_00,
+      },
+    ])
+  })
+
+  it('rejects a dibayar above the purchase total or below zero', () => {
+    const db = seedDb()
+    expect(() => buyOnCredit(db, { dibayar: 14000_01 })).toThrow('Dibayar tidak boleh melebihi total pembelian.')
+    expect(() => buyOnCredit(db, { dibayar: -1 })).toThrow('Dibayar tidak boleh negatif.')
+  })
+
+  it('allocates a supplier payment to the oldest invoice first', () => {
+    const db = seedDb()
+    const lama = buyOnCredit(db, { tanggal: '2026-08-01', dibayar: 0 })
+    const baru = buyOnCredit(db, { tanggal: '2026-08-05', dibayar: 0 })
+
+    const result = recordSupplierPayment(db, {
+      supplierId: 1,
+      jumlah: 14000_00,
+      tanggal: '2026-08-10',
+      keterangan: 'byr sumber makmur',
+      userId: 1,
+    })
+
+    expect(result.alokasi).toEqual([{ purchaseId: lama.purchaseId, jumlah: 14000_00 }])
+    expect(listSupplierDebts(db).map((d) => d.purchaseId)).toEqual([baru.purchaseId])
+  })
+
+  it('splits a lump payment across invoices, oldest first', () => {
+    const db = seedDb()
+    const lama = buyOnCredit(db, { tanggal: '2026-08-01', dibayar: 0 })
+    const baru = buyOnCredit(db, { tanggal: '2026-08-05', dibayar: 0 })
+
+    const result = recordSupplierPayment(db, {
+      supplierId: 1,
+      jumlah: 20000_00,
+      tanggal: '2026-08-10',
+      keterangan: null,
+      userId: 1,
+    })
+
+    expect(result.alokasi).toEqual([
+      { purchaseId: lama.purchaseId, jumlah: 14000_00 },
+      { purchaseId: baru.purchaseId, jumlah: 6000_00 },
+    ])
+
+    const rows = db.select().from(purchasePayments).all()
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ purchaseId: lama.purchaseId, jumlah: 14000_00, tanggal: '2026-08-10', userId: 1 })
+    expect(listSupplierDebts(db)).toEqual([
+      expect.objectContaining({ purchaseId: baru.purchaseId, dibayar: 6000_00, sisa: 8000_00 }),
+    ])
+  })
+
+  it('never touches another supplier\'s invoices', () => {
+    const db = seedDb()
+    const now = new Date()
+    db.insert(suppliers)
+      .values({ id: 2, nama: 'PT Kartika', telepon: null, alamat: null, keterangan: null, createdAt: now, updatedAt: now })
+      .run()
+
+    const kartika = buyOnCredit(db, { supplierId: 2, tanggal: '2026-08-01', dibayar: 0 })
+    const makmur = buyOnCredit(db, { supplierId: 1, tanggal: '2026-08-05', dibayar: 0 })
+
+    const result = recordSupplierPayment(db, {
+      supplierId: 1,
+      jumlah: 14000_00,
+      tanggal: '2026-08-10',
+      keterangan: null,
+      userId: 1,
+    })
+
+    expect(result.alokasi).toEqual([{ purchaseId: makmur.purchaseId, jumlah: 14000_00 }])
+    expect(listSupplierDebts(db, 2).map((d) => d.purchaseId)).toEqual([kartika.purchaseId])
+  })
+
+  it('rejects a payment larger than the supplier\'s outstanding debt', () => {
+    const db = seedDb()
+    buyOnCredit(db, { dibayar: 4000_00 })
+
+    expect(() =>
+      recordSupplierPayment(db, { supplierId: 1, jumlah: 10000_01, tanggal: '2026-08-10', keterangan: null, userId: 1 }),
+    ).toThrow('Jumlah bayar melebihi sisa hutang supplier.')
+
+    expect(db.select().from(purchasePayments).all()).toEqual([])
+  })
+
+  it('rejects a non-positive payment and an unknown supplier', () => {
+    const db = seedDb()
+    buyOnCredit(db, { dibayar: 0 })
+
+    expect(() =>
+      recordSupplierPayment(db, { supplierId: 1, jumlah: 0, tanggal: '2026-08-10', keterangan: null, userId: 1 }),
+    ).toThrow('Jumlah bayar harus lebih dari 0.')
+    expect(() =>
+      recordSupplierPayment(db, { supplierId: 99, jumlah: 1000_00, tanggal: '2026-08-10', keterangan: null, userId: 1 }),
+    ).toThrow('Supplier tidak ditemukan.')
+  })
+
+  it('lists a supplier\'s payments, newest first', () => {
+    const db = seedDb()
+    buyOnCredit(db, { tanggal: '2026-08-01', dibayar: 0 })
+
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 4000_00, tanggal: '2026-08-09', keterangan: 'cicilan 1', userId: 1 })
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 5000_00, tanggal: '2026-08-11', keterangan: 'cicilan 2', userId: 1 })
+
+    const payments = listSupplierPayments(db, 1)
+    expect(payments.map((p) => [p.tanggal, p.jumlah, p.keterangan])).toEqual([
+      ['2026-08-11', 5000_00, 'cicilan 2'],
+      ['2026-08-09', 4000_00, 'cicilan 1'],
+    ])
+  })
+})
+
+describe('listPurchases with debt', () => {
+  it('carries dibayar and the remaining debt per row', () => {
+    const db = seedDb()
+    recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1400_00 })],
+      userId: 1,
+      dibayar: 4000_00,
+    })
+
+    const list = listPurchases(db, { page: 1 })
+    expect(list.data[0]).toMatchObject({ total: 14000_00, dibayar: 4000_00, sisa: 10000_00 })
   })
 })

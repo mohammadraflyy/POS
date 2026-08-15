@@ -7,6 +7,7 @@ import { registerInventoryIpc } from './ipc/inventory'
 import { registerSupplierIpc } from './ipc/supplier'
 import { registerPurchaseIpc } from './ipc/purchase'
 import { registerStockOpnameIpc } from './ipc/stock-opname'
+import { registerExpenseIpc } from './ipc/expense'
 import { registerRekapIpc } from './ipc/rekap'
 import { registerDashboardIpc } from './ipc/dashboard'
 import { seedDefaultAdmin } from './db/seed'
@@ -74,6 +75,7 @@ app.whenReady().then(() => {
   registerSupplierIpc(db)
   registerPurchaseIpc(db)
   registerStockOpnameIpc(db)
+  registerExpenseIpc(db)
   registerRekapIpc(db)
   registerDashboardIpc(db)
   createWindow()

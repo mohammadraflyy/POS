@@ -115,6 +115,12 @@ export const purchases = sqliteTable('purchases', {
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
   tanggal: text('tanggal').notNull(),
   total: integer('total').notNull().default(0),
+  /**
+   * How much of `total` was settled when the goods arrived. `total - dibayar` is the
+   * supplier debt - the cash book's BON column - and every later instalment lands in
+   * `purchase_payments` while adding to this figure.
+   */
+  dibayar: integer('dibayar').notNull().default(0),
   catatan: text('catatan'),
   ...timestamps(),
 })
@@ -167,11 +173,44 @@ export const saleItems = sqliteTable('sale_items', {
   ...timestamps(),
 })
 
+/**
+ * Instalments paid against a purchase, the mirror image of {@link bonPayments}: same
+ * shape, opposite party. These are the cash book's `byr <supplier>` rows, which land on
+ * the day the money leaves - not on the day the goods arrived.
+ */
+export const purchasePayments = sqliteTable('purchase_payments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  purchaseId: integer('purchase_id').notNull().references(() => purchases.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  jumlah: integer('jumlah').notNull(),
+  tanggal: text('tanggal').notNull(),
+  keterangan: text('keterangan'),
+  ...timestamps(),
+})
+
 export const bonPayments = sqliteTable('bon_payments', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   saleId: integer('sale_id').notNull().references(() => sales.id, { onDelete: 'cascade' }),
   jumlah: integer('jumlah').notNull(),
   tanggal: text('tanggal').notNull(),
+  keterangan: text('keterangan'),
+  ...timestamps(),
+})
+
+/**
+ * Cash paid out for something other than goods - DPAM (water), KARYAWAN (payroll), fuel.
+ * Deliberately excludes belanja barang: that money is already derivable from `purchases`
+ * and `purchase_payments`, and recording it here too would double it in the cash book.
+ *
+ * `kategori` is free text rather than a lookup table. The owner's own sheet writes it that
+ * way, and a category list nobody maintains is worse than none.
+ */
+export const cashExpenses = sqliteTable('cash_expenses', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  tanggal: text('tanggal').notNull(),
+  kategori: text('kategori').notNull(),
+  jumlah: integer('jumlah').notNull(),
   keterangan: text('keterangan'),
   ...timestamps(),
 })

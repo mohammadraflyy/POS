@@ -1,9 +1,10 @@
-import { desc, eq, inArray, like, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import {
   purchases,
   purchaseItems,
+  purchasePayments,
   products,
   productPriceHistories,
   suppliers,
@@ -65,6 +66,8 @@ export interface RecordPurchaseInput {
   catatan: string | null
   items: PurchaseItemInput[]
   userId: number | null
+  /** paid on arrival; omitted means the whole invoice was settled, so no debt is created */
+  dibayar?: number
 }
 
 export interface RecordPurchaseResult {
@@ -159,6 +162,21 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
     })
   }
 
+  const totalPembelian = resolvedItems.reduce((sum, item) => sum + item.subtotal, 0)
+  const dibayar = input.dibayar ?? totalPembelian
+
+  if (!Number.isInteger(dibayar)) {
+    throw new Error('Dibayar harus bilangan bulat.')
+  }
+
+  if (dibayar < 0) {
+    throw new Error('Dibayar tidak boleh negatif.')
+  }
+
+  if (dibayar > totalPembelian) {
+    throw new Error('Dibayar tidak boleh melebihi total pembelian.')
+  }
+
   return db.transaction((tx) => {
     const now = new Date()
 
@@ -169,6 +187,7 @@ export function recordPurchase(db: BetterSQLite3Database<typeof schema>, input: 
         userId: input.userId,
         tanggal: input.tanggal,
         total: 0,
+        dibayar,
         catatan: input.catatan,
         createdAt: now,
         updatedAt: now,
@@ -286,6 +305,9 @@ export interface PurchaseListItem {
   id: number
   tanggal: string
   total: number
+  dibayar: number
+  /** the unpaid remainder of this invoice */
+  sisa: number
   catatan: string | null
   supplierName: string | null
   itemSummary: string
@@ -310,6 +332,7 @@ export function listPurchases(
       id: purchases.id,
       tanggal: purchases.tanggal,
       total: purchases.total,
+      dibayar: purchases.dibayar,
       catatan: purchases.catatan,
       supplierName: suppliers.nama,
     })
@@ -344,6 +367,8 @@ export function listPurchases(
       id: purchase.id,
       tanggal: purchase.tanggal,
       total: purchase.total,
+      dibayar: purchase.dibayar,
+      sisa: purchase.total - purchase.dibayar,
       catatan: purchase.catatan,
       supplierName: purchase.supplierName,
       itemSummary,
@@ -390,4 +415,161 @@ export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schem
 
     return { ...row, satuan: baseUnit.unitCode, units: derivedUnits }
   })
+}
+
+export interface SupplierDebtRow {
+  purchaseId: number
+  supplierId: number | null
+  supplierName: string | null
+  tanggal: string
+  total: number
+  dibayar: number
+  sisa: number
+}
+
+/**
+ * Unsettled purchases, oldest first - the order a lump payment is allocated in.
+ * Pass `supplierId` to narrow to one supplier's invoices.
+ */
+export function listSupplierDebts(
+  db: BetterSQLite3Database<typeof schema>,
+  supplierId?: number,
+): SupplierDebtRow[] {
+  const rows = db
+    .select({
+      purchaseId: purchases.id,
+      supplierId: purchases.supplierId,
+      supplierName: suppliers.nama,
+      tanggal: purchases.tanggal,
+      total: purchases.total,
+      dibayar: purchases.dibayar,
+    })
+    .from(purchases)
+    .leftJoin(suppliers, eq(purchases.supplierId, suppliers.id))
+    .where(
+      and(
+        sql`${purchases.dibayar} < ${purchases.total}`,
+        supplierId === undefined ? undefined : eq(purchases.supplierId, supplierId),
+      ),
+    )
+    .orderBy(purchases.tanggal, purchases.id)
+    .all()
+
+  return rows.map((row) => ({ ...row, sisa: row.total - row.dibayar }))
+}
+
+export interface SupplierPaymentInput {
+  supplierId: number
+  jumlah: number
+  tanggal: string
+  keterangan: string | null
+  userId: number | null
+}
+
+export interface SupplierPaymentResult {
+  alokasi: { purchaseId: number; jumlah: number }[]
+}
+
+/**
+ * Pays a supplier a single lump sum and spreads it over that supplier's outstanding
+ * invoices, oldest first. The owner pays per supplier, not per invoice, but the app still
+ * has to know which invoice is settled - so one payment can write several
+ * `purchase_payments` rows.
+ */
+export function recordSupplierPayment(
+  db: BetterSQLite3Database<typeof schema>,
+  input: SupplierPaymentInput,
+): SupplierPaymentResult {
+  const supplier = db.select().from(suppliers).where(eq(suppliers.id, input.supplierId)).get()
+
+  if (!supplier) {
+    throw new Error('Supplier tidak ditemukan.')
+  }
+
+  if (!Number.isInteger(input.jumlah) || input.jumlah <= 0) {
+    throw new Error('Jumlah bayar harus lebih dari 0.')
+  }
+
+  if (!input.tanggal.trim()) {
+    throw new Error('Tanggal wajib diisi.')
+  }
+
+  const keterangan = input.keterangan?.trim() || null
+
+  if (keterangan && keterangan.length > 500) {
+    throw new Error('Keterangan maksimal 500 karakter.')
+  }
+
+  const debts = listSupplierDebts(db, input.supplierId)
+  const totalHutang = debts.reduce((sum, debt) => sum + debt.sisa, 0)
+
+  if (input.jumlah > totalHutang) {
+    throw new Error('Jumlah bayar melebihi sisa hutang supplier.')
+  }
+
+  return db.transaction((tx) => {
+    const now = new Date()
+    const alokasi: { purchaseId: number; jumlah: number }[] = []
+    let belumTeralokasi = input.jumlah
+
+    for (const debt of debts) {
+      if (belumTeralokasi <= 0) {
+        break
+      }
+
+      const porsi = Math.min(belumTeralokasi, debt.sisa)
+
+      tx.insert(purchasePayments)
+        .values({
+          purchaseId: debt.purchaseId,
+          userId: input.userId,
+          jumlah: porsi,
+          tanggal: input.tanggal,
+          keterangan,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+
+      tx.update(purchases)
+        .set({ dibayar: sql`${purchases.dibayar} + ${porsi}`, updatedAt: now })
+        .where(eq(purchases.id, debt.purchaseId))
+        .run()
+
+      alokasi.push({ purchaseId: debt.purchaseId, jumlah: porsi })
+      belumTeralokasi -= porsi
+    }
+
+    return { alokasi }
+  })
+}
+
+export interface SupplierPaymentRow {
+  id: number
+  purchaseId: number
+  jumlah: number
+  tanggal: string
+  keterangan: string | null
+}
+
+/** one supplier's instalment history, newest first */
+export function listSupplierPayments(
+  db: BetterSQLite3Database<typeof schema>,
+  supplierId: number,
+  limit = 50,
+): SupplierPaymentRow[] {
+  return db
+    .select({
+      id: purchasePayments.id,
+      purchaseId: purchasePayments.purchaseId,
+      jumlah: purchasePayments.jumlah,
+      tanggal: purchasePayments.tanggal,
+      keterangan: purchasePayments.keterangan,
+    })
+    .from(purchasePayments)
+    .innerJoin(purchases, eq(purchasePayments.purchaseId, purchases.id))
+    .where(eq(purchases.supplierId, supplierId))
+    .orderBy(desc(purchasePayments.tanggal), desc(purchasePayments.id))
+    .limit(limit)
+    .all()
 }

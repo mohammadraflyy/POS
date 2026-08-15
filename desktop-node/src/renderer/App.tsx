@@ -11,6 +11,8 @@ import { Supplier } from './pages/Supplier'
 import { MasterSatuan } from './pages/MasterSatuan'
 import { Users } from './pages/Users'
 import { Purchase } from './pages/Purchase'
+import { HutangSupplier } from './pages/HutangSupplier'
+import { Pengeluaran } from './pages/Pengeluaran'
 import { StockOpname } from './pages/StockOpname'
 import { Rekap } from './pages/Rekap'
 import { Dashboard } from './pages/Dashboard'
@@ -32,6 +34,8 @@ export function App() {
         <Route path="/supplier" element={<Supplier />} />
         <Route path="/master-satuan" element={<MasterSatuan />} />
         <Route path="/purchase" element={<Purchase />} />
+        <Route path="/hutang-supplier" element={<HutangSupplier />} />
+        <Route path="/pengeluaran" element={<Pengeluaran />} />
         <Route path="/stock-opname" element={<StockOpname />} />
         <Route path="/rekap" element={<Rekap />} />
         <Route path="/users" element={<Users />} />

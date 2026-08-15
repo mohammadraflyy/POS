@@ -1,6 +1,6 @@
 # Buku Kas Harian — Design Spec
 
-**Status:** Step 1 of 5 shipped (commit `a81fd4e`). Steps 2–5 not started.
+**Status:** Steps 1–3 of 5 shipped. Steps 4–5 not started.
 **Scope:** `desktop-node/`. Turn the owner's hand-kept daily cash book into something the app produces from the transactions it already records.
 **Origin:** The owner pasted a real cash book covering 01–13 August 2026. This document records what was reverse-engineered from it, so nobody has to derive it twice.
 
@@ -64,19 +64,42 @@ Each step is useful on its own and testable on its own.
 
 `sales.metodePembayaran` widened to `tunai | bon | qris | transfer`. Both new methods settle in full at checkout (`dibayar = total`), so they imply neither change nor piutang, but they are excluded from `omzetTunai`. `getRekap` gained `omzetNonTunai` — the **QR/TRF/dana** column.
 
-### 2. Supplier debt — **NEXT**
+### 2. Supplier debt — **DONE**
 
 - `purchases.dibayar` (integer cents): how much was paid when the goods arrived. `total − dibayar` is the debt. This is the **BON** column.
-- New table `purchase_payments(purchaseId, jumlah, tanggal, keterangan, userId)`, mirroring the existing `bon_payments` for customer credit. These are the `byr <supplier>` rows.
+- New table `purchase_payments(purchaseId, userId, jumlah, tanggal, keterangan)`, mirroring the existing `bon_payments` for customer credit. These are the `byr <supplier>` rows.
 - A lump payment to one supplier allocates **oldest invoice first**, so the owner can keep paying in bulk while the app still knows which invoice is settled.
 
 Decision recorded: per-purchase debt with allocation, **not** a per-supplier running balance. The running-balance model is simpler but loses which invoice is outstanding. Revisit only if the owner says invoice-level tracking is unwanted.
 
-### 3. Operating expenses
+**As shipped.** Migration `0014` adds the column and the table, and backfills every pre-existing
+purchase as `dibayar = total` — leaving them at 0 would have invented a debt for each one.
+`recordPurchase` takes an optional `dibayar` that defaults to the full total, so a purchase only
+carries debt when the entry says so. `recordSupplierPayment` writes one `purchase_payments` row per
+invoice it touches, `listSupplierDebts` returns the unpaid invoices oldest-first (that ordering *is*
+the allocation order), and `listSupplierPayments` is the instalment history. UI: a **Dibayar** field
+plus a **Sisa Hutang** column on `/purchase`, and a new `/hutang-supplier` page grouped per supplier.
+
+Deliberately not built, because the cash book does not ask for them: `purchases.jatuhTempo`,
+`purchases.metodePembayaran`, and the dashboard debt card from the roadmap's Fase 4. `dibayar < total`
+already answers "is this on credit?", and a due date needs a reminder surface to be worth storing.
+
+### 3. Operating expenses — **DONE**
 
 `pengeluaran` is not only belanja. `DPAM`, `KARYAWAN`, and similar have no home in the schema — there is no expense table at all. Needs a `cash_expenses` (or similarly named) table with date, category, amount, note.
 
-### 4. Daily cash close
+**As shipped.** Migration `0015` adds `cash_expenses(userId, tanggal, kategori, jumlah, keterangan)`.
+`kategori` is free text with a `datalist` of the owner's recurring rows (DPAM, KARYAWAN, BENSIN,
+LISTRIK, SEWA, LAIN-LAIN) — a lookup table nobody maintains is worse than none. The table
+deliberately holds **only non-goods cash out**: belanja is already derivable from `purchases` and
+`purchase_payments`, so recording it here too would double it in step 5.
+
+`listCashExpenses` filters by an inclusive date range and returns `totalJumlah` over the whole
+filter, not the page, because the cash book wants the period's figure. Deleting is `requireAdmin`
+(it rewrites the cash record); recording and listing are `requireUser`. UI: `/pengeluaran`, in a new
+sidebar group **Kas** that step 5's Buku Kas page will join. No edit flow — delete and re-enter.
+
+### 4. Daily cash close — **NEXT**
 
 The cashier counts physical cash; the app computes what it should be from the day's cash sales, cash purchases, expenses and opening balance. The difference is **selisih − / +**. Nothing like this exists — no closing flow, no opening balance anywhere.
 

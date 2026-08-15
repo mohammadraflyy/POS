@@ -42,7 +42,7 @@ function partialMigrationsBefore(tag: string) {
 }
 
 describe('createDb', () => {
-  it('creates all 16 business tables', () => {
+  it('creates all 18 business tables', () => {
     const db = createDb(':memory:', migrationsFolder)
 
     const rows = db.all<{ name: string }>(
@@ -53,12 +53,14 @@ describe('createDb', () => {
     expect(tableNames).toEqual(
       [
         'bon_payments',
+        'cash_expenses',
         'categories',
         'product_price_histories',
         'product_price_tiers',
         'product_units',
         'products',
         'purchase_items',
+        'purchase_payments',
         'purchases',
         'sale_items',
         'sales',
@@ -379,5 +381,37 @@ describe('createDb', () => {
       { id: 11, parent_unit_id: null },
       { id: 12, parent_unit_id: 11 },
     ])
+  })
+})
+
+describe('migration 0014', () => {
+  it('backfills existing purchases as paid in full so no debt is invented', () => {
+    const { partialFolder, dbFile, cleanup } = partialMigrationsBefore('0014_jittery_marten_broadcloak')
+
+    try {
+      const before = createDb(dbFile, partialFolder)
+      const now = Date.now()
+
+      before.run(
+        sql`INSERT INTO purchases (id, supplier_id, user_id, tanggal, total, catatan, created_at, updated_at)
+            VALUES (1, NULL, NULL, '2026-08-01', 500000, NULL, ${now}, ${now}),
+                   (2, NULL, NULL, '2026-08-02', 0, NULL, ${now}, ${now})`,
+      )
+
+      before.$client.close()
+
+      const after = createDb(dbFile, migrationsFolder)
+      const rows = after.all<{ id: number; total: number; dibayar: number }>(
+        sql`SELECT id, total, dibayar FROM purchases ORDER BY id`,
+      )
+      after.$client.close()
+
+      expect(rows).toEqual([
+        { id: 1, total: 500000, dibayar: 500000 },
+        { id: 2, total: 0, dibayar: 0 },
+      ])
+    } finally {
+      cleanup()
+    }
   })
 })

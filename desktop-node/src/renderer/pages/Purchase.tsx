@@ -39,6 +39,8 @@ interface PurchaseRow {
   id: number
   tanggal: string
   total: number
+  dibayar: number
+  sisa: number
   catatan: string | null
   supplierName: string | null
   itemSummary: string
@@ -69,6 +71,8 @@ export function Purchase() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   })
   const [catatan, setCatatan] = useState('')
+  // empty means "paid in full"; anything lower leaves the remainder as supplier debt (BON)
+  const [dibayar, setDibayar] = useState('')
   const [items, setItems] = useState<DraftItem[]>([])
   const [processing, setProcessing] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -174,6 +178,8 @@ export function Purchase() {
   }
 
   const grandTotal = items.reduce((sum, i) => sum + Number(i.qty || 0) * Number(i.hargaBeli || 0), 0)
+  const dibayarNum = dibayar.trim() === '' ? grandTotal : Number(dibayar)
+  const sisaHutang = Math.max(0, grandTotal - (Number.isFinite(dibayarNum) ? dibayarNum : 0))
 
   function submitNewSupplier(e: FormEvent) {
     e.preventDefault()
@@ -231,6 +237,16 @@ export function Purchase() {
       }
     }
 
+    if (dibayar.trim() !== '' && (!Number.isFinite(dibayarNum) || dibayarNum < 0)) {
+      setFormError('Dibayar tidak boleh negatif.')
+      return
+    }
+
+    if (dibayarNum > grandTotal) {
+      setFormError('Dibayar tidak boleh melebihi total pembelian.')
+      return
+    }
+
     setProcessing(true)
     setFormError(null)
 
@@ -245,10 +261,12 @@ export function Purchase() {
           qty: Number(item.qty),
           hargaBeli: Number(item.hargaBeli),
         })),
+        dibayar: dibayar.trim() === '' ? null : dibayarNum,
       })
       .then(() => {
         setItems([])
         setCatatan('')
+        setDibayar('')
         setSupplierId(null)
         loadPurchases(1)
       })
@@ -365,9 +383,19 @@ export function Purchase() {
 
           <InputError message={formError ?? undefined} />
 
-          <div className="flex items-center justify-between border-t pt-3">
-            <span className="text-sm text-muted-foreground">Total</span>
-            <span className="text-lg font-semibold">{formatRupiah(grandTotal)}</span>
+          <div className="grid gap-3 border-t pt-3 sm:grid-cols-3">
+            <div className="grid gap-1">
+              <Label>Dibayar (kosong = lunas)</Label>
+              <Input type="number" min={0} value={dibayar} onChange={(e) => setDibayar(e.target.value)} />
+            </div>
+            <div className="grid gap-1">
+              <span className="text-sm text-muted-foreground">Sisa Hutang</span>
+              <span className="text-lg font-semibold">{formatRupiah(sisaHutang)}</span>
+            </div>
+            <div className="grid gap-1 sm:text-right">
+              <span className="text-sm text-muted-foreground">Total</span>
+              <span className="text-lg font-semibold">{formatRupiah(grandTotal)}</span>
+            </div>
           </div>
 
           <Button type="submit" disabled={processing || items.length === 0}>
@@ -390,6 +418,16 @@ export function Purchase() {
               name: 'Total',
               width: 140,
               renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.total)}</span>,
+            },
+            {
+              key: 'sisa',
+              name: 'Sisa Hutang',
+              width: 140,
+              renderCell: ({ row }) => (
+                <span className={`w-full text-right ${row.sisa > 0 ? 'text-destructive' : ''}`}>
+                  {row.sisa > 0 ? formatRupiah(row.sisa) : '-'}
+                </span>
+              ),
             },
           ]}
         />
