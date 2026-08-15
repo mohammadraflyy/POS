@@ -7,6 +7,7 @@ import { users, products, productUnits, productPriceTiers, units, sales, saleIte
 import {
   checkout,
   type CheckoutInput,
+  addItemsToSale,
   cancelSale,
   deleteSale,
   listCustomers,
@@ -1183,6 +1184,118 @@ describe('recordBonPayment', () => {
     const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
     expect(sale?.dibayar).toBe(0)
     expect(db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).all()).toHaveLength(0)
+  })
+})
+
+describe('addItemsToSale', () => {
+  function seedWithBon() {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Sri',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    return { db, saleId }
+  }
+
+  it('appends the item, raises the total, and cuts stock', () => {
+    const { db, saleId } = seedWithBon()
+    const stokAwal = db.select().from(products).where(eq(products.id, 2)).get()?.stok ?? 0
+    const totalAwal = db.select().from(sales).where(eq(sales.id, saleId)).get()?.total ?? 0
+
+    const result = addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 3 }])
+
+    expect(result.total).toBe(totalAwal + 3 * 3000_00)
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.total).toBe(totalAwal + 3 * 3000_00)
+    expect(db.select().from(products).where(eq(products.id, 2)).get()?.stok).toBe(stokAwal - 3)
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(2)
+  })
+
+  it('logs a stock movement for the added line', () => {
+    const { db, saleId } = seedWithBon()
+
+    addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 3 }])
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
+    expect(movements).toHaveLength(2)
+    expect(movements[1].movementType).toBe('sale')
+    expect(movements[1].quantity).toBe(-3)
+  })
+
+  it('does not move the sale date, because the bon is still the old bon', () => {
+    const { db, saleId } = seedWithBon()
+    const before = db.select().from(sales).where(eq(sales.id, saleId)).get()?.createdAt.toISOString()
+
+    addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])
+
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.createdAt.toISOString()).toBe(before)
+  })
+
+  it('refuses a sale that is not a bon', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    expect(() => addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])).toThrow(
+      'Hanya transaksi bon yang bisa ditambah item.',
+    )
+  })
+
+  it('refuses a cancelled sale', () => {
+    const { db, saleId } = seedWithBon()
+    cancelSale(db, saleId)
+
+    expect(() => addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])).toThrow(
+      'Transaksi yang dibatalkan tidak bisa ditambah item.',
+    )
+  })
+
+  it('refuses a bon that is already settled', () => {
+    const { db, saleId } = seedWithBon()
+    const total = db.select().from(sales).where(eq(sales.id, saleId)).get()?.total ?? 0
+    recordBonPayment(db, saleId, total, null)
+
+    expect(() => addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])).toThrow(
+      'Bon sudah lunas, tidak bisa ditambah item.',
+    )
+  })
+
+  it('refuses a sale that does not exist', () => {
+    const db = seedDb()
+
+    expect(() => addItemsToSale(db, 999, [{ productId: 2, productUnitId: null, qty: 1 }])).toThrow(
+      'Transaksi tidak ditemukan.',
+    )
+  })
+
+  it('refuses an empty item list', () => {
+    const { db, saleId } = seedWithBon()
+
+    expect(() => addItemsToSale(db, saleId, [])).toThrow('Tidak ada item yang ditambahkan.')
+  })
+
+  it('writes nothing when one line asks for more qty than there is stock', () => {
+    const { db, saleId } = seedWithBon()
+    const stokAwal = db.select().from(products).where(eq(products.id, 1)).get()?.stok ?? 0
+    const itemsAwal = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all().length
+
+    expect(() =>
+      addItemsToSale(db, saleId, [
+        { productId: 2, productUnitId: null, qty: 1 },
+        { productId: 1, productUnitId: null, qty: 9999 },
+      ]),
+    ).toThrow('Stok Beras 5kg tidak cukup.')
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(stokAwal)
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(itemsAwal)
   })
 })
 

@@ -5,6 +5,7 @@ import * as schema from '../db/schema'
 import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings, units, users } from '../db/schema'
 import {
   checkout,
+  addItemsToSale,
   cancelSale,
   deleteSale,
   listCustomers,
@@ -437,6 +438,17 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       requireUser()
 
       recordBonPayment(db, input.saleId, toCents(input.jumlah), input.keterangan)
+    },
+  )
+
+  ipcMain.handle(
+    'kasir:addItemsToSale',
+    (_event, input: { saleId: number; items: { productId: number; productUnitId: number | null; qty: number }[] }) => {
+      requireUser()
+
+      const result = addItemsToSale(db, input.saleId, input.items)
+
+      return { total: toRupiah(result.total) }
     },
   )
 

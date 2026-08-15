@@ -118,6 +118,10 @@ declare global {
           bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
         }>
         recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) => Promise<void>
+        addItemsToSale: (input: {
+          saleId: number
+          items: { productId: number; productUnitId: number | null; qty: number }[]
+        }) => Promise<{ total: number }>
         updateStoreSettings: (input: {
           namaToko: string
           alamat: string | null

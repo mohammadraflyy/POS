@@ -50,6 +50,10 @@ const api = {
     getSaleDetail: (saleId: number) => invoke('kasir:getSaleDetail', saleId),
     recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) =>
       invoke('kasir:recordBonPayment', input),
+    addItemsToSale: (input: {
+      saleId: number
+      items: { productId: number; productUnitId: number | null; qty: number }[]
+    }) => invoke('kasir:addItemsToSale', input),
     updateStoreSettings: (input: {
       namaToko: string
       alamat: string | null

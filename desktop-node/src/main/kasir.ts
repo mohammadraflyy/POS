@@ -396,6 +396,100 @@ export function updateSaleDate(db: Db, saleId: number, tanggal: string): void {
   db.update(sales).set({ createdAt: tanggalBaru, updatedAt: new Date() }).where(eq(sales.id, saleId)).run()
 }
 
+/**
+ * Appends lines to an existing unpaid bon: the customer took more goods on the same tab.
+ *
+ * The new lines are stamped with today's date while `sales.createdAt` stays put - the
+ * goods left today, but the debt is still the old debt. `dibayar` is untouched, so the
+ * outstanding balance rises by exactly the added subtotal.
+ *
+ * Only unpaid bon qualify. A cash, qris or transfer sale is money already counted, and
+ * editing it would silently disagree with the day's takings.
+ */
+export function addItemsToSale(db: Db, saleId: number, items: CartItemInput[]): { total: number } {
+  if (items.length < 1) {
+    throw new Error('Tidak ada item yang ditambahkan.')
+  }
+
+  for (const item of items) {
+    if (!(item.qty > 0)) {
+      throw new Error('Qty harus lebih dari 0.')
+    }
+  }
+
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  if (sale.status !== 'selesai') {
+    throw new Error('Transaksi yang dibatalkan tidak bisa ditambah item.')
+  }
+
+  if (sale.metodePembayaran !== 'bon') {
+    throw new Error('Hanya transaksi bon yang bisa ditambah item.')
+  }
+
+  if (sale.dibayar >= sale.total) {
+    throw new Error('Bon sudah lunas, tidak bisa ditambah item.')
+  }
+
+  const resolvedItems = resolveItems(db, items)
+
+  return db.transaction((tx) => {
+    const now = new Date()
+    let tambahan = 0
+
+    for (const line of resolvedItems) {
+      const subtotal = Math.round(line.qty * line.hargaJual)
+      tambahan += subtotal
+
+      tx.insert(saleItems)
+        .values({
+          saleId,
+          productId: line.productId,
+          productUnitId: line.productUnitId,
+          qty: line.qty,
+          konversi: line.konversi,
+          baseQuantity: line.qtyDasar,
+          satuan: line.satuan,
+          hargaJual: line.hargaJual,
+          hargaPokok: line.hargaPokok,
+          priceSource: line.priceSource,
+          subtotal,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+
+      tx.update(products)
+        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .where(eq(products.id, line.productId))
+        .run()
+
+      tx.insert(stockMovements)
+        .values({
+          productId: line.productId,
+          productUnitId: line.productUnitId,
+          quantity: -line.qty,
+          conversionFactor: line.konversi,
+          baseQuantity: -line.qtyDasar,
+          movementType: 'sale',
+          referenceId: saleId,
+          createdAt: now,
+        })
+        .run()
+    }
+
+    const total = sale.total + tambahan
+
+    tx.update(sales).set({ total, updatedAt: now }).where(eq(sales.id, saleId)).run()
+
+    return { total }
+  })
+}
+
 export function deleteSale(db: Db, saleId: number): void {
   const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
 
