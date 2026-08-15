@@ -57,6 +57,85 @@ function seedPcsBaseUnits(
     .run()
 }
 
+const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+function seedDb() {
+  const db = createDb(':memory:', migrationsFolder)
+  const now = new Date()
+
+  db.insert(users)
+    .values({
+      id: 1,
+      username: 'kasir1',
+      passwordHash: 'hash',
+      name: 'Kasir Satu',
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  db.insert(products)
+    .values([
+      {
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 10,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 2,
+        kodeItem: 'MIE1',
+        namaItem: 'Mie Instan',
+        hargaJual: 3000_00,
+        hargaPokok: 2500_00,
+        stok: 100,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    .run()
+
+  seedPcsBaseUnits(db, [
+    { id: 101, productId: 1, hargaJual: 65000_00 },
+    { id: 102, productId: 2, hargaJual: 3000_00 },
+  ])
+
+  db.insert(productUnits)
+    .values({
+      id: 9,
+      productId: 2,
+      unitId: DUS_UNIT_ID,
+      jumlahKemasan: 40,
+      conversionFactor: 40,
+      hargaJual: 110000_00,
+      // product 2's base cost is 2.500, so a DUS of 40 costs 100.000
+      hargaPokok: 100000_00,
+      isBaseUnit: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  db.insert(productPriceTiers)
+    .values({
+      id: 1,
+      productId: 1,
+      productUnitId: 101,
+      minQty: 5,
+      maxQty: null,
+      hargaJual: 62000_00,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  return db
+}
+
 describe('priceForQty', () => {
   it('falls back to the normal price with an empty tier list', () => {
     expect(priceForQty([], 10000, 5)).toBe(10000)
@@ -203,85 +282,6 @@ describe('resolveCartItem', () => {
 })
 
 describe('checkout', () => {
-  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
-
-  function seedDb() {
-    const db = createDb(':memory:', migrationsFolder)
-    const now = new Date()
-
-    db.insert(users)
-      .values({
-        id: 1,
-        username: 'kasir1',
-        passwordHash: 'hash',
-        name: 'Kasir Satu',
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
-
-    db.insert(products)
-      .values([
-        {
-          id: 1,
-          kodeItem: 'BRS5',
-          namaItem: 'Beras 5kg',
-          hargaJual: 65000_00,
-          hargaPokok: 60000_00,
-          stok: 10,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          id: 2,
-          kodeItem: 'MIE1',
-          namaItem: 'Mie Instan',
-          hargaJual: 3000_00,
-          hargaPokok: 2500_00,
-          stok: 100,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ])
-      .run()
-
-    seedPcsBaseUnits(db, [
-      { id: 101, productId: 1, hargaJual: 65000_00 },
-      { id: 102, productId: 2, hargaJual: 3000_00 },
-    ])
-
-    db.insert(productUnits)
-      .values({
-        id: 9,
-        productId: 2,
-        unitId: DUS_UNIT_ID,
-        jumlahKemasan: 40,
-        conversionFactor: 40,
-        hargaJual: 110000_00,
-        // product 2's base cost is 2.500, so a DUS of 40 costs 100.000
-        hargaPokok: 100000_00,
-        isBaseUnit: false,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
-
-    db.insert(productPriceTiers)
-      .values({
-        id: 1,
-        productId: 1,
-        productUnitId: 101,
-        minQty: 5,
-        maxQty: null,
-        hargaJual: 62000_00,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
-
-    return db
-  }
-
   it('snapshots baseQuantity and priceSource on a tier-priced line', () => {
     const db = seedDb()
 
