@@ -27,15 +27,6 @@ import {
   type StoredCartLine,
 } from './kasir/cart-logic'
 
-interface SaleDto {
-  id: number
-  namaPelanggan: string | null
-  metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
-  status: 'selesai' | 'dibatalkan'
-  total: number
-  dibayar: number
-}
-
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Penjualan', href: '/kasir' }]
 
 const DRAFT_STORAGE_KEY = 'kasir:draft'
@@ -83,7 +74,6 @@ export function Kasir() {
   // read once, before any effect can overwrite the stored draft
   const [initialDraft] = useState(readStoredDraft)
   const [products, setProducts] = useState<Product[]>([])
-  const [salesToday, setSalesToday] = useState<SaleDto[]>([])
   const [customers, setCustomers] = useState<string[]>([])
   const [customerOpen, setCustomerOpen] = useState(false)
   const [cart, setCart] = useState<CartLine[]>([])
@@ -111,7 +101,6 @@ export function Kasir() {
 
   useEffect(() => {
     refreshProducts()
-    refreshSalesToday()
     refreshCustomers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -140,13 +129,6 @@ export function Kasir() {
     window.api.kasir
       .listCustomers()
       .then(setCustomers)
-      .catch(() => setError('Gagal memuat data.'))
-  }
-
-  function refreshSalesToday() {
-    window.api.kasir
-      .listSalesToday()
-      .then(setSalesToday)
       .catch(() => setError('Gagal memuat data.'))
   }
 
@@ -367,7 +349,6 @@ export function Kasir() {
       setCheckoutError(null)
       resetAfterCheckout()
       refreshProducts()
-      refreshSalesToday()
       refreshCustomers()
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Gagal checkout')
@@ -407,8 +388,7 @@ export function Kasir() {
         setPrintingSaleId(null)
         resetAfterCheckout()
         refreshProducts()
-        refreshSalesToday()
-        refreshCustomers()
+          refreshCustomers()
       })
 
     return () => {
@@ -416,30 +396,6 @@ export function Kasir() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printingSaleId])
-
-  async function handleCancel(saleId: number) {
-    const confirmed = await confirm({
-      title: 'Batalkan transaksi?',
-      description: `Transaksi #${saleId} akan ditandai dibatalkan dan stoknya dikembalikan.`,
-      confirmLabel: 'Batalkan',
-      destructive: true,
-    })
-
-    if (!confirmed) {
-      return
-    }
-
-    setError(null)
-    setMessage(null)
-
-    try {
-      await window.api.kasir.cancelSale(saleId)
-      refreshProducts()
-      refreshSalesToday()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal membatalkan')
-    }
-  }
 
   return (
     <>
