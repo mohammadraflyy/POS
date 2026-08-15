@@ -72,6 +72,7 @@ export function Inventory() {
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
   const [search, setSearch] = useState('')
+  const [scanMiss, setScanMiss] = useState<string | null>(null)
   const [rows, setRows] = useState<DraftRow[]>([])
   const [rawProducts, setRawProducts] = useState<ProductRow[]>([])
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(new Set())
@@ -161,8 +162,31 @@ export function Inventory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function submitSearch(e: FormEvent) {
+  // A USB barcode scanner types the digits and then sends Enter, which submits this
+  // form. Try an exact barcode first so a scan lands on one product instead of a
+  // result list the cashier still has to click through.
+  async function submitSearch(e: FormEvent) {
     e.preventDefault()
+
+    const typed = search.trim()
+    setScanMiss(null)
+
+    if (typed !== '') {
+      const scanned = await window.api.inventory.findByBarcode(typed)
+
+      if (scanned) {
+        navigate(`/inventory/${scanned.id}`)
+
+        return
+      }
+
+      if (/^\d{8,}$/.test(typed)) {
+        setScanMiss(typed)
+
+        return
+      }
+    }
+
     loadPage(1)
   }
 
@@ -493,6 +517,21 @@ export function Inventory() {
               Cari
             </Button>
           </form>
+          {scanMiss && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Barcode {scanMiss} belum terdaftar.</span>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => navigate(`/inventory/mass-input?barcode=${encodeURIComponent(scanMiss)}`)}
+              >
+                Buat produk baru dengan barcode ini
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setScanMiss(null)}>
+                Tutup
+              </Button>
+            </div>
+          )}
           <div className="flex gap-2">
             <Button type="button" variant="outline" disabled={importing} onClick={runImport}>
               {importing ? 'Mengimpor...' : 'Import Excel'}
