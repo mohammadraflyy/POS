@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Column, RowsChangeData } from 'react-data-grid'
@@ -73,6 +73,9 @@ export function Inventory() {
 
   const [search, setSearch] = useState('')
   const [scanMiss, setScanMiss] = useState<string | null>(null)
+  // Bumped at the start of every submitSearch call so a slower, earlier lookup
+  // can tell it's been superseded and skip applying its (stale) result.
+  const searchRequestId = useRef(0)
   const [rows, setRows] = useState<DraftRow[]>([])
   const [rawProducts, setRawProducts] = useState<ProductRow[]>([])
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(new Set())
@@ -168,11 +171,18 @@ export function Inventory() {
   async function submitSearch(e: FormEvent) {
     e.preventDefault()
 
+    const requestId = ++searchRequestId.current
     const typed = search.trim()
     setScanMiss(null)
 
     if (typed !== '') {
       const scanned = await window.api.inventory.findByBarcode(typed)
+
+      // A newer submit (key-repeat, or a fast second scan) started while this
+      // lookup was in flight - let that one own the UI, not this stale result.
+      if (requestId !== searchRequestId.current) {
+        return
+      }
 
       if (scanned) {
         navigate(`/inventory/${scanned.id}`)
@@ -505,7 +515,10 @@ export function Inventory() {
             <div className="relative w-64">
               <Input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setScanMiss(null)
+                }}
                 placeholder="Cari kode / nama / barcode produk..."
                 className="pr-8"
               />
