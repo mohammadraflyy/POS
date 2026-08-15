@@ -398,6 +398,10 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       .orderBy(desc(bonPayments.tanggal), desc(bonPayments.id))
       .all()
 
+    const kasir = sale.userId
+      ? db.select({ name: users.name }).from(users).where(eq(users.id, sale.userId)).get()
+      : null
+
     return {
       id: sale.id,
       namaPelanggan: sale.namaPelanggan,
@@ -406,11 +410,17 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       total: toRupiah(sale.total),
       dibayar: toRupiah(sale.dibayar),
       createdAt: sale.createdAt.toISOString(),
+      kasirName: kasir?.name ?? null,
       items: itemRows.map((item) => ({
         id: item.id,
+        productId: item.productId,
+        productUnitId: item.productUnitId,
         qty: item.qty,
         satuan: item.satuan,
         namaItem: productNameById.get(item.productId) ?? '',
+        hargaJual: toRupiah(item.hargaJual),
+        subtotal: toRupiah(item.subtotal),
+        priceSource: item.priceSource,
       })),
       bonPayments: paymentRows.map((payment) => ({
         id: payment.id,

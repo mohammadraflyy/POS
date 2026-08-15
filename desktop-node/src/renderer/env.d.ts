@@ -103,7 +103,18 @@ declare global {
           total: number
           dibayar: number
           createdAt: string
-          items: { id: number; qty: number; satuan: string | null; namaItem: string }[]
+          kasirName: string | null
+          items: {
+            id: number
+            productId: number
+            productUnitId: number | null
+            qty: number
+            satuan: string | null
+            namaItem: string
+            hargaJual: number
+            subtotal: number
+            priceSource: 'normal' | 'price_tier' | 'manual'
+          }[]
           bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
         }>
         recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) => Promise<void>
