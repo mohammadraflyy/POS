@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Plus, Search, Trash2 } from 'lucide-react'
 import { ReportTable } from '@/components/report-table'
 import { Page, PageHeader } from '@/components/page'
@@ -276,6 +276,32 @@ export function Purchase() {
       .finally(() => setProcessing(false))
   }
 
+  // The palette's search runs in a useEffect, so a scanner's trailing Enter lands
+  // before the results do. Handle Enter with its own exact-barcode lookup, and leave
+  // the palette open so consecutive scans stack up.
+  async function handlePaletteKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') {
+      return
+    }
+
+    const typed = paletteQuery.trim()
+
+    if (typed === '') {
+      return
+    }
+
+    const scanned = await window.api.purchase.findProductByBarcode(typed)
+
+    if (!scanned) {
+      return
+    }
+
+    e.preventDefault()
+    addItem(scanned)
+    setPaletteOpen(true)
+    setPaletteQuery('')
+  }
+
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
       <Page>
@@ -455,7 +481,12 @@ export function Purchase() {
         description="Cari produk untuk ditambahkan ke pembelian"
         shouldFilter={false}
       >
-        <CommandInput value={paletteQuery} onValueChange={setPaletteQuery} placeholder="Cari nama / kode / barcode..." />
+        <CommandInput
+          value={paletteQuery}
+          onValueChange={setPaletteQuery}
+          onKeyDown={handlePaletteKeyDown}
+          placeholder="Cari nama / kode / barcode, atau scan barcode..."
+        />
         <CommandList>
           <CommandEmpty>{paletteQuery.trim() === '' ? 'Ketik untuk mencari produk.' : 'Produk tidak ditemukan.'}</CommandEmpty>
           {paletteResults.length > 0 && (
