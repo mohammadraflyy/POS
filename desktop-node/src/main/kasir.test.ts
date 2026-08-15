@@ -618,6 +618,73 @@ describe('checkout', () => {
     expect(product?.stok).toBe(10 - 0.25)
   })
 
+  it('files the whole sale under the given date when tanggal is passed', () => {
+    const db = seedDb()
+    const tanggal = '2026-08-01T09:30'
+
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      tanggal,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    const expected = new Date(tanggal).toISOString()
+    expect(db.select().from(sales).get()?.createdAt.toISOString()).toBe(expected)
+    expect(db.select().from(saleItems).get()?.createdAt.toISOString()).toBe(expected)
+    expect(db.select().from(stockMovements).get()?.createdAt.toISOString()).toBe(expected)
+  })
+
+  it('rejects a sale dated in the future', () => {
+    const db = seedDb()
+    const besok = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
+
+    expect(() =>
+      checkout(db, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 3000_00,
+        userId: 1,
+        tanggal: besok,
+        items: [{ productId: 2, productUnitId: null, qty: 1 }],
+      }),
+    ).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
+  })
+
+  it('rejects a tanggal that is not a date at all', () => {
+    const db = seedDb()
+
+    expect(() =>
+      checkout(db, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 3000_00,
+        userId: 1,
+        tanggal: 'kemarin',
+        items: [{ productId: 2, productUnitId: null, qty: 1 }],
+      }),
+    ).toThrow('Tanggal transaksi tidak valid.')
+  })
+
+  it('uses the current time when tanggal is omitted', () => {
+    const db = seedDb()
+    const before = Date.now()
+
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    const createdAt = db.select().from(sales).get()?.createdAt.getTime() ?? 0
+    expect(createdAt).toBeGreaterThanOrEqual(before - 1000)
+    expect(createdAt).toBeLessThanOrEqual(Date.now() + 1000)
+  })
+
   it('throws when bon has an empty customer name', () => {
     const db = seedDb()
 

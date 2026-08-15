@@ -31,6 +31,7 @@ interface CheckoutRendererInput {
   metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   namaPelanggan: string | null
   dibayar: number | null
+  tanggal?: string | null
   items: { productId: number; productUnitId: number | null; qty: number }[]
 }
 
@@ -187,6 +188,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       namaPelanggan: input.namaPelanggan,
       dibayar: input.dibayar === null ? null : toCents(input.dibayar),
       userId: user.id,
+      tanggal: input.tanggal ?? null,
       items: input.items,
     }
 

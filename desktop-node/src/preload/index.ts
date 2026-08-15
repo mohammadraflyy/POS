@@ -29,6 +29,7 @@ const api = {
       metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
       namaPelanggan: string | null
       dibayar: number | null
+      tanggal?: string | null
       items: { productId: number; productUnitId: number | null; qty: number }[]
     }) => invoke('kasir:checkout', input),
     cancelSale: (saleId: number) => invoke('kasir:cancelSale', saleId),

@@ -47,6 +47,7 @@ declare global {
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           namaPelanggan: string | null
           dibayar: number | null
+          tanggal?: string | null
           items: { productId: number; productUnitId: number | null; qty: number }[]
         }) => Promise<{
           saleId: number

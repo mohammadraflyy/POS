@@ -117,11 +117,32 @@ export const METODE_NON_TUNAI = ['qris', 'transfer'] as const
 
 export type MetodePembayaran = 'tunai' | 'bon' | 'qris' | 'transfer'
 
+/**
+ * Parses the local `YYYY-MM-DDTHH:mm` string a `datetime-local` input produces.
+ * A future-dated sale would land in a rekap period that has not happened yet, so it is
+ * rejected. Backdating has no limit - entering yesterday's sale this morning is normal.
+ */
+export function parseTanggalTransaksi(tanggal: string): Date {
+  const parsed = new Date(tanggal)
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('Tanggal transaksi tidak valid.')
+  }
+
+  if (parsed.getTime() > Date.now()) {
+    throw new Error('Tanggal transaksi tidak boleh melewati waktu sekarang.')
+  }
+
+  return parsed
+}
+
 export interface CheckoutInput {
   metodePembayaran: MetodePembayaran
   namaPelanggan: string | null
   dibayar: number | null
   userId: number
+  /** local `YYYY-MM-DDTHH:mm`; omit to stamp the sale with the current time */
+  tanggal?: string | null
   items: CartItemInput[]
 }
 
@@ -204,8 +225,9 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     resolvedItems.push(resolved)
   }
 
+  const now = input.tanggal ? parseTanggalTransaksi(input.tanggal) : new Date()
+
   return db.transaction((tx) => {
-    const now = new Date()
     const dibayarAwal = input.metodePembayaran === 'tunai' ? (input.dibayar ?? 0) : 0
 
     const sale = tx
