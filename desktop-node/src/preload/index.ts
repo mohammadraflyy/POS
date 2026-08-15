@@ -34,6 +34,7 @@ const api = {
     }) => invoke('kasir:checkout', input),
     cancelSale: (saleId: number) => invoke('kasir:cancelSale', saleId),
     deleteSale: (saleId: number) => invoke('kasir:deleteSale', saleId),
+    updateSaleDate: (input: { saleId: number; tanggal: string }) => invoke('kasir:updateSaleDate', input),
     getStoreSettings: () => invoke('kasir:getStoreSettings'),
     printReceipt: (saleId: number) => invoke('kasir:printReceipt', saleId),
     listPrinters: () => invoke('kasir:listPrinters'),

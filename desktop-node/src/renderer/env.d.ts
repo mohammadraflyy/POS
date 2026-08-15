@@ -61,6 +61,7 @@ declare global {
         }>
         cancelSale: (saleId: number) => Promise<void>
         deleteSale: (saleId: number) => Promise<void>
+        updateSaleDate: (input: { saleId: number; tanggal: string }) => Promise<void>
         getStoreSettings: () => Promise<{
           namaToko: string
           alamat: string | null

@@ -364,6 +364,24 @@ export function cancelSale(db: Db, saleId: number): void {
   })
 }
 
+/**
+ * Moves a saved sale to another date. Only `sales.createdAt` moves: every money report
+ * (rekap, buku kas) reads its period from that column, while `sale_items` and
+ * `stock_movements` record when the goods physically left and stay where they are.
+ *
+ * Cancelled sales may be redated too - the status says nothing about when it happened.
+ */
+export function updateSaleDate(db: Db, saleId: number, tanggal: string): void {
+  const tanggalBaru = parseTanggalTransaksi(tanggal)
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  db.update(sales).set({ createdAt: tanggalBaru, updatedAt: new Date() }).where(eq(sales.id, saleId)).run()
+}
+
 export function deleteSale(db: Db, saleId: number): void {
   const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
 

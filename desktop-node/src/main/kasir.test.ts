@@ -14,6 +14,7 @@ import {
   updateStoreSettings,
   purgeSalesBefore,
   purgeTodaySales,
+  updateSaleDate,
 } from './kasir'
 
 const PCS_UNIT_ID = 1
@@ -1676,5 +1677,59 @@ describe('listCustomers', () => {
 
   it('returns nothing on a database with no sales', () => {
     expect(listCustomers(seedDb())).toEqual([])
+  })
+})
+
+describe('updateSaleDate', () => {
+  it('moves the sale to the new date', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    updateSaleDate(db, saleId, '2026-07-04T14:05')
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.createdAt.toISOString()).toBe(new Date('2026-07-04T14:05').toISOString())
+  })
+
+  it('leaves stock movements where they are, because they record when the goods left', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+    const before = db.select().from(stockMovements).get()?.createdAt.toISOString()
+
+    updateSaleDate(db, saleId, '2026-07-04T14:05')
+
+    expect(db.select().from(stockMovements).get()?.createdAt.toISOString()).toBe(before)
+  })
+
+  it('rejects a sale that does not exist', () => {
+    const db = seedDb()
+
+    expect(() => updateSaleDate(db, 999, '2026-07-04T14:05')).toThrow('Transaksi tidak ditemukan.')
+  })
+
+  it('rejects a future date', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+    const besok = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
+
+    expect(() => updateSaleDate(db, saleId, besok)).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
   })
 })

@@ -12,6 +12,7 @@ import {
   updateStoreSettings,
   purgeSalesBefore,
   purgeTodaySales,
+  updateSaleDate,
   type CheckoutInput,
 } from '../kasir'
 import { buildReceiptEscPos, SAMPLE_RECEIPT, type PaperWidth } from '../escpos'
@@ -207,6 +208,14 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     requireAdmin()
 
     deleteSale(db, saleId)
+  })
+
+  // requireAdmin, not requireUser: redating a saved sale shifts the rekap and the cash
+  // book on two days at once, the same blast radius as delete and purge.
+  ipcMain.handle('kasir:updateSaleDate', (_event, input: { saleId: number; tanggal: string }) => {
+    requireAdmin()
+
+    updateSaleDate(db, input.saleId, input.tanggal)
   })
 
   ipcMain.handle('kasir:getStoreSettings', () => {
