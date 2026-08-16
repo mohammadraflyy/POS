@@ -3,6 +3,7 @@ import {
   addLine,
   applyHarga,
   applyQty,
+  cartFromSale,
   changeUnit,
   expandUnitResults,
   lineKey,
@@ -12,6 +13,7 @@ import {
   unitPrice,
   activeTier,
   type CartLine,
+  type EditSaleItem,
   type Product,
 } from './cart-logic'
 
@@ -370,5 +372,60 @@ describe('applyHarga', () => {
 
     expect(applyHarga(cart, lineKey(1, null), 1234.6)[0].hargaOverride).toBe(1235)
     expect(applyHarga(cart, lineKey(1, null), -5)[0].hargaOverride).toBe(0)
+  })
+})
+
+describe('cartFromSale', () => {
+  it('maps the stored base product_units id back to the cart null base unit', () => {
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 1, qty: 2, hargaJual: 65000, priceSource: 'normal' },
+    ]
+
+    expect(cartFromSale(items, [product])).toEqual([
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2, hargaOverride: null },
+    ])
+  })
+
+  it('keeps a derived unit as itself', () => {
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 9, qty: 1, hargaJual: 700000, priceSource: 'normal' },
+    ]
+
+    expect(cartFromSale(items, [product])).toEqual([
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1, hargaOverride: null },
+    ])
+  })
+
+  it('turns a manually priced line back into an override', () => {
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 1, qty: 1, hargaJual: 55000, priceSource: 'manual' },
+    ]
+
+    expect(cartFromSale(items, [product])[0].hargaOverride).toBe(55000)
+  })
+
+  it('leaves a tier-priced line to be recomputed rather than pinning it', () => {
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 1, qty: 5, hargaJual: 62000, priceSource: 'price_tier' },
+    ]
+
+    expect(cartFromSale(items, [product])[0].hargaOverride).toBeNull()
+  })
+
+  it('drops a line whose product is gone from the catalog', () => {
+    const items: EditSaleItem[] = [
+      { productId: 77, productUnitId: 1, qty: 1, hargaJual: 1000, priceSource: 'normal' },
+    ]
+
+    expect(cartFromSale(items, [product])).toEqual([])
+  })
+
+  it('preserves the saved order of the lines', () => {
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 9, qty: 1, hargaJual: 700000, priceSource: 'normal' },
+      { productId: 1, productUnitId: 1, qty: 2, hargaJual: 65000, priceSource: 'normal' },
+    ]
+
+    expect(cartFromSale(items, [product]).map((line) => line.key)).toEqual([lineKey(1, 9), lineKey(1, null)])
   })
 })

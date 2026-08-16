@@ -225,6 +225,54 @@ export interface UnitResult {
   hargaJual: number
 }
 
+/** one line of a saved sale, as `kasir:getSaleForEdit` hands it over */
+export interface EditSaleItem {
+  productId: number
+  productUnitId: number | null
+  qty: number
+  hargaJual: number
+  priceSource: 'normal' | 'price_tier' | 'manual'
+}
+
+/**
+ * Rebuilds a cart from a saved sale.
+ *
+ * `sale_items` always stores a real `product_units.id`, including for the base unit,
+ * while the cart says "base unit" as `productUnitId: null` - so the base row's id has
+ * to be translated back on the way in, or the base line would look like a derived one
+ * that no longer exists.
+ *
+ * Only a line that was priced by hand comes back as an override. A `price_tier` or
+ * `normal` line is left to be recomputed, so correcting its qty re-prices it the way
+ * the till would have.
+ */
+export function cartFromSale(items: EditSaleItem[], products: Product[]): CartLine[] {
+  const cart: CartLine[] = []
+
+  for (const item of items) {
+    const product = products.find((p) => p.id === item.productId)
+
+    if (!product) {
+      continue
+    }
+
+    const isBase = item.productUnitId === null || item.productUnitId === product.baseProductUnitId
+    const productUnitId = isBase ? null : item.productUnitId
+    const unit = productUnitId === null ? null : product.productUnits.find((u) => u.id === productUnitId)
+
+    cart.push({
+      key: lineKey(product.id, productUnitId),
+      product,
+      productUnitId,
+      satuan: unit?.satuan ?? product.satuan,
+      qty: item.qty,
+      hargaOverride: item.priceSource === 'manual' ? item.hargaJual : null,
+    })
+  }
+
+  return cart
+}
+
 /**
  * Expands matching products into one row per satuan, so the cashier can pick DUS
  * without adding PCS first and converting. Matches barcode as well as name and

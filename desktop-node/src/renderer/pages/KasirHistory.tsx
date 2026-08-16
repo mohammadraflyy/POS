@@ -7,7 +7,6 @@ import 'react-data-grid/lib/styles.css'
 import { MoreHorizontal } from 'lucide-react'
 import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,9 +69,6 @@ export function KasirHistory() {
   const [error, setError] = useState<string | null>(null)
 
   const [isAdmin, setIsAdmin] = useState(false)
-  const [dateTarget, setDateTarget] = useState<SaleHistoryRow | null>(null)
-  const [dateValue, setDateValue] = useState('')
-  const [savingDate, setSavingDate] = useState(false)
 
   useEffect(() => {
     // the main process enforces requireAdmin anyway; this only hides a menu item
@@ -194,36 +190,6 @@ export function KasirHistory() {
     }
   }
 
-  function openDateDialog(sale: SaleHistoryRow) {
-    // local time, not toISOString(), so the prefilled value matches the sale's own clock
-    const created = new Date(sale.createdAt)
-    const pad = (n: number) => String(n).padStart(2, '0')
-
-    setDateValue(
-      `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}T${pad(created.getHours())}:${pad(created.getMinutes())}`,
-    )
-    setDateTarget(sale)
-  }
-
-  async function saveDate() {
-    if (!dateTarget) {
-      return
-    }
-
-    setSavingDate(true)
-    setError(null)
-
-    try {
-      await window.api.kasir.updateSaleDate({ saleId: dateTarget.id, tanggal: dateValue })
-      setDateTarget(null)
-      loadPage(currentPage)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal mengubah tanggal')
-    } finally {
-      setSavingDate(false)
-    }
-  }
-
   const itemWidth = Math.max(MIN_ITEM_WIDTH, gridWidth - OTHER_COLUMNS_WIDTH - 2)
 
   const columns: Column<SaleHistoryRow>[] = [
@@ -317,15 +283,8 @@ export function KasirHistory() {
               >
                 Cetak Struk
               </DropdownMenuItem>
-              {isAdmin && (
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault()
-                    deferAction(() => openDateDialog(row))
-                  }}
-                >
-                  Ubah Tanggal
-                </DropdownMenuItem>
+              {isAdmin && row.status === 'selesai' && (
+                <DropdownMenuItem onSelect={() => navigate(`/kasir?edit=${row.id}`)}>Edit Transaksi</DropdownMenuItem>
               )}
               {row.status === 'selesai' && row.dibayar === 0 && (
                 <DropdownMenuItem
@@ -459,30 +418,6 @@ export function KasirHistory() {
       </Page>
       </AppShell>
       {ConfirmDialog}
-      <Dialog open={dateTarget !== null} onOpenChange={(open) => !open && setDateTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Ubah Tanggal Transaksi #{dateTarget?.id}</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-1">
-              <Label className="text-xs">Tanggal &amp; Jam</Label>
-              <Input type="datetime-local" value={dateValue} onChange={(e) => setDateValue(e.target.value)} />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Mengubah tanggal menggeser transaksi ini di rekap dan buku kas, pada hari lama maupun hari baru.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDateTarget(null)}>
-                Batal
-              </Button>
-              <Button disabled={savingDate} onClick={saveDate}>
-                {savingDate ? 'Menyimpan...' : 'Simpan'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

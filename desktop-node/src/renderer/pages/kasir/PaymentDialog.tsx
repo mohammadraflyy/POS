@@ -9,6 +9,7 @@ import { cn, formatRupiah } from '@/lib/utils'
 import { DEFAULT_PELANGGAN } from './CustomerPicker'
 
 const actions = ['cetak', 'simpan', 'batal'] as const
+const editActions = ['simpan', 'batal'] as const
 type Action = (typeof actions)[number]
 
 export interface PaymentDialogProps {
@@ -28,6 +29,8 @@ export interface PaymentDialogProps {
   processing: boolean
   error: string | null
   onSubmit: (shouldPrint: boolean) => void
+  /** editing a saved sale: there is nothing to print, only changes to save */
+  editMode: boolean
 }
 
 export function PaymentDialog({
@@ -45,6 +48,7 @@ export function PaymentDialog({
   processing,
   error,
   onSubmit,
+  editMode,
 }: PaymentDialogProps) {
   // qris/transfer land on the exact total; only cash can overpay and only bon can underpay
   const totalBayar = metode === 'tunai' ? Number(dibayar || 0) : metode === 'bon' ? 0 : total
@@ -60,14 +64,15 @@ export function PaymentDialog({
   // dialog can be driven without a mouse: type the amount, PgDn/PgUp to
   // the action you want, Enter to run it. Alt+letter shortcuts don't type
   // into focused inputs, so those work regardless of what's focused too.
-  const [selectedAction, setSelectedAction] = useState<Action>('cetak')
+  const availableActions: readonly Action[] = editMode ? editActions : actions
+  const [selectedAction, setSelectedAction] = useState<Action>(editMode ? 'simpan' : 'cetak')
   const [prevOpen, setPrevOpen] = useState(open)
 
   if (open !== prevOpen) {
     setPrevOpen(open)
 
     if (open) {
-      setSelectedAction('cetak')
+      setSelectedAction(editMode ? 'simpan' : 'cetak')
     }
   }
 
@@ -94,9 +99,9 @@ export function PaymentDialog({
 
     if (e.key === 'PageDown' || e.key === 'PageUp') {
       e.preventDefault()
-      const index = actions.indexOf(selectedAction)
+      const index = availableActions.indexOf(selectedAction)
       const delta = e.key === 'PageDown' ? 1 : -1
-      setSelectedAction(actions[(index + delta + actions.length) % actions.length])
+      setSelectedAction(availableActions[(index + delta + availableActions.length) % availableActions.length])
 
       return
     }
@@ -145,7 +150,7 @@ export function PaymentDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            runAction('cetak')
+            runAction(editMode ? 'simpan' : 'cetak')
           }}
           onKeyDown={handleShortcut}
           className="space-y-5"
@@ -299,18 +304,20 @@ export function PaymentDialog({
           )}
 
           <div className="space-y-2">
-            <Button
-              type="submit"
-              disabled={processing || bonNeedsCustomer}
-              className={cn(
-                'w-full',
-                selectedAction === 'cetak' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
-              )}
-            >
-              {selectedAction === 'cetak' && <CornerDownLeft className="size-4" />}
-              <Printer className="size-4" />
-              Print/Cetak
-            </Button>
+            {!editMode && (
+              <Button
+                type="submit"
+                disabled={processing || bonNeedsCustomer}
+                className={cn(
+                  'w-full',
+                  selectedAction === 'cetak' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                )}
+              >
+                {selectedAction === 'cetak' && <CornerDownLeft className="size-4" />}
+                <Printer className="size-4" />
+                Print/Cetak
+              </Button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
@@ -322,7 +329,7 @@ export function PaymentDialog({
                 onClick={() => onSubmit(false)}
               >
                 {selectedAction === 'simpan' && <CornerDownLeft className="size-3.5" />}
-                Simpan
+                {editMode ? 'Simpan Perubahan' : 'Simpan'}
                 <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+S</kbd>
               </Button>
               <Button

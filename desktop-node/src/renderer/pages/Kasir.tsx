@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { CellKeyboardEvent, CellKeyDownArgs, DataGridHandle, RowsChangeData } from 'react-data-grid'
 import { ShoppingCart, Trash2, UserRound } from 'lucide-react'
 import { Page, PageHeader } from '@/components/page'
@@ -19,12 +20,14 @@ import {
   addLine,
   applyHarga,
   applyQty,
+  cartFromSale,
   changeUnit,
   expandUnitResults,
   restoreCart,
   toStoredCart,
   unitPrice,
   type CartLine,
+  type EditSaleItem,
   type Product,
   type StoredCartLine,
   type UnitResult,
@@ -82,8 +85,13 @@ function readStoredDraft(): KasirDraft {
 }
 
 export function Kasir() {
-  // read once, before any effect can overwrite the stored draft
-  const [initialDraft] = useState(readStoredDraft)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const editSaleId = Number(searchParams.get('edit')) || null
+
+  // In edit mode the draft is left completely alone - the cart the cashier walked
+  // away from has to be waiting for them when they come back.
+  const [initialDraft] = useState(() => (editSaleId === null ? readStoredDraft() : EMPTY_DRAFT))
   const [products, setProducts] = useState<Product[]>([])
   const [customers, setCustomers] = useState<string[]>([])
   const [customerOpen, setCustomerOpen] = useState(false)
@@ -109,6 +117,9 @@ export function Kasir() {
   // the cart can only be rebuilt once the catalog is loaded, so it waits here
   // while the rest of the draft is restored straight into state above
   const pendingRestoreRef = useRef<StoredCartLine[]>(initialDraft.cart)
+  // the sale's lines can only be rebuilt once the catalog has loaded, the same
+  // dance the draft does
+  const pendingEditRef = useRef<EditSaleItem[]>([])
 
   useEffect(() => {
     refreshProducts()
@@ -116,26 +127,65 @@ export function Kasir() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Load the sale being edited. Note the date formatting: sale.createdAt is an
+  // ISO string in UTC, so slicing it would show the wrong wall-clock time for
+  // a shop not on UTC - build the local YYYY-MM-DDTHH:mm by hand instead.
+  useEffect(() => {
+    if (editSaleId === null) {
+      return
+    }
+
+    window.api.kasir
+      .getSaleForEdit(editSaleId)
+      .then((sale) => {
+        const created = new Date(sale.createdAt)
+        const pad = (n: number) => String(n).padStart(2, '0')
+
+        setMetode(sale.metodePembayaran)
+        setNamaPelanggan(sale.namaPelanggan ?? DEFAULT_PELANGGAN)
+        setDibayar(String(sale.dibayar))
+        setTanggal(
+          `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}T${pad(created.getHours())}:${pad(created.getMinutes())}`,
+        )
+        pendingEditRef.current = sale.items
+        refreshProducts()
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat transaksi.'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editSaleId])
+
   // tanggal is seeded once at mount, so without this a sale would carry
   // whatever time the page happened to load (or the previous checkout) -
-  // refresh it every time the payment dialog opens so it reflects now
+  // refresh it every time the payment dialog opens so it reflects now.
+  // Edit mode carries the sale's own date instead, loaded below.
   useEffect(() => {
-    if (paymentOpen) {
+    if (paymentOpen && editSaleId === null) {
       setTanggal(nowForInput())
     }
-  }, [paymentOpen])
+  }, [paymentOpen, editSaleId])
 
   useEffect(() => {
+    if (editSaleId !== null) {
+      return
+    }
+
     const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah }
 
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
-  }, [cart, metode, namaPelanggan, dibayar, jumlah])
+  }, [cart, metode, namaPelanggan, dibayar, jumlah, editSaleId])
 
   function refreshProducts() {
     window.api.kasir
       .listProducts()
       .then((list) => {
         setProducts(list)
+
+        if (pendingEditRef.current.length > 0) {
+          setCart(cartFromSale(pendingEditRef.current, list))
+          pendingEditRef.current = []
+
+          return
+        }
 
         if (pendingRestoreRef.current.length > 0) {
           setCart(restoreCart(pendingRestoreRef.current, list))
@@ -379,14 +429,54 @@ export function Kasir() {
     }
   }
 
+  async function handleSaveEdit() {
+    if (editSaleId === null) {
+      return
+    }
+
+    setProcessing(true)
+    setCheckoutError(null)
+
+    try {
+      await window.api.kasir.updateSale({
+        saleId: editSaleId,
+        metodePembayaran: metode,
+        namaPelanggan: metode === 'bon' ? namaPelanggan.trim() || null : namaPelanggan.trim() || DEFAULT_PELANGGAN,
+        // Unlike checkout, a bon must send its dibayar too: an edited bon may already
+        // carry recorded payments, and sending null would read as 0 and trip
+        // updateSale's "tidak boleh kurang dari pembayaran yang sudah tercatat" guard
+        // on every single save. Only qris and transfer settle themselves.
+        dibayar: metode === 'qris' || metode === 'transfer' ? null : Number(dibayar || 0),
+        tanggal,
+        items: cart.map((line) => ({
+          productId: line.product.id,
+          productUnitId: line.productUnitId,
+          qty: line.qty,
+          hargaJual: line.hargaOverride ?? null,
+        })),
+      })
+
+      navigate('/history')
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : 'Gagal menyimpan perubahan')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
   return (
     <>
       <AppShell breadcrumbs={BREADCRUMBS}>
       <Page className="print:hidden">
       <PageHeader
-        title="Penjualan"
+        title={editSaleId === null ? 'Penjualan' : `Penjualan — Mode Edit #${editSaleId}`}
         actions={
           <>
+            {editSaleId !== null && (
+              <Button type="button" variant="outline" onClick={() => navigate('/history')}>
+                Batal
+              </Button>
+            )}
             <div className="flex items-center gap-1.5">
               <label htmlFor="kasir-jumlah" className="text-xs text-muted-foreground">
                 Jumlah
@@ -485,7 +575,7 @@ export function Kasir() {
                 disabled={cart.length === 0}
                 onClick={() => setPaymentOpen(true)}
               >
-                Bayar
+                {editSaleId === null ? 'Bayar' : 'Simpan Perubahan'}
               </Button>
             </div>
           </div>
@@ -523,7 +613,7 @@ export function Kasir() {
                     cart={cart}
                     width={cartGridWidth}
                     resolvedAppearance={resolvedAppearance}
-                    editMode={false}
+                    editMode={editSaleId !== null}
                     gridRef={cartGridRef}
                     onRowsChange={handleCartRowsChange}
                     onCellKeyDown={handleCartCellKeyDown}
@@ -573,7 +663,8 @@ export function Kasir() {
         setTanggal={setTanggal}
         processing={processing}
         error={checkoutError}
-        onSubmit={handleCheckout}
+        onSubmit={editSaleId === null ? handleCheckout : () => handleSaveEdit()}
+        editMode={editSaleId !== null}
       />
 
       <CustomerPicker
