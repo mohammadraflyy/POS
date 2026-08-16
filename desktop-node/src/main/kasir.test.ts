@@ -1222,9 +1222,33 @@ describe('addItemsToSale', () => {
 
     const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
     expect(movements).toHaveLength(2)
-    const addedMovement = movements.find((movement) => movement.movementType === 'sale' && movement.quantity === -3)
-    expect(addedMovement?.movementType).toBe('sale')
-    expect(addedMovement?.quantity).toBe(-3)
+    expect(movements.every((movement) => movement.movementType === 'sale')).toBe(true)
+    // Numeric sort - the default string sort would put -3 before -2 for the
+    // wrong reason (lexical, not numeric) and silently pass either way.
+    expect(movements.map((movement) => movement.quantity).sort((a, b) => a - b)).toEqual([-3, -2])
+  })
+
+  it('appends a derived-unit line with the unit conversion and its own cost snapshot', () => {
+    const { db, saleId } = seedWithBon()
+    const stokAwal = db.select().from(products).where(eq(products.id, 2)).get()?.stok ?? 0
+
+    // productUnitId 9 is product 2's DUS unit: konversi 40, hargaJual 110.000, hargaPokok 100.000
+    addItemsToSale(db, saleId, [{ productId: 2, productUnitId: 9, qty: 2 }])
+
+    const product = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(product?.stok).toBe(stokAwal - 2 * 40)
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+    const addedItem = items.find((item) => item.productUnitId === 9)
+    expect(addedItem?.baseQuantity).toBe(80)
+    expect(addedItem?.konversi).toBe(40)
+    // the DUS unit's own cost, not the base cost - the whole point of the per-unit snapshot
+    expect(addedItem?.hargaPokok).toBe(100000_00)
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
+    const addedMovement = movements.find((movement) => movement.productUnitId === 9)
+    expect(addedMovement?.quantity).toBe(-2)
+    expect(addedMovement?.baseQuantity).toBe(-80)
   })
 
   it('does not move the sale date, because the bon is still the old bon', () => {
@@ -1298,6 +1322,32 @@ describe('addItemsToSale', () => {
 
     expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(stokAwal)
     expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(itemsAwal)
+  })
+
+  it('reconciles the stock ledger when a sale with an appended derived-unit line is cancelled', () => {
+    // Not seedWithBon() - that only exposes the stock level after its own
+    // checkout, and this needs the level before any of this sale's lines existed.
+    const db = seedDb()
+    const originalStok = db.select().from(products).where(eq(products.id, 2)).get()?.stok ?? 0
+
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Sri',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    // productUnitId 9 is product 2's DUS unit, konversi 40
+    addItemsToSale(db, saleId, [{ productId: 2, productUnitId: 9, qty: 2 }])
+    cancelSale(db, saleId)
+
+    const product = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(product?.stok).toBe(originalStok)
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
+    // the ledger nets to zero once the (appended) sale is undone
+    expect(movements.reduce((sum, movement) => sum + movement.baseQuantity, 0)).toBe(0)
   })
 })
 
