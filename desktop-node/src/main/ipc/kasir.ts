@@ -13,7 +13,7 @@ import {
   updateStoreSettings,
   purgeSalesBefore,
   purgeTodaySales,
-  updateSaleDate,
+  updateSale,
   type CheckoutInput,
 } from '../kasir'
 import { buildReceiptEscPos, SAMPLE_RECEIPT, type PaperWidth } from '../escpos'
@@ -211,13 +211,67 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     deleteSale(db, saleId)
   })
 
-  // requireAdmin, not requireUser: redating a saved sale shifts the rekap and the cash
+  // requireAdmin, not requireUser: rewriting a saved sale shifts the rekap and the cash
   // book on two days at once, the same blast radius as delete and purge.
-  ipcMain.handle('kasir:updateSaleDate', (_event, input: { saleId: number; tanggal: string }) => {
+  ipcMain.handle('kasir:getSaleForEdit', (_event, saleId: number) => {
     requireAdmin()
 
-    updateSaleDate(db, input.saleId, input.tanggal)
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+    if (!sale) {
+      throw new Error('Transaksi tidak ditemukan.')
+    }
+
+    const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+
+    return {
+      id: sale.id,
+      namaPelanggan: sale.namaPelanggan,
+      metodePembayaran: sale.metodePembayaran,
+      status: sale.status,
+      dibayar: toRupiah(sale.dibayar),
+      createdAt: sale.createdAt.toISOString(),
+      items: itemRows.map((item) => ({
+        productId: item.productId,
+        productUnitId: item.productUnitId,
+        qty: item.qty,
+        hargaJual: toRupiah(item.hargaJual),
+        priceSource: item.priceSource,
+      })),
+    }
   })
+
+  ipcMain.handle(
+    'kasir:updateSale',
+    (
+      _event,
+      input: {
+        saleId: number
+        metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
+        namaPelanggan: string | null
+        dibayar: number | null
+        tanggal: string
+        items: { productId: number; productUnitId: number | null; qty: number; hargaJual?: number | null }[]
+      },
+    ) => {
+      requireAdmin()
+
+      const result = updateSale(db, input.saleId, {
+        metodePembayaran: input.metodePembayaran,
+        namaPelanggan: input.namaPelanggan,
+        dibayar: input.dibayar === null ? null : toCents(input.dibayar),
+        tanggal: input.tanggal,
+        items: input.items.map((item) => ({
+          productId: item.productId,
+          productUnitId: item.productUnitId,
+          qty: item.qty,
+          hargaJual: item.hargaJual == null ? null : toCents(item.hargaJual),
+        })),
+      })
+
+      return { total: toRupiah(result.total) }
+    },
+  )
 
   ipcMain.handle('kasir:getStoreSettings', () => {
     const setting = db.select().from(storeSettings).get()

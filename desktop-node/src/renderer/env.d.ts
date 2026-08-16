@@ -61,7 +61,29 @@ declare global {
         }>
         cancelSale: (saleId: number) => Promise<void>
         deleteSale: (saleId: number) => Promise<void>
-        updateSaleDate: (input: { saleId: number; tanggal: string }) => Promise<void>
+        getSaleForEdit: (saleId: number) => Promise<{
+          id: number
+          namaPelanggan: string | null
+          metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
+          status: 'selesai' | 'dibatalkan'
+          dibayar: number
+          createdAt: string
+          items: {
+            productId: number
+            productUnitId: number | null
+            qty: number
+            hargaJual: number
+            priceSource: 'normal' | 'price_tier' | 'manual'
+          }[]
+        }>
+        updateSale: (input: {
+          saleId: number
+          metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
+          namaPelanggan: string | null
+          dibayar: number | null
+          tanggal: string
+          items: { productId: number; productUnitId: number | null; qty: number; hargaJual?: number | null }[]
+        }) => Promise<{ total: number }>
         getStoreSettings: () => Promise<{
           namaToko: string
           alamat: string | null

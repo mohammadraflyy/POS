@@ -34,7 +34,15 @@ const api = {
     }) => invoke('kasir:checkout', input),
     cancelSale: (saleId: number) => invoke('kasir:cancelSale', saleId),
     deleteSale: (saleId: number) => invoke('kasir:deleteSale', saleId),
-    updateSaleDate: (input: { saleId: number; tanggal: string }) => invoke('kasir:updateSaleDate', input),
+    getSaleForEdit: (saleId: number) => invoke('kasir:getSaleForEdit', saleId),
+    updateSale: (input: {
+      saleId: number
+      metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
+      namaPelanggan: string | null
+      dibayar: number | null
+      tanggal: string
+      items: { productId: number; productUnitId: number | null; qty: number; hargaJual?: number | null }[]
+    }) => invoke('kasir:updateSale', input),
     getStoreSettings: () => invoke('kasir:getStoreSettings'),
     printReceipt: (saleId: number) => invoke('kasir:printReceipt', saleId),
     listPrinters: () => invoke('kasir:listPrinters'),
