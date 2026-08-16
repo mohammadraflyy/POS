@@ -96,7 +96,6 @@ export function Kasir() {
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [printingSaleId, setPrintingSaleId] = useState<number | null>(null)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
@@ -350,11 +349,14 @@ export function Kasir() {
       })
 
       if (shouldPrint) {
-        // Keep the dialog open (showing this sale's totals) until printing
-        // actually finishes - it resets and closes from the print effect
-        // below instead.
-        setPrintingSaleId(sale.saleId)
-        return
+        // The sale is already committed. Printing reaches hardware and can stall,
+        // so it runs in the background rather than holding the till hostage - a
+        // failure surfaces as an error naming the sale, which can be reprinted
+        // from Riwayat.
+        window.api.kasir.printReceipt(sale.saleId).catch((err) => {
+          const reason = err instanceof Error ? err.message : 'kesalahan tidak diketahui'
+          setError(`Transaksi #${sale.saleId} tersimpan, tetapi struk gagal dicetak: ${reason}. Cetak ulang dari Riwayat.`)
+        })
       }
 
       setMessage('Transaksi disimpan.')
@@ -368,46 +370,6 @@ export function Kasir() {
       setProcessing(false)
     }
   }
-
-  useEffect(() => {
-    if (!printingSaleId) {
-      return
-    }
-
-    let cancelled = false
-
-    window.api.kasir
-      .printReceipt(printingSaleId)
-      .then(() => {
-        if (cancelled) {
-          return
-        }
-
-        setMessage('Transaksi disimpan.')
-      })
-      .catch((err) => {
-        if (cancelled) {
-          return
-        }
-
-        setError(err instanceof Error ? err.message : 'Gagal mencetak struk')
-      })
-      .finally(() => {
-        if (cancelled) {
-          return
-        }
-
-        setPrintingSaleId(null)
-        resetAfterCheckout()
-        refreshProducts()
-          refreshCustomers()
-      })
-
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [printingSaleId])
 
   return (
     <>
@@ -601,7 +563,6 @@ export function Kasir() {
         tanggal={tanggal}
         setTanggal={setTanggal}
         processing={processing}
-        printing={printingSaleId !== null}
         error={checkoutError}
         onSubmit={handleCheckout}
       />

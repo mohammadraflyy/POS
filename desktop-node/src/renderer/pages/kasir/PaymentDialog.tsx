@@ -5,8 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Spinner } from '@/components/ui/spinner'
-import { useConfirm } from '@/hooks/use-confirm'
 import { cn, formatRupiah } from '@/lib/utils'
 import { DEFAULT_PELANGGAN } from './CustomerPicker'
 
@@ -28,7 +26,6 @@ export interface PaymentDialogProps {
   tanggal: string
   setTanggal: (value: string) => void
   processing: boolean
-  printing: boolean
   error: string | null
   onSubmit: (shouldPrint: boolean) => void
 }
@@ -46,7 +43,6 @@ export function PaymentDialog({
   tanggal,
   setTanggal,
   processing,
-  printing,
   error,
   onSubmit,
 }: PaymentDialogProps) {
@@ -66,28 +62,12 @@ export function PaymentDialog({
   // into focused inputs, so those work regardless of what's focused too.
   const [selectedAction, setSelectedAction] = useState<Action>('cetak')
   const [prevOpen, setPrevOpen] = useState(open)
-  const { confirm, ConfirmDialog } = useConfirm()
 
   if (open !== prevOpen) {
     setPrevOpen(open)
 
     if (open) {
       setSelectedAction('cetak')
-    }
-  }
-
-  // Printing is the one action that reaches hardware and wastes paper when
-  // fired by accident - and it sits on Enter, the fastest key to hit twice.
-  async function submitWithPrint() {
-    const confirmed = await confirm({
-      title: 'Cetak struk?',
-      description: `Transaksi ${formatRupiah(total)} akan disimpan dan struknya langsung dicetak.`,
-      confirmLabel: 'Simpan + Cetak',
-      cancelLabel: 'Batal',
-    })
-
-    if (confirmed) {
-      onSubmit(true)
     }
   }
 
@@ -99,7 +79,7 @@ export function PaymentDialog({
     }
 
     if (action === 'cetak') {
-      submitWithPrint()
+      onSubmit(true)
     } else if (action === 'simpan') {
       onSubmit(false)
     } else {
@@ -108,7 +88,7 @@ export function PaymentDialog({
   }
 
   function handleShortcut(e: ReactKeyboardEvent) {
-    if (processing || printing) {
+    if (processing) {
       return
     }
 
@@ -157,7 +137,6 @@ export function PaymentDialog({
   }
 
   return (
-    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[46rem]">
         <DialogHeader>
@@ -175,7 +154,7 @@ export function PaymentDialog({
             <Button
               type="button"
               variant={metode === 'tunai' ? 'default' : 'outline'}
-              disabled={processing || printing}
+              disabled={processing}
               onClick={() => setMetode('tunai')}
             >
               <Banknote className="size-4" />
@@ -185,7 +164,7 @@ export function PaymentDialog({
             <Button
               type="button"
               variant={metode === 'bon' ? 'default' : 'outline'}
-              disabled={processing || printing}
+              disabled={processing}
               onClick={() => setMetode('bon')}
             >
               <HandCoins className="size-4" />
@@ -196,7 +175,7 @@ export function PaymentDialog({
             <Button
               type="button"
               variant={metode === 'qris' ? 'default' : 'outline'}
-              disabled={processing || printing}
+              disabled={processing}
               onClick={() => setMetode('qris')}
             >
               <QrCode className="size-4" />
@@ -206,7 +185,7 @@ export function PaymentDialog({
             <Button
               type="button"
               variant={metode === 'transfer' ? 'default' : 'outline'}
-              disabled={processing || printing}
+              disabled={processing}
               onClick={() => setMetode('transfer')}
             >
               <ArrowLeftRight className="size-4" />
@@ -229,7 +208,7 @@ export function PaymentDialog({
                 inputMode="numeric"
                 placeholder="0"
                 value={dibayar}
-                disabled={processing || printing}
+                disabled={processing}
                 onChange={(e) => setDibayar(e.target.value)}
                 className="h-16 text-right text-2xl font-semibold tabular-nums"
               />
@@ -240,7 +219,7 @@ export function PaymentDialog({
               cashier can see (and fix) who the sale is filed under */}
           <button
             type="button"
-            disabled={processing || printing}
+            disabled={processing}
             onClick={onEditCustomer}
             className="flex w-full items-center justify-between rounded-xl border px-5 py-3.5 text-left hover:bg-muted/50 disabled:opacity-50"
           >
@@ -259,7 +238,7 @@ export function PaymentDialog({
               id="tanggal-transaksi"
               type="datetime-local"
               value={tanggal}
-              disabled={processing || printing}
+              disabled={processing}
               onChange={(e) => setTanggal(e.target.value)}
               onKeyDown={(e) => {
                 // Keep the form-level PageUp/PageDown/Enter shortcuts from
@@ -319,63 +298,54 @@ export function PaymentDialog({
             </p>
           )}
 
-          {printing ? (
-            <div className="flex items-center justify-center gap-2 rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-              <Spinner />
-              Mencetak struk...
-            </div>
-          ) : (
-            <div className="space-y-2">
+          <div className="space-y-2">
+            <Button
+              type="submit"
+              disabled={processing || bonNeedsCustomer}
+              className={cn(
+                'w-full',
+                selectedAction === 'cetak' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+              )}
+            >
+              {selectedAction === 'cetak' && <CornerDownLeft className="size-4" />}
+              <Printer className="size-4" />
+              Print/Cetak
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
               <Button
-                type="submit"
+                type="button"
+                variant="secondary"
                 disabled={processing || bonNeedsCustomer}
                 className={cn(
-                  'w-full',
-                  selectedAction === 'cetak' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                  selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
                 )}
+                onClick={() => onSubmit(false)}
               >
-                {selectedAction === 'cetak' && <CornerDownLeft className="size-4" />}
-                <Printer className="size-4" />
-                Simpan + Cetak
+                {selectedAction === 'simpan' && <CornerDownLeft className="size-3.5" />}
+                Simpan
+                <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+S</kbd>
               </Button>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={processing || bonNeedsCustomer}
-                  className={cn(
-                    selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
-                  )}
-                  onClick={() => onSubmit(false)}
-                >
-                  {selectedAction === 'simpan' && <CornerDownLeft className="size-3.5" />}
-                  Simpan
-                  <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+S</kbd>
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={processing}
-                  className={cn(
-                    selectedAction === 'batal' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
-                  )}
-                  onClick={() => onOpenChange(false)}
-                >
-                  {selectedAction === 'batal' && <CornerDownLeft className="size-3.5" />}
-                  Batal
-                  <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Esc</kbd>
-                </Button>
-              </div>
-              <p className="text-center text-xs text-muted-foreground">
-                <kbd className="rounded border bg-muted px-1.5 py-0.5">PgUp/PgDn</kbd> pilih aksi &middot;{' '}
-                <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd> jalankan
-              </p>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={processing}
+                className={cn(
+                  selectedAction === 'batal' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
+                )}
+                onClick={() => onOpenChange(false)}
+              >
+                {selectedAction === 'batal' && <CornerDownLeft className="size-3.5" />}
+                Batal
+                <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Esc</kbd>
+              </Button>
             </div>
-          )}
+            <p className="text-center text-xs text-muted-foreground">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">PgUp/PgDn</kbd> pilih aksi &middot;{' '}
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd> jalankan
+            </p>
+          </div>
         </form>
       </DialogContent>
     </Dialog>
-    {ConfirmDialog}
-    </>
   )
 }
