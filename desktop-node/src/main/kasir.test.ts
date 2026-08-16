@@ -15,7 +15,7 @@ import {
   updateStoreSettings,
   purgeSalesBefore,
   purgeTodaySales,
-  updateSaleDate,
+  updateSale,
 } from './kasir'
 
 const PCS_UNIT_ID = 1
@@ -1845,56 +1845,297 @@ describe('listCustomers', () => {
   })
 })
 
-describe('updateSaleDate', () => {
-  it('moves the sale to the new date', () => {
+describe('updateSale', () => {
+  function seedBaseSale() {
     const db = seedDb()
     const { saleId } = checkout(db, {
       metodePembayaran: 'tunai',
       namaPelanggan: null,
-      dibayar: 3000_00,
+      dibayar: 6000_00,
       userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    return { db, saleId }
+  }
+
+  it('leaves stock untouched when nothing about the lines changed', () => {
+    const { db, saleId } = seedBaseSale()
+    const before = db.select().from(products).where(eq(products.id, 2)).get()?.stok
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2026-08-15T09:00',
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    expect(db.select().from(products).where(eq(products.id, 2)).get()?.stok).toBe(before)
+  })
+
+  it('returns stock for a line that was removed', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      tanggal: '2026-08-15T09:00',
       items: [{ productId: 2, productUnitId: null, qty: 1 }],
     })
 
-    updateSaleDate(db, saleId, '2026-07-04T14:05')
+    // seeded at 100, sold 2, now only 1 is sold
+    expect(db.select().from(products).where(eq(products.id, 2)).get()?.stok).toBe(99)
+  })
+
+  it('allows raising qty past current stock, because the old lines are put back first', () => {
+    const db = seedDb()
+    // product 1 is seeded with stok 10; sell all of it
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 620000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 10 }],
+    })
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(0)
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 620000_00,
+      tanggal: '2026-08-15T09:00',
+      items: [{ productId: 1, productUnitId: null, qty: 8 }],
+    })
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(2)
+  })
+
+  it('still rejects a qty that does not fit even after the old lines are restored', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 620000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 10 }],
+    })
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 999999_00,
+        tanggal: '2026-08-15T09:00',
+        items: [{ productId: 1, productUnitId: null, qty: 11 }],
+      }),
+    ).toThrow('Stok Beras 5kg tidak cukup.')
+
+    // the failed edit rolled back: the sale still holds its original 10
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(0)
+  })
+
+  it('moves the sale to a new date', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2026-07-04T14:05',
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
 
     const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
     expect(sale?.createdAt.toISOString()).toBe(new Date('2026-07-04T14:05').toISOString())
   })
 
-  it('leaves stock movements where they are, because they record when the goods left', () => {
-    const db = seedDb()
-    const { saleId } = checkout(db, {
-      metodePembayaran: 'tunai',
-      namaPelanggan: null,
-      dibayar: 3000_00,
-      userId: 1,
-      items: [{ productId: 2, productUnitId: null, qty: 1 }],
-    })
-    const before = db.select().from(stockMovements).get()?.createdAt.toISOString()
-
-    updateSaleDate(db, saleId, '2026-07-04T14:05')
-
-    expect(db.select().from(stockMovements).get()?.createdAt.toISOString()).toBe(before)
-  })
-
-  it('rejects a sale that does not exist', () => {
-    const db = seedDb()
-
-    expect(() => updateSaleDate(db, 999, '2026-07-04T14:05')).toThrow('Transaksi tidak ditemukan.')
-  })
-
   it('rejects a future date', () => {
-    const db = seedDb()
-    const { saleId } = checkout(db, {
+    const { db, saleId } = seedBaseSale()
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 6000_00,
+        tanggal: '2099-01-01T00:00',
+        items: [{ productId: 2, productUnitId: null, qty: 2 }],
+      }),
+    ).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
+  })
+
+  it('charges a manual price and records it as such', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
       metodePembayaran: 'tunai',
       namaPelanggan: null,
-      dibayar: 3000_00,
-      userId: 1,
-      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+      dibayar: 5000_00,
+      tanggal: '2026-08-15T09:00',
+      items: [{ productId: 2, productUnitId: null, qty: 2, hargaJual: 2500_00 }],
     })
-    const besok = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
 
-    expect(() => updateSaleDate(db, saleId, besok)).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
+    const item = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).get()
+    expect(item?.hargaJual).toBe(2500_00)
+    expect(item?.subtotal).toBe(5000_00)
+    expect(item?.priceSource).toBe('manual')
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.total).toBe(5000_00)
+  })
+
+  it('keeps the original cost on a line that was already on the sale', () => {
+    const { db, saleId } = seedBaseSale()
+    const costBefore = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).get()?.hargaPokok
+
+    // the product is repurchased at a higher cost after the sale
+    db.update(productUnits).set({ hargaPokok: 9999_00 }).where(eq(productUnits.id, 102)).run()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 9000_00,
+      tanggal: '2026-08-15T09:00',
+      items: [{ productId: 2, productUnitId: null, qty: 3 }],
+    })
+
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).get()?.hargaPokok).toBe(costBefore)
+  })
+
+  it('takes the current cost for a line that is genuinely new', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 71000_00,
+      tanggal: '2026-08-15T09:00',
+      items: [
+        { productId: 2, productUnitId: null, qty: 2 },
+        { productId: 1, productUnitId: null, qty: 1 },
+      ],
+    })
+
+    const added = db.select().from(saleItems).where(eq(saleItems.productId, 1)).get()
+    expect(added?.hargaPokok).toBe(60000_00)
+  })
+
+  it('rejects a bon without a customer name', () => {
+    const { db, saleId } = seedBaseSale()
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'bon',
+        namaPelanggan: '  ',
+        dibayar: 0,
+        tanggal: '2026-08-15T09:00',
+        items: [{ productId: 2, productUnitId: null, qty: 2 }],
+      }),
+    ).toThrow('Nama pelanggan wajib diisi untuk transaksi bon.')
+  })
+
+  it('rejects cash that does not cover the new total', () => {
+    const { db, saleId } = seedBaseSale()
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 1000_00,
+        tanggal: '2026-08-15T09:00',
+        items: [{ productId: 2, productUnitId: null, qty: 2 }],
+      }),
+    ).toThrow('Uang bayar kurang dari total belanja.')
+  })
+
+  it('rejects dropping dibayar below payments already recorded against the bon', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Budi',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+    recordBonPayment(db, saleId, 4000_00, null)
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'bon',
+        namaPelanggan: 'Budi',
+        dibayar: 1000_00,
+        tanggal: '2026-08-15T09:00',
+        items: [{ productId: 2, productUnitId: null, qty: 2 }],
+      }),
+    ).toThrow('Dibayar tidak boleh kurang dari pembayaran yang sudah tercatat.')
+  })
+
+  it('edits a partly paid bon as long as dibayar still covers what was recorded', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Budi',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+    recordBonPayment(db, saleId, 4000_00, null)
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Budi',
+      dibayar: 4000_00,
+      tanggal: '2026-08-15T09:00',
+      items: [{ productId: 2, productUnitId: null, qty: 3 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.total).toBe(9000_00)
+    expect(sale?.dibayar).toBe(4000_00)
+  })
+
+  it('rejects an empty cart', () => {
+    const { db, saleId } = seedBaseSale()
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 0,
+        tanggal: '2026-08-15T09:00',
+        items: [],
+      }),
+    ).toThrow('Keranjang tidak boleh kosong.')
+  })
+
+  it('rejects an unknown sale', () => {
+    const db = seedDb()
+
+    expect(() =>
+      updateSale(db, 999, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 0,
+        tanggal: '2026-08-15T09:00',
+        items: [{ productId: 2, productUnitId: null, qty: 1 }],
+      }),
+    ).toThrow('Transaksi tidak ditemukan.')
+  })
+
+  it('keeps the movement ledger in step with products.stok', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 15000_00,
+      tanggal: '2026-08-15T09:00',
+      items: [{ productId: 2, productUnitId: null, qty: 5 }],
+    })
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.productId, 2)).all()
+    const netMoved = movements.reduce((sum, row) => sum + row.baseQuantity, 0)
+    const stok = db.select().from(products).where(eq(products.id, 2)).get()?.stok
+
+    expect(stok).toBe(100 + netMoved)
   })
 })

@@ -53,7 +53,7 @@ export interface ResolvedItem {
   hargaPokok: number
   qty: number
   qtyDasar: number
-  priceSource: 'normal' | 'price_tier'
+  priceSource: 'normal' | 'price_tier' | 'manual'
 }
 
 export function resolveCartItem(
@@ -61,11 +61,15 @@ export function resolveCartItem(
   productUnit: ProductUnitRow,
   priceTiers: PriceTier[],
   qty: number,
+  /** whole cents; set only when a sale is being corrected by hand */
+  hargaOverride?: number | null,
 ): ResolvedItem {
   const normalPrice = productUnit.hargaJual
   const tier = findTierForQty(priceTiers, qty)
-  const hargaJual = tier?.hargaJual ?? normalPrice
-  const priceSource: 'normal' | 'price_tier' = tier ? 'price_tier' : 'normal'
+
+  const hargaJual = hargaOverride != null ? hargaOverride : (tier?.hargaJual ?? normalPrice)
+  const priceSource: 'normal' | 'price_tier' | 'manual' =
+    hargaOverride != null ? 'manual' : tier ? 'price_tier' : 'normal'
 
   const qtyDasar = qty * productUnit.conversionFactor
 
@@ -110,6 +114,8 @@ export interface CartItemInput {
   productId: number
   productUnitId: number | null
   qty: number
+  /** whole cents; overrides master and tier pricing for this line alone */
+  hargaJual?: number | null
 }
 
 /** settled in full at checkout, but the money never lands in the drawer */
@@ -151,12 +157,15 @@ export interface CheckoutResult {
   total: number
 }
 
+type Db = BetterSQLite3Database<typeof schema>
+type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
+
 /**
  * Turns cart lines into priced, stock-checked sale lines. Shared by `checkout` and
  * `addItemsToSale` so a line added to an existing bon is priced by exactly the same
  * tier rules and cost snapshot as one rung up at the till.
  */
-function resolveItems(db: BetterSQLite3Database<typeof schema>, items: CartItemInput[]): ResolvedItem[] {
+function resolveItems(db: Pick<Db, 'select'>, items: CartItemInput[]): ResolvedItem[] {
   const productIds = items.map((item) => item.productId)
   const productRows = db.select().from(products).where(inArray(products.id, productIds)).all()
   const productsById = new Map(productRows.map((product) => [product.id, product]))
@@ -207,7 +216,7 @@ function resolveItems(db: BetterSQLite3Database<typeof schema>, items: CartItemI
       .filter((row) => row.productUnitId === unit.id)
       .map((row) => ({ minQty: row.minQty, maxQty: row.maxQty, hargaJual: row.hargaJual }))
 
-    const resolved = resolveCartItem(product, unit, tiers, item.qty)
+    const resolved = resolveCartItem(product, unit, tiers, item.qty, item.hargaJual)
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
     const totalQtyDasar = previousQtyDasar + resolved.qtyDasar
 
@@ -318,9 +327,6 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   })
 }
 
-type Db = BetterSQLite3Database<typeof schema>
-type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
-
 /**
  * Puts sold stock back and logs the reversal. Both callers (cancelSale and purgeTodaySales)
  * move real stock, so both write to the ledger - otherwise the movement sum drifts away
@@ -378,22 +384,147 @@ export function cancelSale(db: Db, saleId: number): void {
   })
 }
 
+export interface UpdateSaleInput {
+  metodePembayaran: MetodePembayaran
+  namaPelanggan: string | null
+  /** whole cents; ignored for qris and transfer, which always settle in full */
+  dibayar: number | null
+  /** local `YYYY-MM-DDTHH:mm` */
+  tanggal: string
+  items: CartItemInput[]
+}
+
 /**
- * Moves a saved sale to another date. Only `sales.createdAt` moves: every money report
- * (rekap, buku kas) reads its period from that column, while `sale_items` and
- * `stock_movements` record when the goods physically left and stay where they are.
+ * Rewrites a saved sale in place: its lines, its prices, who it is filed under, how it
+ * was paid, and when it happened.
  *
- * Cancelled sales may be redated too - the status says nothing about when it happened.
+ * The old lines are reversed *inside* the transaction before the new ones are priced,
+ * which is what lets the cashier raise the qty of something this very sale sold out.
+ * Reversal rows are logged as `sale_cancel` and the new lines as `sale`: nothing in the
+ * app reads `movement_type` back, and what has to stay true is that the ledger still
+ * sums to `products.stok`.
+ *
+ * A line that was already on the sale keeps the `hargaPokok` it was sold at. Re-reading
+ * today's cost would rewrite historical margin every time an old sale is corrected.
  */
-export function updateSaleDate(db: Db, saleId: number, tanggal: string): void {
-  const tanggalBaru = parseTanggalTransaksi(tanggal)
+export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { total: number } {
+  if (input.items.length < 1) {
+    throw new Error('Keranjang tidak boleh kosong.')
+  }
+
+  for (const item of input.items) {
+    if (!(item.qty > 0)) {
+      throw new Error('Qty harus lebih dari 0.')
+    }
+  }
+
+  if (input.metodePembayaran === 'bon' && !input.namaPelanggan?.trim()) {
+    throw new Error('Nama pelanggan wajib diisi untuk transaksi bon.')
+  }
+
+  const tanggalBaru = parseTanggalTransaksi(input.tanggal)
   const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
 
   if (!sale) {
     throw new Error('Transaksi tidak ditemukan.')
   }
 
-  db.update(sales).set({ createdAt: tanggalBaru, updatedAt: new Date() }).where(eq(sales.id, saleId)).run()
+  const sudahDibayar = db
+    .select()
+    .from(bonPayments)
+    .where(eq(bonPayments.saleId, saleId))
+    .all()
+    .reduce((sum, row) => sum + row.jumlah, 0)
+
+  return db.transaction((tx) => {
+    const oldItems = tx.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+
+    restoreStockForItems(
+      tx,
+      oldItems.map((item) => ({
+        saleId,
+        productId: item.productId,
+        productUnitId: item.productUnitId,
+        qty: item.qty,
+        konversi: item.konversi,
+      })),
+    )
+
+    tx.delete(saleItems).where(eq(saleItems.saleId, saleId)).run()
+
+    const resolvedItems = resolveItems(tx, input.items)
+
+    const hargaPokokLama = new Map(oldItems.map((item) => [`${item.productId}:${item.productUnitId}`, item.hargaPokok]))
+
+    const now = new Date()
+    let total = 0
+
+    for (const line of resolvedItems) {
+      const subtotal = Math.round(line.qty * line.hargaJual)
+      total += subtotal
+
+      tx.insert(saleItems)
+        .values({
+          saleId,
+          productId: line.productId,
+          productUnitId: line.productUnitId,
+          qty: line.qty,
+          konversi: line.konversi,
+          baseQuantity: line.qtyDasar,
+          satuan: line.satuan,
+          hargaJual: line.hargaJual,
+          hargaPokok: hargaPokokLama.get(`${line.productId}:${line.productUnitId}`) ?? line.hargaPokok,
+          priceSource: line.priceSource,
+          subtotal,
+          createdAt: tanggalBaru,
+          updatedAt: now,
+        })
+        .run()
+
+      tx.update(products)
+        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .where(eq(products.id, line.productId))
+        .run()
+
+      tx.insert(stockMovements)
+        .values({
+          productId: line.productId,
+          productUnitId: line.productUnitId,
+          quantity: -line.qty,
+          conversionFactor: line.konversi,
+          baseQuantity: -line.qtyDasar,
+          movementType: 'sale',
+          referenceId: saleId,
+          createdAt: tanggalBaru,
+        })
+        .run()
+    }
+
+    const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
+    const dibayarBaru = lunasNonTunai ? total : (input.dibayar ?? 0)
+
+    if (input.metodePembayaran === 'tunai' && dibayarBaru < total) {
+      throw new Error('Uang bayar kurang dari total belanja.')
+    }
+
+    if (dibayarBaru < sudahDibayar) {
+      throw new Error('Dibayar tidak boleh kurang dari pembayaran yang sudah tercatat.')
+    }
+
+    tx.update(sales)
+      .set({
+        namaPelanggan: input.namaPelanggan,
+        metodePembayaran: input.metodePembayaran,
+        total,
+        dibayar: dibayarBaru,
+        createdAt: tanggalBaru,
+        updatedAt: now,
+      })
+      .where(eq(sales.id, saleId))
+      .run()
+
+    return { total }
+  })
 }
 
 /**
