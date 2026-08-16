@@ -301,7 +301,15 @@ export function Purchase() {
       return
     }
 
-    const scanned = await window.api.purchase.findProductByBarcode(typed)
+    let scanned: Awaited<ReturnType<typeof window.api.purchase.findProductByBarcode>>
+
+    try {
+      scanned = await window.api.purchase.findProductByBarcode(typed)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Gagal mencari barcode.')
+
+      return
+    }
 
     if (scanned) {
       addItem(scanned)

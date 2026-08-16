@@ -174,9 +174,24 @@ export function Inventory() {
     const requestId = ++searchRequestId.current
     const typed = search.trim()
     setScanMiss(null)
+    setDeleteError(null)
 
     if (typed !== '') {
-      const scanned = await window.api.inventory.findByBarcode(typed)
+      let scanned: Awaited<ReturnType<typeof window.api.inventory.findByBarcode>>
+
+      try {
+        scanned = await window.api.inventory.findByBarcode(typed)
+      } catch (err) {
+        // A newer submit (key-repeat, or a fast second scan) started while this
+        // lookup was in flight - let that one own the UI, not this stale result.
+        if (requestId !== searchRequestId.current) {
+          return
+        }
+
+        setDeleteError(err instanceof Error ? err.message : 'Gagal mencari barcode.')
+
+        return
+      }
 
       // A newer submit (key-repeat, or a fast second scan) started while this
       // lookup was in flight - let that one own the UI, not this stale result.
