@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
@@ -61,6 +61,11 @@ const METODE_LABEL: Record<SaleDetailData['metodePembayaran'], string> = {
   qris: 'QRIS',
   transfer: 'Transfer',
 }
+
+// Accepts a plain decimal, with either dot or comma as separator (Indonesian
+// input uses comma). Rejects scientific notation, signs, and anything else
+// `Number()` would otherwise accept unsanitised.
+const QTY_PATTERN = /^\d+([.,]\d+)?$/
 
 const BREADCRUMBS: BreadcrumbItem[] = [
   { title: 'Penjualan', href: '/kasir' },
@@ -140,6 +145,9 @@ export function SaleDetail() {
   const [qty, setQty] = useState('1')
   const [saving, setSaving] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
+  // Mirrors `saving` but updates synchronously, so a second submit dispatched
+  // before the disabled-button re-render commits still sees it in time.
+  const savingRef = useRef(false)
 
   useEffect(() => {
     if (!addOpen || catalog.length > 0) {
@@ -159,19 +167,37 @@ export function SaleDetail() {
 
     // Guard against a second submit (e.g. Enter key) landing before the
     // disabled button re-renders; the IPC round trip is real stock movement.
-    if (saving) {
+    // A ref updates synchronously, unlike the `saving` state, so this closes
+    // the window the state check alone would miss.
+    if (savingRef.current) {
       return
     }
 
     const productId = Number(pickedId)
-    const jumlah = Number(qty)
 
-    if (!productId || !(jumlah > 0)) {
+    if (!productId) {
       setAddError('Pilih produk dan isi qty lebih dari 0.')
 
       return
     }
 
+    const normalizedQty = qty.trim().replace(',', '.')
+
+    if (!QTY_PATTERN.test(normalizedQty)) {
+      setAddError('Qty harus berupa angka desimal, contoh: 1.5 atau 1,5.')
+
+      return
+    }
+
+    const jumlah = Number(normalizedQty)
+
+    if (!(jumlah > 0)) {
+      setAddError('Pilih produk dan isi qty lebih dari 0.')
+
+      return
+    }
+
+    savingRef.current = true
     setSaving(true)
     setAddError(null)
 
@@ -185,10 +211,14 @@ export function SaleDetail() {
       setPickedUnitId('base')
       setQty('1')
       setAddOpen(false)
+      // Stock just moved; drop the cached catalog so reopening the panel
+      // refetches fresh `stok` numbers instead of showing pre-append counts.
+      setCatalog([])
       loadSale()
     } catch (err) {
       setAddError(err instanceof Error ? err.message : 'Gagal menambah item')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
