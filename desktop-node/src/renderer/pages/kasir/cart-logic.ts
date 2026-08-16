@@ -35,6 +35,12 @@ export interface CartLine {
   productUnitId: number | null
   satuan: string
   qty: number
+  /**
+   * Set only while editing a saved sale, where the cashier may correct a price
+   * that was charged. Optional rather than always-null so the dozens of existing
+   * call sites that build a CartLine keep compiling.
+   */
+  hargaOverride?: number | null
 }
 
 // Mirrors main/kasir.ts's findTierForQty/priceForQty — duplicated (not
@@ -70,8 +76,12 @@ export function activeTier(line: CartLine): PriceTier | null {
   return findTierForQty(tiersForLine(line), line.qty) ?? null
 }
 
-/** resolve the price for a cart line - tiered by qty, scoped to the line's own unit */
+/** resolve the price for a cart line - a manual override first, then tiered by qty, scoped to the line's own unit */
 export function unitPrice(line: CartLine): number {
+  if (line.hargaOverride != null) {
+    return line.hargaOverride
+  }
+
   const normalPrice =
     line.productUnitId === null
       ? line.product.hargaJual
@@ -195,6 +205,13 @@ export function applyQty(cart: CartLine[], key: string, rawQty: number): CartLin
   const qty = rawQty > 0 ? roundQty(rawQty) : 1
 
   return cart.map((i) => (i.key === key ? { ...i, qty } : i))
+}
+
+/** sets a manual price (in whole rupiah) on one line, overriding master and tier alike */
+export function applyHarga(cart: CartLine[], key: string, rawHarga: number): CartLine[] {
+  const harga = rawHarga > 0 ? Math.round(rawHarga) : 0
+
+  return cart.map((i) => (i.key === key ? { ...i, hargaOverride: harga } : i))
 }
 
 /** one selectable row in the product palette: a product *at one of its units* */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   addLine,
+  applyHarga,
   applyQty,
   changeUnit,
   expandUnitResults,
@@ -294,5 +295,80 @@ describe('expandUnitResults', () => {
     const noBarcode: Product = { ...product, barcode: null }
 
     expect(expandUnitResults([noBarcode], 'beras', 50)).toHaveLength(2)
+  })
+})
+
+describe('hargaOverride', () => {
+  it('wins over the tier price', () => {
+    const line: CartLine = {
+      key: lineKey(1, null),
+      product,
+      productUnitId: null,
+      satuan: 'PCS',
+      qty: 5,
+      hargaOverride: 50000,
+    }
+
+    expect(unitPrice(line)).toBe(50000)
+  })
+
+  it('wins over a derived unit price', () => {
+    const line: CartLine = {
+      key: lineKey(1, 9),
+      product,
+      productUnitId: 9,
+      satuan: 'DUS',
+      qty: 1,
+      hargaOverride: 600000,
+    }
+
+    expect(unitPrice(line)).toBe(600000)
+  })
+
+  it('is ignored when null, falling back to normal pricing', () => {
+    const line: CartLine = {
+      key: lineKey(1, null),
+      product,
+      productUnitId: null,
+      satuan: 'PCS',
+      qty: 5,
+      hargaOverride: null,
+    }
+
+    expect(unitPrice(line)).toBe(62000)
+  })
+
+  it('allows a deliberate zero, which is not the same as "no override"', () => {
+    const line: CartLine = {
+      key: lineKey(1, null),
+      product,
+      productUnitId: null,
+      satuan: 'PCS',
+      qty: 5,
+      hargaOverride: 0,
+    }
+
+    expect(unitPrice(line)).toBe(0)
+  })
+})
+
+describe('applyHarga', () => {
+  it('sets the override on the matching line only', () => {
+    const cart: CartLine[] = [
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 },
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1 },
+    ]
+
+    const result = applyHarga(cart, lineKey(1, 9), 640000)
+
+    expect(result[0].hargaOverride).toBeUndefined()
+    expect(result[1].hargaOverride).toBe(640000)
+  })
+
+  it('rounds to whole rupiah and floors a negative at zero', () => {
+    const cart: CartLine[] = [{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }]
+
+    expect(applyHarga(cart, lineKey(1, null), 1234.6)[0].hargaOverride).toBe(1235)
+    expect(applyHarga(cart, lineKey(1, null), -5)[0].hargaOverride).toBe(0)
   })
 })

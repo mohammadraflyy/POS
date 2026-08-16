@@ -23,6 +23,30 @@ function focusSelect(select: HTMLSelectElement | null) {
   select?.focus()
 }
 
+function renderHargaEditCell({ row, onRowChange, onClose }: RenderEditCellProps<CartLine>) {
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      ref={focusAndSelectQtyInput}
+      // uncontrolled for the same reason as qty: re-syncing a parsed number on
+      // every keystroke fights the cashier mid-edit
+      defaultValue={unitPrice(row)}
+      title="Harga khusus untuk baris ini - mengabaikan harga master dan harga bertingkat"
+      className="h-full w-full bg-background px-2 text-right text-sm outline-none"
+      onChange={(e) => onRowChange({ ...row, hargaOverride: Number(e.target.value) || 0 })}
+      onBlur={() => onClose(true, false)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          onClose(true, false)
+        } else if (e.key === 'Escape') {
+          onClose(false)
+        }
+      }}
+    />
+  )
+}
+
 function renderQtyEditCell({ row, onRowChange, onClose }: RenderEditCellProps<CartLine>) {
   return (
     <input
@@ -52,6 +76,8 @@ export interface CartGridProps {
   cart: CartLine[]
   width: number
   resolvedAppearance: 'light' | 'dark'
+  /** editing a saved sale - only then may a price be overridden by hand */
+  editMode: boolean
   gridRef: RefObject<DataGridHandle | null>
   onRowsChange: (rows: CartLine[], data: RowsChangeData<CartLine>) => void
   onCellKeyDown: (args: CellKeyDownArgs<CartLine>, event: CellKeyboardEvent) => void
@@ -63,6 +89,7 @@ export function CartGrid({
   cart,
   width,
   resolvedAppearance,
+  editMode,
   gridRef,
   onRowsChange,
   onCellKeyDown,
@@ -132,6 +159,10 @@ export function CartGrid({
       key: 'harga',
       name: 'Harga',
       width: 120,
+      // a new sale always prices from master and tier; only a correction to a
+      // saved sale may set a price by hand
+      editable: () => editMode,
+      renderEditCell: renderHargaEditCell,
       renderCell: ({ row }) => {
         const tier = activeTier(row)
 

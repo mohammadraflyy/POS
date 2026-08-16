@@ -17,6 +17,7 @@ import { CommandPalette } from './kasir/CommandPalette'
 import { CustomerPicker, DEFAULT_PELANGGAN } from './kasir/CustomerPicker'
 import {
   addLine,
+  applyHarga,
   applyQty,
   changeUnit,
   expandUnitResults,
@@ -291,8 +292,15 @@ export function Kasir() {
     }
   }
 
-  function handleCartRowsChange(newRows: CartLine[], { indexes }: RowsChangeData<CartLine>) {
+  function handleCartRowsChange(newRows: CartLine[], { indexes, column }: RowsChangeData<CartLine>) {
     const editedRow = newRows[indexes[0]]
+
+    if (column.key === 'harga') {
+      setCart((prev) => applyHarga(prev, editedRow.key, editedRow.hargaOverride ?? 0))
+
+      return
+    }
+
     applyResolvedQty(editedRow.key, editedRow.qty)
   }
 
@@ -515,6 +523,7 @@ export function Kasir() {
                     cart={cart}
                     width={cartGridWidth}
                     resolvedAppearance={resolvedAppearance}
+                    editMode={false}
                     gridRef={cartGridRef}
                     onRowsChange={handleCartRowsChange}
                     onCellKeyDown={handleCartCellKeyDown}
