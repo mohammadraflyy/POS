@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
 import { DataGrid, renderTextEditor } from 'react-data-grid'
@@ -6,6 +6,7 @@ import 'react-data-grid/lib/styles.css'
 import { Page, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { renderUnitSelectEditor, type UnitOption } from '@/components/unit-select-editor'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -65,7 +66,25 @@ export function MassInput() {
   const [formError, setFormError] = useState<string | undefined>()
   const [processing, setProcessing] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [unitOptions, setUnitOptions] = useState<UnitOption[]>([])
   const { confirm, ConfirmDialog } = useConfirm()
+
+  useEffect(() => {
+    window.api.masterSatuan
+      .list()
+      .then((list) => setUnitOptions(list.filter((unit) => unit.isActive).map((unit) => ({ id: unit.id, code: unit.code }))))
+      .catch(() => setFormError('Gagal memuat daftar satuan.'))
+  }, [])
+
+  const satuanEditor = useMemo(
+    () =>
+      renderUnitSelectEditor<DraftRow>(
+        unitOptions,
+        (row) => row.satuan,
+        (row, satuan) => ({ ...row, satuan }),
+      ),
+    [unitOptions],
+  )
 
   useEffect(() => {
     const idsParam = searchParams.get('ids')
@@ -252,7 +271,14 @@ export function MassInput() {
     textColumn('barcode', 'Barcode', 130),
     textColumn('namaItem', 'Nama Item', namaWidth),
     textColumn('kategori', 'Kategori', 130),
-    textColumn('satuan', 'Satuan', 90),
+    {
+      key: 'satuan',
+      name: 'Satuan',
+      width: 90,
+      editable: true,
+      renderEditCell: satuanEditor,
+      cellClass: (row) => (rowErrors[row.key]?.satuan ? 'bg-red-100 dark:bg-red-950' : undefined),
+    },
     textColumn('hargaPokok', 'Harga Pokok', 110),
     textColumn('hargaJual', 'Harga Jual', 110),
     {

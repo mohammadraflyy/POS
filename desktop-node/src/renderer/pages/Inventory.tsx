@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Column, RowsChangeData } from 'react-data-grid'
@@ -7,6 +7,7 @@ import 'react-data-grid/lib/styles.css'
 import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { renderUnitSelectEditor, type UnitOption } from '@/components/unit-select-editor'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Badge } from '@/components/ui/badge'
@@ -81,6 +82,24 @@ export function Inventory() {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(new Set())
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({})
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [unitOptions, setUnitOptions] = useState<UnitOption[]>([])
+
+  useEffect(() => {
+    window.api.masterSatuan
+      .list()
+      .then((list) => setUnitOptions(list.filter((unit) => unit.isActive).map((unit) => ({ id: unit.id, code: unit.code }))))
+      .catch(() => setDeleteError('Gagal memuat daftar satuan.'))
+  }, [])
+
+  const satuanEditor = useMemo(
+    () =>
+      renderUnitSelectEditor<DraftRow>(
+        unitOptions,
+        (row) => row.satuan,
+        (row, satuan) => ({ ...row, satuan }),
+      ),
+    [unitOptions],
+  )
 
   const [currentPage, setCurrentPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
@@ -427,7 +446,14 @@ export function Inventory() {
     textColumn('barcode', 'Barcode', 130),
     textColumn('namaItem', 'Nama', namaWidth),
     textColumn('kategori', 'Kategori', 130),
-    textColumn('satuan', 'Satuan', 90),
+    {
+      key: 'satuan',
+      name: 'Satuan',
+      width: 90,
+      editable: true,
+      renderEditCell: satuanEditor,
+      cellClass: (row) => (rowErrors[row.id] ? 'bg-red-100 dark:bg-red-950' : undefined),
+    },
     textColumn('hargaPokok', 'Harga Pokok', 110),
     textColumn('hargaJual', 'Harga Jual', 110),
     {
