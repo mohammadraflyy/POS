@@ -101,7 +101,13 @@ if (-not (Test-Path $DllPath)) {
   Add-Type -TypeDefinition $source -OutputAssembly $DllPath -OutputType Library
 }
 
-Add-Type -Path $DllPath
+try {
+  Add-Type -Path $DllPath
+} catch {
+  Remove-Item $DllPath -Force -ErrorAction SilentlyContinue
+  Add-Type -TypeDefinition $source -OutputAssembly $DllPath -OutputType Library
+  Add-Type -Path $DllPath
+}
 
 $bytes = [System.IO.File]::ReadAllBytes($DataPath)
 [RawPrinterHelper]::SendBytesToPrinter($PrinterName, $bytes)

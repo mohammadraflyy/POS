@@ -31,6 +31,12 @@ export interface PaymentDialogProps {
   onSubmit: (shouldPrint: boolean) => void
   /** editing a saved sale: there is nothing to print, only changes to save */
   editMode: boolean
+  /**
+   * Only meaningful in edit mode: false while the sale is still loading, or when
+   * it cannot be safely rewritten from what is displayed (a dropped line, or a
+   * non-selesai status). Ignored outside edit mode - a new sale is always ready.
+   */
+  editReady: boolean
 }
 
 export function PaymentDialog({
@@ -49,9 +55,13 @@ export function PaymentDialog({
   error,
   onSubmit,
   editMode,
+  editReady,
 }: PaymentDialogProps) {
-  // qris/transfer land on the exact total; only cash can overpay and only bon can underpay
-  const totalBayar = metode === 'tunai' ? Number(dibayar || 0) : metode === 'bon' ? 0 : total
+  // qris/transfer land on the exact total; only cash can overpay and only bon can
+  // underpay. A bon's dibayar is only ever hand-set in edit mode (see the amount
+  // field below) - a new bon is always forced to 0 by the main process.
+  const totalBayar =
+    metode === 'tunai' || (editMode && metode === 'bon') ? Number(dibayar || 0) : metode === 'bon' ? 0 : total
   const selisih = total - totalBayar
   // qris and transfer arrive for the exact amount, so they are settled the moment they are chosen
   const isLunas = (metode === 'tunai' && selisih <= 0) || metode === 'qris' || metode === 'transfer'
@@ -77,6 +87,10 @@ export function PaymentDialog({
   }
 
   function runAction(action: Action) {
+    if (action === 'simpan' && editMode && !editReady) {
+      return
+    }
+
     if (action !== 'batal' && bonNeedsCustomer) {
       onEditCustomer()
 
@@ -204,9 +218,9 @@ export function PaymentDialog({
             <span className="text-4xl font-bold text-background tabular-nums">{formatRupiah(total)}</span>
           </div>
 
-          {metode === 'tunai' && (
+          {(metode === 'tunai' || (editMode && metode === 'bon')) && (
             <div className="grid gap-2">
-              <Label htmlFor="dibayar">Uang Tunai</Label>
+              <Label htmlFor="dibayar">{metode === 'tunai' ? 'Uang Tunai' : 'Sudah Dibayar'}</Label>
               <Input
                 id="dibayar"
                 autoFocus
@@ -322,7 +336,7 @@ export function PaymentDialog({
               <Button
                 type="button"
                 variant="secondary"
-                disabled={processing || bonNeedsCustomer}
+                disabled={processing || bonNeedsCustomer || (editMode && !editReady)}
                 className={cn(
                   selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
                 )}

@@ -248,21 +248,33 @@ export interface EditSaleItem {
  *
  * A line whose derived unit has since been deleted from the catalog is dropped
  * rather than kept with a dangling productUnitId - updateSale would reject it on
- * every save with no indication on screen of which line was at fault.
+ * every save with no indication on screen of which line was at fault. Likewise for
+ * a line whose product itself is gone (deleted or deactivated). `dropped` counts
+ * both cases so the caller can refuse to let the sale be saved from an incomplete
+ * cart instead of silently deleting the missing line's stock and total on save.
  *
  * addItemsToSale (main process) plain-inserts a sale_items row rather than merging,
  * so a bon topped up with a product already on it can carry two rows for the same
  * product+unit. Those collapse into one CartLine here (qty summed, last non-null
  * hargaOverride wins) - applyQty/applyHarga key by lineKey and would otherwise edit
- * both rows at once, and React would see duplicate grid keys.
+ * both rows at once, and React would see duplicate grid keys. Coalescing is not a
+ * drop: both rows are represented, just merged into one line.
  */
-export function cartFromSale(items: EditSaleItem[], products: Product[]): CartLine[] {
+export interface CartFromSaleResult {
+  cart: CartLine[]
+  /** count of items skipped for a missing product or a missing derived unit */
+  dropped: number
+}
+
+export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFromSaleResult {
   const cart = new Map<string, CartLine>()
+  let dropped = 0
 
   for (const item of items) {
     const product = products.find((p) => p.id === item.productId)
 
     if (!product) {
+      dropped++
       continue
     }
 
@@ -271,6 +283,7 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartLi
     const unit = productUnitId === null ? null : product.productUnits.find((u) => u.id === productUnitId)
 
     if (productUnitId !== null && !unit) {
+      dropped++
       continue
     }
 
@@ -298,7 +311,7 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartLi
     })
   }
 
-  return [...cart.values()]
+  return { cart: [...cart.values()], dropped }
 }
 
 /**

@@ -1934,6 +1934,8 @@ describe('updateSale', () => {
 
     // the failed edit rolled back: the sale still holds its original 10
     expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(0)
+    // and the rejected edit did not wipe the sale's own sale_items rows either
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(1)
   })
 
   it('moves the sale to a new date', () => {

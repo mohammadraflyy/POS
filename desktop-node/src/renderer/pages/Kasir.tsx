@@ -109,6 +109,11 @@ export function Kasir() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [jumlah, setJumlah] = useState(initialDraft.jumlah)
+  // Non-edit mode has nothing to gate - the cart is always what it says it is.
+  // Edit mode starts unready and only becomes ready once cartFromSale has run
+  // AND accounted for every line of the saved sale (see refreshProducts below).
+  const [editReady, setEditReady] = useState(editSaleId === null)
+  const [editBlockReason, setEditBlockReason] = useState<string | null>(null)
   const { resolvedAppearance } = useAppearance()
   const { confirm, ConfirmDialog } = useConfirm()
   const [cartWidthRef, cartGridWidth] = useElementWidth<HTMLDivElement>()
@@ -138,6 +143,16 @@ export function Kasir() {
     window.api.kasir
       .getSaleForEdit(editSaleId)
       .then((sale) => {
+        // updateSale rejects a non-selesai sale outright - surface that up front
+        // rather than letting the cart load and only failing on save.
+        if (sale.status !== 'selesai') {
+          setEditBlockReason(
+            `Transaksi ini berstatus "${sale.status}" dan tidak bisa diedit. Hanya transaksi selesai yang bisa diedit.`,
+          )
+
+          return
+        }
+
         const created = new Date(sale.createdAt)
         const pad = (n: number) => String(n).padStart(2, '0')
 
@@ -181,8 +196,19 @@ export function Kasir() {
         setProducts(list)
 
         if (pendingEditRef.current.length > 0) {
-          setCart(cartFromSale(pendingEditRef.current, list))
+          const { cart: editCart, dropped } = cartFromSale(pendingEditRef.current, list)
+          setCart(editCart)
           pendingEditRef.current = []
+
+          if (dropped > 0) {
+            setEditReady(false)
+            setEditBlockReason(
+              `Transaksi ini tidak bisa diedit: ${dropped} baris tidak bisa dimuat karena produk atau satuannya sudah dihapus/dinonaktifkan.`,
+            )
+          } else {
+            setEditReady(true)
+            setEditBlockReason(null)
+          }
 
           return
         }
@@ -284,6 +310,7 @@ export function Kasir() {
           if (
             cart.length > 0 &&
             !paymentOpen &&
+            (editSaleId === null || editReady) &&
             (document.activeElement === document.body || document.activeElement === null)
           ) {
             e.preventDefault()
@@ -362,7 +389,7 @@ export function Kasir() {
       return
     }
 
-    if (event.key === 'Enter' && cart.length > 0 && !paymentOpen) {
+    if (event.key === 'Enter' && cart.length > 0 && !paymentOpen && (editSaleId === null || editReady)) {
       event.preventGridDefault()
       event.preventDefault()
       setPaymentOpen(true)
@@ -545,6 +572,11 @@ export function Kasir() {
           {error}
         </p>
       )}
+      {editSaleId !== null && !editReady && editBlockReason && (
+        <p role="alert" className="text-sm text-destructive">
+          {editBlockReason}
+        </p>
+      )}
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
 
       <div className="grid flex-1 items-start gap-6">
@@ -572,7 +604,7 @@ export function Kasir() {
                 type="button"
                 size="lg"
                 className="mt-4 h-14 w-full text-lg"
-                disabled={cart.length === 0}
+                disabled={cart.length === 0 || (editSaleId !== null && !editReady)}
                 onClick={() => setPaymentOpen(true)}
               >
                 {editSaleId === null ? 'Bayar' : 'Simpan Perubahan'}
@@ -665,6 +697,7 @@ export function Kasir() {
         error={checkoutError}
         onSubmit={editSaleId === null ? handleCheckout : () => handleSaveEdit()}
         editMode={editSaleId !== null}
+        editReady={editReady}
       />
 
       <CustomerPicker

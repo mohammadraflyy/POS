@@ -34,7 +34,9 @@ function renderHargaEditCell({ row, onRowChange, onClose }: RenderEditCellProps<
       defaultValue={unitPrice(row)}
       title="Harga khusus untuk baris ini - mengabaikan harga master dan harga bertingkat"
       className="h-full w-full bg-background px-2 text-right text-sm outline-none"
-      onChange={(e) => onRowChange({ ...row, hargaOverride: Number(e.target.value) || 0 })}
+      onChange={(e) =>
+        onRowChange({ ...row, hargaOverride: Number(e.target.value.replace(/[^0-9]/g, '')) || 0 })
+      }
       onBlur={() => onClose(true, false)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {

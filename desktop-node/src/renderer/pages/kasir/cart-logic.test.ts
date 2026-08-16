@@ -381,9 +381,10 @@ describe('cartFromSale', () => {
       { productId: 1, productUnitId: 1, qty: 2, hargaJual: 65000, priceSource: 'normal' },
     ]
 
-    expect(cartFromSale(items, [product])).toEqual([
+    expect(cartFromSale(items, [product]).cart).toEqual([
       { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2, hargaOverride: null },
     ])
+    expect(cartFromSale(items, [product]).dropped).toBe(0)
   })
 
   it('keeps a derived unit as itself', () => {
@@ -391,7 +392,7 @@ describe('cartFromSale', () => {
       { productId: 1, productUnitId: 9, qty: 1, hargaJual: 700000, priceSource: 'normal' },
     ]
 
-    expect(cartFromSale(items, [product])).toEqual([
+    expect(cartFromSale(items, [product]).cart).toEqual([
       { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1, hargaOverride: null },
     ])
   })
@@ -401,7 +402,7 @@ describe('cartFromSale', () => {
       { productId: 1, productUnitId: 1, qty: 1, hargaJual: 55000, priceSource: 'manual' },
     ]
 
-    expect(cartFromSale(items, [product])[0].hargaOverride).toBe(55000)
+    expect(cartFromSale(items, [product]).cart[0].hargaOverride).toBe(55000)
   })
 
   it('leaves a tier-priced line to be recomputed rather than pinning it', () => {
@@ -409,15 +410,18 @@ describe('cartFromSale', () => {
       { productId: 1, productUnitId: 1, qty: 5, hargaJual: 62000, priceSource: 'price_tier' },
     ]
 
-    expect(cartFromSale(items, [product])[0].hargaOverride).toBeNull()
+    expect(cartFromSale(items, [product]).cart[0].hargaOverride).toBeNull()
   })
 
-  it('drops a line whose product is gone from the catalog', () => {
+  it('drops a line whose product is gone from the catalog, and reports it as dropped', () => {
     const items: EditSaleItem[] = [
       { productId: 77, productUnitId: 1, qty: 1, hargaJual: 1000, priceSource: 'normal' },
     ]
 
-    expect(cartFromSale(items, [product])).toEqual([])
+    const result = cartFromSale(items, [product])
+
+    expect(result.cart).toEqual([])
+    expect(result.dropped).toBe(1)
   })
 
   it('preserves the saved order of the lines', () => {
@@ -426,18 +430,21 @@ describe('cartFromSale', () => {
       { productId: 1, productUnitId: 1, qty: 2, hargaJual: 65000, priceSource: 'normal' },
     ]
 
-    expect(cartFromSale(items, [product]).map((line) => line.key)).toEqual([lineKey(1, 9), lineKey(1, null)])
+    expect(cartFromSale(items, [product]).cart.map((line) => line.key)).toEqual([lineKey(1, 9), lineKey(1, null)])
   })
 
-  it('drops a line whose derived unit was deleted from the catalog', () => {
+  it('drops a line whose derived unit was deleted from the catalog, and reports it as dropped', () => {
     const items: EditSaleItem[] = [
       { productId: 1, productUnitId: 999, qty: 1, hargaJual: 700000, priceSource: 'normal' },
     ]
 
-    expect(cartFromSale(items, [product])).toEqual([])
+    const result = cartFromSale(items, [product])
+
+    expect(result.cart).toEqual([])
+    expect(result.dropped).toBe(1)
   })
 
-  it('coalesces two sale_items rows for the same product and unit into one line', () => {
+  it('coalesces two sale_items rows for the same product and unit into one line, without counting it as dropped', () => {
     // addItemsToSale plain-inserts rather than merging, so a bon topped up with a
     // product already on it can carry two rows for the same product+unit
     const items: EditSaleItem[] = [
@@ -447,8 +454,9 @@ describe('cartFromSale', () => {
 
     const result = cartFromSale(items, [product])
 
-    expect(result).toHaveLength(1)
-    expect(result[0].qty).toBe(5)
+    expect(result.cart).toHaveLength(1)
+    expect(result.cart[0].qty).toBe(5)
+    expect(result.dropped).toBe(0)
   })
 
   it('keeps the last non-null manual override when coalescing duplicate rows', () => {
@@ -459,7 +467,20 @@ describe('cartFromSale', () => {
 
     const result = cartFromSale(items, [product])
 
-    expect(result).toHaveLength(1)
-    expect(result[0].hargaOverride).toBe(55000)
+    expect(result.cart).toHaveLength(1)
+    expect(result.cart[0].hargaOverride).toBe(55000)
+  })
+
+  it('counts a dropped-product line and a dropped-unit line separately in a mixed batch', () => {
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 1, qty: 1, hargaJual: 65000, priceSource: 'normal' },
+      { productId: 77, productUnitId: 1, qty: 1, hargaJual: 1000, priceSource: 'normal' },
+      { productId: 1, productUnitId: 999, qty: 1, hargaJual: 700000, priceSource: 'normal' },
+    ]
+
+    const result = cartFromSale(items, [product])
+
+    expect(result.cart).toHaveLength(1)
+    expect(result.dropped).toBe(2)
   })
 })
