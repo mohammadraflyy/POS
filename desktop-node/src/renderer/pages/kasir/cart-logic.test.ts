@@ -3,6 +3,7 @@ import {
   addLine,
   applyQty,
   changeUnit,
+  expandUnitResults,
   lineKey,
   restoreCart,
   toStoredCart,
@@ -256,5 +257,42 @@ describe('applyQty', () => {
     expect(applyQty(cart, lineKey(1, null), -3)).toEqual([
       { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 },
     ])
+  })
+})
+
+describe('expandUnitResults', () => {
+  it('returns one row per unit, base unit first', () => {
+    const results = expandUnitResults([product], 'beras', 50)
+
+    expect(results).toEqual([
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', hargaJual: 65000 },
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', hargaJual: 700000 },
+    ])
+  })
+
+  it('matches on barcode, which is how a scan into the search box arrives', () => {
+    expect(expandUnitResults([product], '8991234500015', 50)).toHaveLength(2)
+  })
+
+  it('matches on kode item and is case-insensitive', () => {
+    expect(expandUnitResults([product], 'brs5', 50)).toHaveLength(2)
+  })
+
+  it('returns nothing for a blank query', () => {
+    expect(expandUnitResults([product], '   ', 50)).toEqual([])
+  })
+
+  it('returns nothing when the query matches no product', () => {
+    expect(expandUnitResults([product], 'tidak ada', 50)).toEqual([])
+  })
+
+  it('honours the limit', () => {
+    expect(expandUnitResults([product], 'beras', 1)).toHaveLength(1)
+  })
+
+  it('tolerates a product with no barcode', () => {
+    const noBarcode: Product = { ...product, barcode: null }
+
+    expect(expandUnitResults([noBarcode], 'beras', 50)).toHaveLength(2)
   })
 })

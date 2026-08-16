@@ -7,17 +7,17 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { formatRupiah } from '@/lib/utils'
-import type { Product } from './cart-logic'
+import { lineKey, type Product, type UnitResult } from './cart-logic'
 
 export interface CommandPaletteProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   query: string
   onQueryChange: (query: string) => void
-  results: Product[]
+  results: UnitResult[]
   products: Product[]
   jumlah: string
-  onSelect: (product: Product) => void
+  onSelect: (result: UnitResult) => void
   onCloseAutoFocus: (event: Event) => void
 }
 
@@ -69,7 +69,14 @@ export function CommandPalette({
           }
 
           e.preventDefault()
-          onSelect(product)
+          // a scanned barcode always means the base unit
+          onSelect({
+            key: lineKey(product.id, null),
+            product,
+            productUnitId: null,
+            satuan: product.satuan,
+            hargaJual: product.hargaJual,
+          })
         }}
         placeholder="Cari nama / kode produk..."
       />
@@ -77,21 +84,21 @@ export function CommandPalette({
         <CommandEmpty>{query.trim() === '' ? 'Ketik untuk mencari produk.' : 'Produk tidak ditemukan.'}</CommandEmpty>
         {results.length > 0 && (
           <CommandGroup heading="Produk">
-            {results.map((product) => (
+            {results.map((result) => (
               <CommandItem
-                key={product.id}
-                value={product.id.toString()}
-                disabled={product.stok <= 0}
-                onSelect={() => onSelect(product)}
+                key={result.key}
+                value={result.key}
+                disabled={result.product.stok <= 0}
+                onSelect={() => onSelect(result)}
                 className="flex items-center justify-between"
               >
                 <span>
-                  <span className="font-medium">{product.namaItem}</span>
-                  <span className="text-muted-foreground"> &middot; {product.kodeItem}</span>
+                  <span className="font-medium">{result.product.namaItem}</span>
+                  <span className="text-muted-foreground"> &middot; {result.product.kodeItem}</span>
                 </span>
                 <span className="flex items-center gap-2 text-xs">
-                  {formatRupiah(product.hargaJual)} / {product.satuan}
-                  {product.stok <= 0 && <span className="text-destructive">Habis</span>}
+                  {formatRupiah(result.hargaJual)} / {result.satuan}
+                  {result.product.stok <= 0 && <span className="text-destructive">Habis</span>}
                 </span>
               </CommandItem>
             ))}

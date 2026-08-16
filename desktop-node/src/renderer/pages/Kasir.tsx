@@ -19,12 +19,14 @@ import {
   addLine,
   applyQty,
   changeUnit,
+  expandUnitResults,
   restoreCart,
   toStoredCart,
   unitPrice,
   type CartLine,
   type Product,
   type StoredCartLine,
+  type UnitResult,
 } from './kasir/cart-logic'
 
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Penjualan', href: '/kasir' }]
@@ -161,20 +163,10 @@ export function Kasir() {
     return [...new Set(names)]
   }, [customers, namaPelanggan])
 
-  const paletteResults = useMemo(() => {
-    const q = paletteQuery.trim().toLowerCase()
+  const paletteResults = useMemo(() => expandUnitResults(products, paletteQuery, 50), [products, paletteQuery])
 
-    if (!q) {
-      return []
-    }
-
-    return products
-      .filter((p) => p.namaItem.toLowerCase().includes(q) || p.kodeItem.toLowerCase().includes(q))
-      .slice(0, 50)
-  }, [products, paletteQuery])
-
-  function addProductToCart(product: Product, qty = 1) {
-    setCart((prev) => addLine(prev, product, qty))
+  function addProductToCart(product: Product, qty = 1, productUnitId: number | null = null) {
+    setCart((prev) => addLine(prev, product, qty, productUnitId))
   }
 
   function changeLineUnit(line: CartLine, productUnitId: number | null) {
@@ -450,10 +442,27 @@ export function Kasir() {
                 value={paletteQuery}
                 onChange={(e) => setPaletteQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    setPaletteOpen(true)
+                  if (e.key !== 'Enter') {
+                    return
                   }
+
+                  e.preventDefault()
+                  const code = paletteQuery.trim()
+                  // A scanner types the barcode then Enter. Resolving it here means a
+                  // scan never has to travel through the palette at all, and repeated
+                  // scans work without touching the mouse.
+                  const scanned = code === '' ? undefined : products.find((p) => p.barcode === code)
+
+                  if (scanned) {
+                    addProductToCart(scanned, Number(jumlah) || 1)
+                    setPaletteQuery('')
+                    setJumlah('1.00')
+                    setScanError('')
+
+                    return
+                  }
+
+                  setPaletteOpen(true)
                 }}
                 placeholder="Cari nama / kode produk..."
                 className="pr-8"
@@ -613,10 +622,11 @@ export function Kasir() {
         results={paletteResults}
         products={products}
         jumlah={jumlah}
-        onSelect={(product) => {
-          addProductToCart(product, Number(jumlah) || 1)
+        onSelect={(result: UnitResult) => {
+          addProductToCart(result.product, Number(jumlah) || 1, result.productUnitId)
           setPaletteQuery('')
           setJumlah('1.00')
+          setPaletteOpen(false)
         }}
         onCloseAutoFocus={(e) => {
           e.preventDefault()

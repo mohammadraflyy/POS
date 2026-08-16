@@ -196,3 +196,65 @@ export function applyQty(cart: CartLine[], key: string, rawQty: number): CartLin
 
   return cart.map((i) => (i.key === key ? { ...i, qty } : i))
 }
+
+/** one selectable row in the product palette: a product *at one of its units* */
+export interface UnitResult {
+  /** same shape as a cart line's key, so React keys stay unique across units */
+  key: string
+  product: Product
+  /** null means the base unit, matching CartLine */
+  productUnitId: number | null
+  satuan: string
+  hargaJual: number
+}
+
+/**
+ * Expands matching products into one row per satuan, so the cashier can pick DUS
+ * without adding PCS first and converting. Matches barcode as well as name and
+ * kode - a scanner types the barcode straight into the search box, and leaving
+ * barcode out of this filter is what made scanning look broken.
+ */
+export function expandUnitResults(products: Product[], query: string, limit: number): UnitResult[] {
+  const q = query.trim().toLowerCase()
+
+  if (!q) {
+    return []
+  }
+
+  const results: UnitResult[] = []
+
+  for (const product of products) {
+    const matches =
+      product.namaItem.toLowerCase().includes(q) ||
+      product.kodeItem.toLowerCase().includes(q) ||
+      (product.barcode ?? '').toLowerCase().includes(q)
+
+    if (!matches) {
+      continue
+    }
+
+    results.push({
+      key: lineKey(product.id, null),
+      product,
+      productUnitId: null,
+      satuan: product.satuan,
+      hargaJual: product.hargaJual,
+    })
+
+    for (const unit of product.productUnits) {
+      results.push({
+        key: lineKey(product.id, unit.id),
+        product,
+        productUnitId: unit.id,
+        satuan: unit.satuan,
+        hargaJual: unit.hargaJual,
+      })
+    }
+
+    if (results.length >= limit) {
+      break
+    }
+  }
+
+  return results.slice(0, limit)
+}
