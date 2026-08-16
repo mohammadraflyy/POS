@@ -114,6 +114,15 @@ export function Kasir() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // tanggal is seeded once at mount, so without this a sale would carry
+  // whatever time the page happened to load (or the previous checkout) -
+  // refresh it every time the payment dialog opens so it reflects now
+  useEffect(() => {
+    if (paymentOpen) {
+      setTanggal(nowForInput())
+    }
+  }, [paymentOpen])
+
   useEffect(() => {
     const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah }
 
