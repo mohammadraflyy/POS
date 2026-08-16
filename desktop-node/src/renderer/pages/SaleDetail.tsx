@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ReportTable } from '@/components/report-table'
+import { METODE_LABEL } from '@/lib/metode'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
@@ -53,13 +54,6 @@ interface SaleDetailData {
   kasirName: string | null
   items: SaleDetailItem[]
   bonPayments: BonPaymentRow[]
-}
-
-const METODE_LABEL: Record<SaleDetailData['metodePembayaran'], string> = {
-  tunai: 'Tunai',
-  bon: 'Bon',
-  qris: 'QRIS',
-  transfer: 'Transfer',
 }
 
 // Accepts a plain decimal, with either dot or comma as separator (Indonesian

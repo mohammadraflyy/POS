@@ -22,6 +22,7 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { METODE_LABEL } from '@/lib/metode'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
@@ -49,13 +50,6 @@ const BREADCRUMBS: BreadcrumbItem[] = [
   { title: 'Penjualan', href: '/kasir' },
   { title: 'Riwayat Transaksi', href: '/history' },
 ]
-
-const METODE_LABEL: Record<SaleHistoryRow['metodePembayaran'], string> = {
-  tunai: 'Tunai',
-  bon: 'Bon',
-  qris: 'QRIS',
-  transfer: 'Transfer',
-}
 
 export function KasirHistory() {
   const navigate = useNavigate()

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { METODE_LABEL } from '@/lib/metode'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
@@ -250,7 +251,7 @@ export function Rekap() {
       key: 'metodePembayaran',
       name: 'Metode',
       width: 100,
-      renderCell: ({ row }) => (row.metodePembayaran === 'bon' ? 'Bon' : 'Tunai'),
+      renderCell: ({ row }) => METODE_LABEL[row.metodePembayaran],
     },
     {
       key: 'status',

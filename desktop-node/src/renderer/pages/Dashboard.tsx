@@ -6,6 +6,7 @@ import { Page, PageHeader } from '@/components/page'
 import { ReportTable } from '@/components/report-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { METODE_LABEL } from '@/lib/metode'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
@@ -99,7 +100,8 @@ export function Dashboard() {
       key: 'metodePembayaran',
       name: 'Metode',
       width: 110,
-      renderCell: ({ row }) => (row.metodePembayaran === 'bon' ? `Bon (${row.namaPelanggan})` : 'Tunai'),
+      renderCell: ({ row }) =>
+        row.metodePembayaran === 'bon' ? `Bon (${row.namaPelanggan})` : METODE_LABEL[row.metodePembayaran],
     },
     {
       key: 'status',
