@@ -7,19 +7,30 @@ import { randomUUID } from 'node:crypto'
 
 const execFileAsync = promisify(execFile)
 
+// Bump this when the C# below changes - the compiled DLL is cached by name, and a
+// stale one would be reused silently.
+const HELPER_VERSION = 'v1'
+const DLL_PATH = join(tmpdir(), `pos-rawprint-${HELPER_VERSION}.dll`)
+const SCRIPT_PATH = join(tmpdir(), `pos-rawprint-${HELPER_VERSION}.ps1`)
+
 // Standard Microsoft-documented "RawPrinterHelper" technique (KB322091):
 // P/Invoke winspool.drv directly so the byte buffer reaches the printer
 // as-is, datatype "RAW" - no driver-side re-rendering, which is exactly
 // what made Electron's webContents.print({silent:true}) unreliable here.
+//
+// Add-Type used to recompile this class on every single receipt, and that csc
+// run was the bulk of the delay. It is now compiled once to a DLL and merely
+// loaded on every later print.
 const RAW_PRINT_SCRIPT = `
 param(
   [Parameter(Mandatory=$true)][string]$PrinterName,
-  [Parameter(Mandatory=$true)][string]$DataPath
+  [Parameter(Mandatory=$true)][string]$DataPath,
+  [Parameter(Mandatory=$true)][string]$DllPath
 )
 
 $ErrorActionPreference = 'Stop'
 
-Add-Type @"
+$source = @"
 using System;
 using System.Runtime.InteropServices;
 
@@ -86,17 +97,21 @@ public class RawPrinterHelper
 }
 "@
 
+if (-not (Test-Path $DllPath)) {
+  Add-Type -TypeDefinition $source -OutputAssembly $DllPath -OutputType Library
+}
+
+Add-Type -Path $DllPath
+
 $bytes = [System.IO.File]::ReadAllBytes($DataPath)
 [RawPrinterHelper]::SendBytesToPrinter($PrinterName, $bytes)
 `
 
-export async function printRaw(printerName: string, data: Buffer): Promise<void> {
-  const id = randomUUID()
-  const dataPath = join(tmpdir(), `pos-print-${id}.bin`)
-  const scriptPath = join(tmpdir(), `pos-print-${id}.ps1`)
+async function runPrint(printerName: string, data: Buffer): Promise<void> {
+  const dataPath = join(tmpdir(), `pos-print-${randomUUID()}.bin`)
 
   writeFileSync(dataPath, data)
-  writeFileSync(scriptPath, RAW_PRINT_SCRIPT)
+  writeFileSync(SCRIPT_PATH, RAW_PRINT_SCRIPT)
 
   try {
     await execFileAsync(
@@ -107,11 +122,13 @@ export async function printRaw(printerName: string, data: Buffer): Promise<void>
         '-ExecutionPolicy',
         'Bypass',
         '-File',
-        scriptPath,
+        SCRIPT_PATH,
         '-PrinterName',
         printerName,
         '-DataPath',
         dataPath,
+        '-DllPath',
+        DLL_PATH,
       ],
       { timeout: 30_000 },
     )
@@ -124,10 +141,19 @@ export async function printRaw(printerName: string, data: Buffer): Promise<void>
     } catch {
       // best-effort cleanup
     }
-    try {
-      unlinkSync(scriptPath)
-    } catch {
-      // best-effort cleanup
-    }
   }
+}
+
+// One receipt at a time. Two concurrent runs would race to compile the same DLL
+// and could interleave on the printer; the renderer now fires prints without
+// awaiting them, so overlap is a real possibility rather than a theoretical one.
+let printQueue: Promise<unknown> = Promise.resolve()
+
+export function printRaw(printerName: string, data: Buffer): Promise<void> {
+  const run = () => runPrint(printerName, data)
+  const next = printQueue.then(run, run)
+
+  printQueue = next.catch(() => undefined)
+
+  return next
 }
