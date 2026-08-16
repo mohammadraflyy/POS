@@ -141,9 +141,17 @@ function roundQty(qty: number): number {
   return Math.round(qty * 1000) / 1000
 }
 
-/** adds `qty` base-unit qty for product (default 1), merging into the existing base-unit line if present */
-export function addLine(cart: CartLine[], product: Product, qty = 1): CartLine[] {
-  const key = lineKey(product.id, null)
+/**
+ * Adds `qty` of `product` at `productUnitId` (null = base unit), merging into an
+ * existing line for that same unit. New lines go to the top; see Task 1's note.
+ */
+export function addLine(
+  cart: CartLine[],
+  product: Product,
+  qty = 1,
+  productUnitId: number | null = null,
+): CartLine[] {
+  const key = lineKey(product.id, productUnitId)
   const existing = cart.find((i) => i.key === key)
   const addedQty = qty > 0 ? roundQty(qty) : 1
 
@@ -151,11 +159,12 @@ export function addLine(cart: CartLine[], product: Product, qty = 1): CartLine[]
     return cart.map((i) => (i.key === key ? { ...i, qty: roundQty(i.qty + addedQty) } : i))
   }
 
-  // newest first: the cashier watches the top of the list, so a just-scanned
-  // item must land where they are already looking. A merged line stays put -
-  // rows jumping around while the same barcode is scanned repeatedly is worse
-  // than a slightly out-of-order list.
-  return [{ key, product, productUnitId: null, satuan: product.satuan, qty: addedQty }, ...cart]
+  const unit = productUnitId === null ? null : product.productUnits.find((u) => u.id === productUnitId)
+
+  return [
+    { key, product, productUnitId, satuan: unit?.satuan ?? product.satuan, qty: addedQty },
+    ...cart,
+  ]
 }
 
 /** moves line onto productUnitId, merging into an existing line for that unit if one exists */

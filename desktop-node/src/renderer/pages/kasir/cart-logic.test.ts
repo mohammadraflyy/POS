@@ -154,6 +154,28 @@ describe('addLine', () => {
     expect(result.map((line) => line.key)).toEqual([lineKey(2, null), lineKey(1, null)])
     expect(result[1].qty).toBe(2)
   })
+
+  it('adds a line for a derived unit when given its productUnitId', () => {
+    const result = addLine([], product, 1, 9)
+
+    expect(result).toEqual([{ key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1 }])
+  })
+
+  it('merges into the existing line for that same derived unit', () => {
+    const cart: CartLine[] = [{ key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2 }]
+
+    const result = addLine(cart, product, 3, 9)
+
+    expect(result).toEqual([{ key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 5 }])
+  })
+
+  it('keeps a derived-unit line separate from the base-unit line', () => {
+    const cart: CartLine[] = [{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }]
+
+    const result = addLine(cart, product, 1, 9)
+
+    expect(result.map((line) => line.key)).toEqual([lineKey(1, 9), lineKey(1, null)])
+  })
 })
 
 describe('toStoredCart / restoreCart', () => {
