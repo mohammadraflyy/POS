@@ -429,6 +429,12 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
     throw new Error('Transaksi tidak ditemukan.')
   }
 
+  // cancelSale restores stock but leaves the sale_items rows behind, so reversing
+  // them again here would hand the same goods back to stock twice
+  if (sale.status !== 'selesai') {
+    throw new Error('Transaksi yang dibatalkan tidak bisa diubah.')
+  }
+
   const sudahDibayar = db
     .select()
     .from(bonPayments)
@@ -501,6 +507,9 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
     }
 
     const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
+    // for bon, dibayar is allowed to sit above the sum of recorded bon_payments - deliberate,
+    // so an admin can correct money that was taken but never entered. Consequence: recordBonPayment
+    // then refuses further payments beyond (total - dibayar), which is smaller than it looks.
     const dibayarBaru = lunasNonTunai ? total : (input.dibayar ?? 0)
 
     if (input.metodePembayaran === 'tunai' && dibayarBaru < total) {

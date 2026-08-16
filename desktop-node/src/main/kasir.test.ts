@@ -2093,6 +2093,64 @@ describe('updateSale', () => {
     expect(sale?.dibayar).toBe(4000_00)
   })
 
+  it('allows raising dibayar on a bon above what bon_payments actually recorded', () => {
+    // deliberate: lets an admin correct money that was taken but never entered as a payment row
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Budi',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+    recordBonPayment(db, saleId, 4000_00, null)
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Budi',
+      dibayar: 6000_00,
+      tanggal: '2026-08-15T09:00',
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.dibayar).toBe(6000_00)
+  })
+
+  it('forces dibayar to the full total for qris and transfer, ignoring input.dibayar', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'qris',
+      namaPelanggan: null,
+      dibayar: 100_00,
+      tanggal: '2026-08-15T09:00',
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.total).toBe(6000_00)
+    expect(sale?.dibayar).toBe(6000_00)
+  })
+
+  it('rejects editing a cancelled sale, leaving its already-restored stock alone', () => {
+    const { db, saleId } = seedBaseSale()
+    cancelSale(db, saleId)
+    const stokAfterCancel = db.select().from(products).where(eq(products.id, 2)).get()?.stok
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 6000_00,
+        tanggal: '2026-08-15T09:00',
+        items: [{ productId: 2, productUnitId: null, qty: 2 }],
+      }),
+    ).toThrow('Transaksi yang dibatalkan tidak bisa diubah.')
+
+    expect(db.select().from(products).where(eq(products.id, 2)).get()?.stok).toBe(stokAfterCancel)
+  })
+
   it('rejects an empty cart', () => {
     const { db, saleId } = seedBaseSale()
 
