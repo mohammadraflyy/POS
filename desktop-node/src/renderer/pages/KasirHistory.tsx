@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
@@ -88,6 +88,22 @@ export function KasirHistory() {
       .then((user) => setIsAdmin(user?.role === 'admin'))
       .catch(() => setIsAdmin(false))
   }, [])
+
+  // dialog-opening dropdown items defer via this ref; cleared on unmount so a
+  // pending callback can't fire setState after the component is gone
+  const pendingActionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pendingActionRef.current !== null) {
+        clearTimeout(pendingActionRef.current)
+      }
+    }
+  }, [])
+
+  function deferAction(fn: () => void) {
+    pendingActionRef.current = setTimeout(fn, 0)
+  }
 
   function loadPage(page: number) {
     window.api.kasir
@@ -280,9 +296,10 @@ export function KasirHistory() {
         const sisaPiutang = row.total - row.dibayar
         const bonBelumLunas = row.metodePembayaran === 'bon' && row.status === 'selesai' && sisaPiutang > 0
 
-        // Radix closes the dropdown on select before the next tick; opening a Dialog
-        // in the very same event lets the dropdown's own outside-pointer-down handling
-        // dismiss it immediately, so dialog-opening actions are deferred a tick.
+        // Opening a Dialog from a DropdownMenuItem's onSelect races Radix's own
+        // focus-return/dismiss handling for the closing menu, which can close the
+        // dialog it just opened. preventDefault() stops the menu's synchronous
+        // focus-return, and deferAction() waits a tick before opening the dialog.
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -298,15 +315,42 @@ export function KasirHistory() {
               {bonBelumLunas && (
                 <DropdownMenuItem onSelect={() => navigate(`/bon-payment/${row.id}`)}>Bayar Bon</DropdownMenuItem>
               )}
-              <DropdownMenuItem onSelect={() => setTimeout(() => printSale(row.id), 0)}>Cetak Struk</DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  deferAction(() => printSale(row.id))
+                }}
+              >
+                Cetak Struk
+              </DropdownMenuItem>
               {isAdmin && (
-                <DropdownMenuItem onSelect={() => setTimeout(() => openDateDialog(row), 0)}>Ubah Tanggal</DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    deferAction(() => openDateDialog(row))
+                  }}
+                >
+                  Ubah Tanggal
+                </DropdownMenuItem>
               )}
               {row.status === 'selesai' && row.dibayar === 0 && (
-                <DropdownMenuItem onSelect={() => setTimeout(() => cancelSale(row), 0)}>Batalkan</DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    deferAction(() => cancelSale(row))
+                  }}
+                >
+                  Batalkan
+                </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => setTimeout(() => deleteSale(row), 0)}>
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={(e) => {
+                  e.preventDefault()
+                  deferAction(() => deleteSale(row))
+                }}
+              >
                 Hapus
               </DropdownMenuItem>
             </DropdownMenuContent>
