@@ -417,6 +417,44 @@ export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schem
   })
 }
 
+/**
+ * Exact-barcode lookup returning the same shape as {@link searchProductsForPurchase},
+ * so the renderer's `addItem` can consume a scan and a click identically. `eq` not `like`:
+ * an ambiguous scan would silently add the wrong product to a purchase.
+ */
+export function findProductForPurchaseByBarcode(
+  db: BetterSQLite3Database<typeof schema>,
+  barcode: string,
+): PurchaseProductOption | null {
+  const trimmed = barcode.trim()
+
+  if (trimmed === '') {
+    return null
+  }
+
+  const row = db
+    .select({
+      id: products.id,
+      kodeItem: products.kodeItem,
+      namaItem: products.namaItem,
+      hargaPokok: products.hargaPokok,
+    })
+    .from(products)
+    .where(eq(products.barcode, trimmed))
+    .get()
+
+  if (!row) {
+    return null
+  }
+
+  const baseUnit = getBaseProductUnit(db, row.id)
+  const derivedUnits = listProductUnits(db, row.id)
+    .filter((u) => !u.isBaseUnit)
+    .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor }))
+
+  return { ...row, satuan: baseUnit.unitCode, units: derivedUnits }
+}
+
 export interface SupplierDebtRow {
   purchaseId: number
   supplierId: number | null

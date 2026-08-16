@@ -24,6 +24,9 @@ export interface PaymentDialogProps {
   onEditCustomer: () => void
   dibayar: string
   setDibayar: (value: string) => void
+  /** local `YYYY-MM-DDTHH:mm` the sale will be filed under */
+  tanggal: string
+  setTanggal: (value: string) => void
   processing: boolean
   printing: boolean
   error: string | null
@@ -40,6 +43,8 @@ export function PaymentDialog({
   onEditCustomer,
   dibayar,
   setDibayar,
+  tanggal,
+  setTanggal,
   processing,
   printing,
   error,
@@ -245,6 +250,27 @@ export function PaymentDialog({
               <Pencil className="size-3.5 text-muted-foreground" />
             </span>
           </button>
+
+          {/* backdating a sale is normal here: the cashier often enters yesterday's
+              sale the next morning. The main process rejects future dates. */}
+          <div className="grid gap-2">
+            <Label htmlFor="tanggal-transaksi">Tanggal &amp; Jam Transaksi</Label>
+            <Input
+              id="tanggal-transaksi"
+              type="datetime-local"
+              value={tanggal}
+              disabled={processing || printing}
+              onChange={(e) => setTanggal(e.target.value)}
+              onKeyDown={(e) => {
+                // Keep the form-level PageUp/PageDown/Enter shortcuts from
+                // firing while the native date/time segments are being
+                // driven - Enter here must not silently save a real sale.
+                if (e.key === 'Enter' || e.key === 'PageUp' || e.key === 'PageDown') {
+                  e.stopPropagation()
+                }
+              }}
+            />
+          </div>
 
           {bonNeedsCustomer && (
             <p role="alert" className="text-sm text-destructive">

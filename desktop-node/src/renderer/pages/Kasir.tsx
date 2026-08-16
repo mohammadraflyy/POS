@@ -27,15 +27,6 @@ import {
   type StoredCartLine,
 } from './kasir/cart-logic'
 
-interface SaleDto {
-  id: number
-  namaPelanggan: string | null
-  metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
-  status: 'selesai' | 'dibatalkan'
-  total: number
-  dibayar: number
-}
-
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Penjualan', href: '/kasir' }]
 
 const DRAFT_STORAGE_KEY = 'kasir:draft'
@@ -55,6 +46,14 @@ const EMPTY_DRAFT: KasirDraft = {
   namaPelanggan: DEFAULT_PELANGGAN,
   dibayar: '',
   jumlah: '1.00',
+}
+
+/** current local time in the `YYYY-MM-DDTHH:mm` shape a datetime-local input wants */
+function nowForInput(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
 }
 
 function readStoredDraft(): KasirDraft {
@@ -83,7 +82,6 @@ export function Kasir() {
   // read once, before any effect can overwrite the stored draft
   const [initialDraft] = useState(readStoredDraft)
   const [products, setProducts] = useState<Product[]>([])
-  const [salesToday, setSalesToday] = useState<SaleDto[]>([])
   const [customers, setCustomers] = useState<string[]>([])
   const [customerOpen, setCustomerOpen] = useState(false)
   const [cart, setCart] = useState<CartLine[]>([])
@@ -91,6 +89,7 @@ export function Kasir() {
   const [metode, setMetode] = useState<'tunai' | 'bon' | 'qris' | 'transfer'>(initialDraft.metode)
   const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
   const [dibayar, setDibayar] = useState(initialDraft.dibayar)
+  const [tanggal, setTanggal] = useState(nowForInput())
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
@@ -111,10 +110,18 @@ export function Kasir() {
 
   useEffect(() => {
     refreshProducts()
-    refreshSalesToday()
     refreshCustomers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // tanggal is seeded once at mount, so without this a sale would carry
+  // whatever time the page happened to load (or the previous checkout) -
+  // refresh it every time the payment dialog opens so it reflects now
+  useEffect(() => {
+    if (paymentOpen) {
+      setTanggal(nowForInput())
+    }
+  }, [paymentOpen])
 
   useEffect(() => {
     const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah }
@@ -140,13 +147,6 @@ export function Kasir() {
     window.api.kasir
       .listCustomers()
       .then(setCustomers)
-      .catch(() => setError('Gagal memuat data.'))
-  }
-
-  function refreshSalesToday() {
-    window.api.kasir
-      .listSalesToday()
-      .then(setSalesToday)
       .catch(() => setError('Gagal memuat data.'))
   }
 
@@ -333,6 +333,7 @@ export function Kasir() {
     setCart([])
     setNamaPelanggan(DEFAULT_PELANGGAN)
     setDibayar('')
+    setTanggal(nowForInput())
   }
 
   async function handleCheckout(shouldPrint: boolean) {
@@ -348,6 +349,7 @@ export function Kasir() {
         // the main process could never reject it
         namaPelanggan: metode === 'bon' ? namaPelanggan.trim() || null : namaPelanggan.trim() || DEFAULT_PELANGGAN,
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
+        tanggal,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
@@ -367,7 +369,6 @@ export function Kasir() {
       setCheckoutError(null)
       resetAfterCheckout()
       refreshProducts()
-      refreshSalesToday()
       refreshCustomers()
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Gagal checkout')
@@ -407,8 +408,7 @@ export function Kasir() {
         setPrintingSaleId(null)
         resetAfterCheckout()
         refreshProducts()
-        refreshSalesToday()
-        refreshCustomers()
+          refreshCustomers()
       })
 
     return () => {
@@ -416,30 +416,6 @@ export function Kasir() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printingSaleId])
-
-  async function handleCancel(saleId: number) {
-    const confirmed = await confirm({
-      title: 'Batalkan transaksi?',
-      description: `Transaksi #${saleId} akan ditandai dibatalkan dan stoknya dikembalikan.`,
-      confirmLabel: 'Batalkan',
-      destructive: true,
-    })
-
-    if (!confirmed) {
-      return
-    }
-
-    setError(null)
-    setMessage(null)
-
-    try {
-      await window.api.kasir.cancelSale(saleId)
-      refreshProducts()
-      refreshSalesToday()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal membatalkan')
-    }
-  }
 
   return (
     <>
@@ -613,6 +589,8 @@ export function Kasir() {
         }}
         dibayar={dibayar}
         setDibayar={setDibayar}
+        tanggal={tanggal}
+        setTanggal={setTanggal}
         processing={processing}
         printing={printingSaleId !== null}
         error={checkoutError}

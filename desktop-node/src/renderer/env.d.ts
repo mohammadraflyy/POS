@@ -47,6 +47,7 @@ declare global {
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           namaPelanggan: string | null
           dibayar: number | null
+          tanggal?: string | null
           items: { productId: number; productUnitId: number | null; qty: number }[]
         }) => Promise<{
           saleId: number
@@ -60,6 +61,7 @@ declare global {
         }>
         cancelSale: (saleId: number) => Promise<void>
         deleteSale: (saleId: number) => Promise<void>
+        updateSaleDate: (input: { saleId: number; tanggal: string }) => Promise<void>
         getStoreSettings: () => Promise<{
           namaToko: string
           alamat: string | null
@@ -101,10 +103,25 @@ declare global {
           total: number
           dibayar: number
           createdAt: string
-          items: { id: number; qty: number; satuan: string | null; namaItem: string }[]
+          kasirName: string | null
+          items: {
+            id: number
+            productId: number
+            productUnitId: number | null
+            qty: number
+            satuan: string | null
+            namaItem: string
+            hargaJual: number
+            subtotal: number
+            priceSource: 'normal' | 'price_tier' | 'manual'
+          }[]
           bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
         }>
         recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) => Promise<void>
+        addItemsToSale: (input: {
+          saleId: number
+          items: { productId: number; productUnitId: number | null; qty: number }[]
+        }) => Promise<{ total: number }>
         updateStoreSettings: (input: {
           namaToko: string
           alamat: string | null
@@ -167,6 +184,20 @@ declare global {
             priceTiersCount: number
           }[]
         >
+        findByBarcode: (barcode: string) => Promise<{
+          id: number
+          kodeItem: string
+          barcode: string | null
+          namaItem: string
+          categoryName: string | null
+          satuan: string
+          hargaPokok: number
+          hargaJual: number
+          stok: number
+          isActive: boolean
+          unitsCount: number
+          priceTiersCount: number
+        } | null>
         getProductDetail: (productId: number) => Promise<{
           namaItem: string
           kodeItem: string
@@ -327,6 +358,14 @@ declare global {
             units: { id: number; level: number; satuan: string; konversi: number }[]
           }[]
         >
+        findProductByBarcode: (barcode: string) => Promise<{
+          id: number
+          kodeItem: string
+          namaItem: string
+          satuan: string
+          hargaPokok: number
+          units: { id: number; satuan: string; konversi: number }[]
+        } | null>
       }
       expense: {
         recordExpense: (input: {

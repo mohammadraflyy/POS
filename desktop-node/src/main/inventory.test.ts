@@ -15,7 +15,14 @@ import {
   productPriceTiers,
   units,
 } from './db/schema'
-import { listProducts, updateProduct, deleteProduct, bulkDeleteProducts, searchProductsQuick } from './inventory'
+import {
+  listProducts,
+  updateProduct,
+  deleteProduct,
+  bulkDeleteProducts,
+  searchProductsQuick,
+  findProductByBarcode,
+} from './inventory'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
 
@@ -519,5 +526,34 @@ describe('searchProductsQuick unit/tier counts', () => {
     const results = searchProductsQuick(db, 'beras')
     expect(results[0].unitsCount).toBe(1)
     expect(results[0].priceTiersCount).toBe(0)
+  })
+})
+
+describe('findProductByBarcode', () => {
+  it('returns the product whose barcode matches exactly', () => {
+    const db = seedProducts()
+
+    const found = findProductByBarcode(db, '1234567890')
+
+    expect(found?.id).toBe(1)
+    expect(found?.namaItem).toBe('Beras 5kg')
+  })
+
+  it('returns null for a barcode nothing carries', () => {
+    const db = seedProducts()
+
+    expect(findProductByBarcode(db, '9999999999')).toBeNull()
+  })
+
+  it('returns null for a partial match, so a scan can never pick the wrong product', () => {
+    const db = seedProducts()
+
+    expect(findProductByBarcode(db, '12345')).toBeNull()
+  })
+
+  it('returns null for an empty barcode instead of the first row in the table', () => {
+    const db = seedProducts()
+
+    expect(findProductByBarcode(db, '   ')).toBeNull()
   })
 })

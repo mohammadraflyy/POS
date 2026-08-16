@@ -5,6 +5,7 @@ import * as schema from '../db/schema'
 import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings, units, users } from '../db/schema'
 import {
   checkout,
+  addItemsToSale,
   cancelSale,
   deleteSale,
   listCustomers,
@@ -12,6 +13,7 @@ import {
   updateStoreSettings,
   purgeSalesBefore,
   purgeTodaySales,
+  updateSaleDate,
   type CheckoutInput,
 } from '../kasir'
 import { buildReceiptEscPos, SAMPLE_RECEIPT, type PaperWidth } from '../escpos'
@@ -31,6 +33,7 @@ interface CheckoutRendererInput {
   metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   namaPelanggan: string | null
   dibayar: number | null
+  tanggal?: string | null
   items: { productId: number; productUnitId: number | null; qty: number }[]
 }
 
@@ -187,6 +190,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       namaPelanggan: input.namaPelanggan,
       dibayar: input.dibayar === null ? null : toCents(input.dibayar),
       userId: user.id,
+      tanggal: input.tanggal ?? null,
       items: input.items,
     }
 
@@ -205,6 +209,14 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     requireAdmin()
 
     deleteSale(db, saleId)
+  })
+
+  // requireAdmin, not requireUser: redating a saved sale shifts the rekap and the cash
+  // book on two days at once, the same blast radius as delete and purge.
+  ipcMain.handle('kasir:updateSaleDate', (_event, input: { saleId: number; tanggal: string }) => {
+    requireAdmin()
+
+    updateSaleDate(db, input.saleId, input.tanggal)
   })
 
   ipcMain.handle('kasir:getStoreSettings', () => {
@@ -387,6 +399,10 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       .orderBy(desc(bonPayments.tanggal), desc(bonPayments.id))
       .all()
 
+    const kasir = sale.userId
+      ? db.select({ name: users.name }).from(users).where(eq(users.id, sale.userId)).get()
+      : null
+
     return {
       id: sale.id,
       namaPelanggan: sale.namaPelanggan,
@@ -395,11 +411,17 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       total: toRupiah(sale.total),
       dibayar: toRupiah(sale.dibayar),
       createdAt: sale.createdAt.toISOString(),
+      kasirName: kasir?.name ?? null,
       items: itemRows.map((item) => ({
         id: item.id,
+        productId: item.productId,
+        productUnitId: item.productUnitId,
         qty: item.qty,
         satuan: item.satuan,
         namaItem: productNameById.get(item.productId) ?? '',
+        hargaJual: toRupiah(item.hargaJual),
+        subtotal: toRupiah(item.subtotal),
+        priceSource: item.priceSource,
       })),
       bonPayments: paymentRows.map((payment) => ({
         id: payment.id,
@@ -416,6 +438,17 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       requireUser()
 
       recordBonPayment(db, input.saleId, toCents(input.jumlah), input.keterangan)
+    },
+  )
+
+  ipcMain.handle(
+    'kasir:addItemsToSale',
+    (_event, input: { saleId: number; items: { productId: number; productUnitId: number | null; qty: number }[] }) => {
+      requireUser()
+
+      const result = addItemsToSale(db, input.saleId, input.items)
+
+      return { total: toRupiah(result.total) }
     },
   )
 

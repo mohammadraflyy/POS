@@ -7,6 +7,7 @@ import { users, products, productUnits, productPriceTiers, units, sales, saleIte
 import {
   checkout,
   type CheckoutInput,
+  addItemsToSale,
   cancelSale,
   deleteSale,
   listCustomers,
@@ -14,6 +15,7 @@ import {
   updateStoreSettings,
   purgeSalesBefore,
   purgeTodaySales,
+  updateSaleDate,
 } from './kasir'
 
 const PCS_UNIT_ID = 1
@@ -55,6 +57,85 @@ function seedPcsBaseUnits(
       })),
     )
     .run()
+}
+
+const migrationsFolder = path.resolve(__dirname, '../../drizzle')
+
+function seedDb() {
+  const db = createDb(':memory:', migrationsFolder)
+  const now = new Date()
+
+  db.insert(users)
+    .values({
+      id: 1,
+      username: 'kasir1',
+      passwordHash: 'hash',
+      name: 'Kasir Satu',
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  db.insert(products)
+    .values([
+      {
+        id: 1,
+        kodeItem: 'BRS5',
+        namaItem: 'Beras 5kg',
+        hargaJual: 65000_00,
+        hargaPokok: 60000_00,
+        stok: 10,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 2,
+        kodeItem: 'MIE1',
+        namaItem: 'Mie Instan',
+        hargaJual: 3000_00,
+        hargaPokok: 2500_00,
+        stok: 100,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+    .run()
+
+  seedPcsBaseUnits(db, [
+    { id: 101, productId: 1, hargaJual: 65000_00 },
+    { id: 102, productId: 2, hargaJual: 3000_00 },
+  ])
+
+  db.insert(productUnits)
+    .values({
+      id: 9,
+      productId: 2,
+      unitId: DUS_UNIT_ID,
+      jumlahKemasan: 40,
+      conversionFactor: 40,
+      hargaJual: 110000_00,
+      // product 2's base cost is 2.500, so a DUS of 40 costs 100.000
+      hargaPokok: 100000_00,
+      isBaseUnit: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  db.insert(productPriceTiers)
+    .values({
+      id: 1,
+      productId: 1,
+      productUnitId: 101,
+      minQty: 5,
+      maxQty: null,
+      hargaJual: 62000_00,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  return db
 }
 
 describe('priceForQty', () => {
@@ -203,85 +284,6 @@ describe('resolveCartItem', () => {
 })
 
 describe('checkout', () => {
-  const migrationsFolder = path.resolve(__dirname, '../../drizzle')
-
-  function seedDb() {
-    const db = createDb(':memory:', migrationsFolder)
-    const now = new Date()
-
-    db.insert(users)
-      .values({
-        id: 1,
-        username: 'kasir1',
-        passwordHash: 'hash',
-        name: 'Kasir Satu',
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
-
-    db.insert(products)
-      .values([
-        {
-          id: 1,
-          kodeItem: 'BRS5',
-          namaItem: 'Beras 5kg',
-          hargaJual: 65000_00,
-          hargaPokok: 60000_00,
-          stok: 10,
-          createdAt: now,
-          updatedAt: now,
-        },
-        {
-          id: 2,
-          kodeItem: 'MIE1',
-          namaItem: 'Mie Instan',
-          hargaJual: 3000_00,
-          hargaPokok: 2500_00,
-          stok: 100,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ])
-      .run()
-
-    seedPcsBaseUnits(db, [
-      { id: 101, productId: 1, hargaJual: 65000_00 },
-      { id: 102, productId: 2, hargaJual: 3000_00 },
-    ])
-
-    db.insert(productUnits)
-      .values({
-        id: 9,
-        productId: 2,
-        unitId: DUS_UNIT_ID,
-        jumlahKemasan: 40,
-        conversionFactor: 40,
-        hargaJual: 110000_00,
-        // product 2's base cost is 2.500, so a DUS of 40 costs 100.000
-        hargaPokok: 100000_00,
-        isBaseUnit: false,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
-
-    db.insert(productPriceTiers)
-      .values({
-        id: 1,
-        productId: 1,
-        productUnitId: 101,
-        minQty: 5,
-        maxQty: null,
-        hargaJual: 62000_00,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
-
-    return db
-  }
-
   it('snapshots baseQuantity and priceSource on a tier-priced line', () => {
     const db = seedDb()
 
@@ -616,6 +618,80 @@ describe('checkout', () => {
     expect(items[0].subtotal).toBe(Math.round(0.25 * items[0].hargaJual))
     expect(result.total).toBe(items[0].subtotal)
     expect(product?.stok).toBe(10 - 0.25)
+  })
+
+  it('files the whole sale under the given date when tanggal is passed', () => {
+    const db = seedDb()
+    const tanggal = '2026-08-01T09:30'
+
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      tanggal,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    const expected = new Date(tanggal).toISOString()
+    expect(db.select().from(sales).get()?.createdAt.toISOString()).toBe(expected)
+    expect(db.select().from(saleItems).get()?.createdAt.toISOString()).toBe(expected)
+    expect(db.select().from(stockMovements).get()?.createdAt.toISOString()).toBe(expected)
+  })
+
+  it('rejects a sale dated in the future', () => {
+    const db = seedDb()
+    // 24h buffer keeps this in the future regardless of the machine's timezone offset
+    const besok = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
+
+    expect(() =>
+      checkout(db, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 3000_00,
+        userId: 1,
+        tanggal: besok,
+        items: [{ productId: 2, productUnitId: null, qty: 1 }],
+      }),
+    ).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
+    expect(db.select().from(saleItems).all()).toHaveLength(0)
+    expect(db.select().from(stockMovements).all()).toHaveLength(0)
+  })
+
+  it('rejects a tanggal that is not a date at all', () => {
+    const db = seedDb()
+
+    expect(() =>
+      checkout(db, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 3000_00,
+        userId: 1,
+        tanggal: 'kemarin',
+        items: [{ productId: 2, productUnitId: null, qty: 1 }],
+      }),
+    ).toThrow('Tanggal transaksi tidak valid.')
+    expect(db.select().from(sales).all()).toHaveLength(0)
+    expect(db.select().from(saleItems).all()).toHaveLength(0)
+    expect(db.select().from(stockMovements).all()).toHaveLength(0)
+  })
+
+  it('uses the current time when tanggal is omitted', () => {
+    const db = seedDb()
+    const before = Date.now()
+
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    const createdAt = db.select().from(sales).get()?.createdAt.getTime() ?? 0
+    expect(createdAt).toBeGreaterThanOrEqual(before - 1000)
+    expect(createdAt).toBeLessThanOrEqual(Date.now() + 1000)
   })
 
   it('throws when bon has an empty customer name', () => {
@@ -1111,6 +1187,170 @@ describe('recordBonPayment', () => {
   })
 })
 
+describe('addItemsToSale', () => {
+  function seedWithBon() {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Sri',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    return { db, saleId }
+  }
+
+  it('appends the item, raises the total, and cuts stock', () => {
+    const { db, saleId } = seedWithBon()
+    const stokAwal = db.select().from(products).where(eq(products.id, 2)).get()?.stok ?? 0
+    const totalAwal = db.select().from(sales).where(eq(sales.id, saleId)).get()?.total ?? 0
+
+    const result = addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 3 }])
+
+    expect(result.total).toBe(totalAwal + 3 * 3000_00)
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.total).toBe(totalAwal + 3 * 3000_00)
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.dibayar).toBe(0)
+    expect(db.select().from(products).where(eq(products.id, 2)).get()?.stok).toBe(stokAwal - 3)
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(2)
+  })
+
+  it('logs a stock movement for the added line', () => {
+    const { db, saleId } = seedWithBon()
+
+    addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 3 }])
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
+    expect(movements).toHaveLength(2)
+    expect(movements.every((movement) => movement.movementType === 'sale')).toBe(true)
+    // Numeric sort - the default string sort would put -3 before -2 for the
+    // wrong reason (lexical, not numeric) and silently pass either way.
+    expect(movements.map((movement) => movement.quantity).sort((a, b) => a - b)).toEqual([-3, -2])
+  })
+
+  it('appends a derived-unit line with the unit conversion and its own cost snapshot', () => {
+    const { db, saleId } = seedWithBon()
+    const stokAwal = db.select().from(products).where(eq(products.id, 2)).get()?.stok ?? 0
+
+    // productUnitId 9 is product 2's DUS unit: konversi 40, hargaJual 110.000, hargaPokok 100.000
+    addItemsToSale(db, saleId, [{ productId: 2, productUnitId: 9, qty: 2 }])
+
+    const product = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(product?.stok).toBe(stokAwal - 2 * 40)
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+    const addedItem = items.find((item) => item.productUnitId === 9)
+    expect(addedItem?.baseQuantity).toBe(80)
+    expect(addedItem?.konversi).toBe(40)
+    // the DUS unit's own cost, not the base cost - the whole point of the per-unit snapshot
+    expect(addedItem?.hargaPokok).toBe(100000_00)
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
+    const addedMovement = movements.find((movement) => movement.productUnitId === 9)
+    expect(addedMovement?.quantity).toBe(-2)
+    expect(addedMovement?.baseQuantity).toBe(-80)
+  })
+
+  it('does not move the sale date, because the bon is still the old bon', () => {
+    const { db, saleId } = seedWithBon()
+    const before = db.select().from(sales).where(eq(sales.id, saleId)).get()?.createdAt.toISOString()
+
+    addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])
+
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.createdAt.toISOString()).toBe(before)
+  })
+
+  it('refuses a sale that is not a bon', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    expect(() => addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])).toThrow(
+      'Hanya transaksi bon yang bisa ditambah item.',
+    )
+  })
+
+  it('refuses a cancelled sale', () => {
+    const { db, saleId } = seedWithBon()
+    cancelSale(db, saleId)
+
+    expect(() => addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])).toThrow(
+      'Transaksi yang dibatalkan tidak bisa ditambah item.',
+    )
+  })
+
+  it('refuses a bon that is already settled', () => {
+    const { db, saleId } = seedWithBon()
+    const total = db.select().from(sales).where(eq(sales.id, saleId)).get()?.total ?? 0
+    recordBonPayment(db, saleId, total, null)
+
+    expect(() => addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])).toThrow(
+      'Bon sudah lunas, tidak bisa ditambah item.',
+    )
+  })
+
+  it('refuses a sale that does not exist', () => {
+    const db = seedDb()
+
+    expect(() => addItemsToSale(db, 999, [{ productId: 2, productUnitId: null, qty: 1 }])).toThrow(
+      'Transaksi tidak ditemukan.',
+    )
+  })
+
+  it('refuses an empty item list', () => {
+    const { db, saleId } = seedWithBon()
+
+    expect(() => addItemsToSale(db, saleId, [])).toThrow('Tidak ada item yang ditambahkan.')
+  })
+
+  it('writes nothing when one line asks for more qty than there is stock', () => {
+    const { db, saleId } = seedWithBon()
+    const stokAwal = db.select().from(products).where(eq(products.id, 1)).get()?.stok ?? 0
+    const itemsAwal = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all().length
+
+    expect(() =>
+      addItemsToSale(db, saleId, [
+        { productId: 2, productUnitId: null, qty: 1 },
+        { productId: 1, productUnitId: null, qty: 9999 },
+      ]),
+    ).toThrow('Stok Beras 5kg tidak cukup.')
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(stokAwal)
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(itemsAwal)
+  })
+
+  it('reconciles the stock ledger when a sale with an appended derived-unit line is cancelled', () => {
+    // Not seedWithBon() - that only exposes the stock level after its own
+    // checkout, and this needs the level before any of this sale's lines existed.
+    const db = seedDb()
+    const originalStok = db.select().from(products).where(eq(products.id, 2)).get()?.stok ?? 0
+
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Sri',
+      dibayar: null,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    // productUnitId 9 is product 2's DUS unit, konversi 40
+    addItemsToSale(db, saleId, [{ productId: 2, productUnitId: 9, qty: 2 }])
+    cancelSale(db, saleId)
+
+    const product = db.select().from(products).where(eq(products.id, 2)).get()
+    expect(product?.stok).toBe(originalStok)
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
+    // the ledger nets to zero once the (appended) sale is undone
+    expect(movements.reduce((sum, movement) => sum + movement.baseQuantity, 0)).toBe(0)
+  })
+})
+
 describe('updateStoreSettings', () => {
   const migrationsFolder = path.resolve(__dirname, '../../drizzle')
 
@@ -1602,5 +1842,59 @@ describe('listCustomers', () => {
 
   it('returns nothing on a database with no sales', () => {
     expect(listCustomers(seedDb())).toEqual([])
+  })
+})
+
+describe('updateSaleDate', () => {
+  it('moves the sale to the new date', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    updateSaleDate(db, saleId, '2026-07-04T14:05')
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.createdAt.toISOString()).toBe(new Date('2026-07-04T14:05').toISOString())
+  })
+
+  it('leaves stock movements where they are, because they record when the goods left', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+    const before = db.select().from(stockMovements).get()?.createdAt.toISOString()
+
+    updateSaleDate(db, saleId, '2026-07-04T14:05')
+
+    expect(db.select().from(stockMovements).get()?.createdAt.toISOString()).toBe(before)
+  })
+
+  it('rejects a sale that does not exist', () => {
+    const db = seedDb()
+
+    expect(() => updateSaleDate(db, 999, '2026-07-04T14:05')).toThrow('Transaksi tidak ditemukan.')
+  })
+
+  it('rejects a future date', () => {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+    const besok = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
+
+    expect(() => updateSaleDate(db, saleId, besok)).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
   })
 })

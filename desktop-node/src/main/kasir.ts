@@ -117,11 +117,32 @@ export const METODE_NON_TUNAI = ['qris', 'transfer'] as const
 
 export type MetodePembayaran = 'tunai' | 'bon' | 'qris' | 'transfer'
 
+/**
+ * Parses the local `YYYY-MM-DDTHH:mm` string a `datetime-local` input produces.
+ * A future-dated sale would land in a rekap period that has not happened yet, so it is
+ * rejected. Backdating has no limit - entering yesterday's sale this morning is normal.
+ */
+export function parseTanggalTransaksi(tanggal: string): Date {
+  const parsed = new Date(tanggal)
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error('Tanggal transaksi tidak valid.')
+  }
+
+  if (parsed.getTime() > Date.now()) {
+    throw new Error('Tanggal transaksi tidak boleh melewati waktu sekarang.')
+  }
+
+  return parsed
+}
+
 export interface CheckoutInput {
   metodePembayaran: MetodePembayaran
   namaPelanggan: string | null
   dibayar: number | null
   userId: number
+  /** local `YYYY-MM-DDTHH:mm`; omit to stamp the sale with the current time */
+  tanggal?: string | null
   items: CartItemInput[]
 }
 
@@ -130,22 +151,13 @@ export interface CheckoutResult {
   total: number
 }
 
-export function checkout(db: BetterSQLite3Database<typeof schema>, input: CheckoutInput): CheckoutResult {
-  if (input.items.length < 1) {
-    throw new Error('Keranjang tidak boleh kosong.')
-  }
-
-  for (const item of input.items) {
-    if (!(item.qty > 0)) {
-      throw new Error('Qty harus lebih dari 0.')
-    }
-  }
-
-  if (input.metodePembayaran === 'bon' && !input.namaPelanggan?.trim()) {
-    throw new Error('Nama pelanggan wajib diisi untuk transaksi bon.')
-  }
-
-  const productIds = input.items.map((item) => item.productId)
+/**
+ * Turns cart lines into priced, stock-checked sale lines. Shared by `checkout` and
+ * `addItemsToSale` so a line added to an existing bon is priced by exactly the same
+ * tier rules and cost snapshot as one rung up at the till.
+ */
+function resolveItems(db: BetterSQLite3Database<typeof schema>, items: CartItemInput[]): ResolvedItem[] {
+  const productIds = items.map((item) => item.productId)
   const productRows = db.select().from(products).where(inArray(products.id, productIds)).all()
   const productsById = new Map(productRows.map((product) => [product.id, product]))
 
@@ -164,6 +176,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     .innerJoin(units, eq(productUnits.unitId, units.id))
     .where(inArray(productUnits.productId, productIds))
     .all()
+
   const tierRows = db
     .select()
     .from(productPriceTiers)
@@ -173,7 +186,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   const resolvedItems: ResolvedItem[] = []
   const qtyDasarByProduct = new Map<number, number>()
 
-  for (const item of input.items) {
+  for (const item of items) {
     const product = productsById.get(item.productId)
 
     if (!product) {
@@ -197,15 +210,38 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     const resolved = resolveCartItem(product, unit, tiers, item.qty)
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
     const totalQtyDasar = previousQtyDasar + resolved.qtyDasar
+
     if (product.stok < totalQtyDasar) {
       throw new Error(`Stok ${product.namaItem} tidak cukup.`)
     }
+
     qtyDasarByProduct.set(product.id, totalQtyDasar)
     resolvedItems.push(resolved)
   }
 
+  return resolvedItems
+}
+
+export function checkout(db: BetterSQLite3Database<typeof schema>, input: CheckoutInput): CheckoutResult {
+  if (input.items.length < 1) {
+    throw new Error('Keranjang tidak boleh kosong.')
+  }
+
+  for (const item of input.items) {
+    if (!(item.qty > 0)) {
+      throw new Error('Qty harus lebih dari 0.')
+    }
+  }
+
+  if (input.metodePembayaran === 'bon' && !input.namaPelanggan?.trim()) {
+    throw new Error('Nama pelanggan wajib diisi untuk transaksi bon.')
+  }
+
+  const resolvedItems = resolveItems(db, input.items)
+
+  const now = input.tanggal ? parseTanggalTransaksi(input.tanggal) : new Date()
+
   return db.transaction((tx) => {
-    const now = new Date()
     const dibayarAwal = input.metodePembayaran === 'tunai' ? (input.dibayar ?? 0) : 0
 
     const sale = tx
@@ -339,6 +375,118 @@ export function cancelSale(db: Db, saleId: number): void {
   db.transaction((tx) => {
     restoreStockForItems(tx, items)
     tx.update(sales).set({ status: 'dibatalkan' }).where(eq(sales.id, saleId)).run()
+  })
+}
+
+/**
+ * Moves a saved sale to another date. Only `sales.createdAt` moves: every money report
+ * (rekap, buku kas) reads its period from that column, while `sale_items` and
+ * `stock_movements` record when the goods physically left and stay where they are.
+ *
+ * Cancelled sales may be redated too - the status says nothing about when it happened.
+ */
+export function updateSaleDate(db: Db, saleId: number, tanggal: string): void {
+  const tanggalBaru = parseTanggalTransaksi(tanggal)
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  db.update(sales).set({ createdAt: tanggalBaru, updatedAt: new Date() }).where(eq(sales.id, saleId)).run()
+}
+
+/**
+ * Appends lines to an existing unpaid bon: the customer took more goods on the same tab.
+ *
+ * The new lines are stamped with today's date while `sales.createdAt` stays put - the
+ * goods left today, but the debt is still the old debt. `dibayar` is untouched, so the
+ * outstanding balance rises by exactly the added subtotal.
+ *
+ * Only unpaid bon qualify. A cash, qris or transfer sale is money already counted, and
+ * editing it would silently disagree with the day's takings.
+ */
+export function addItemsToSale(db: Db, saleId: number, items: CartItemInput[]): { total: number } {
+  if (items.length < 1) {
+    throw new Error('Tidak ada item yang ditambahkan.')
+  }
+
+  for (const item of items) {
+    if (!(item.qty > 0)) {
+      throw new Error('Qty harus lebih dari 0.')
+    }
+  }
+
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  if (sale.status !== 'selesai') {
+    throw new Error('Transaksi yang dibatalkan tidak bisa ditambah item.')
+  }
+
+  if (sale.metodePembayaran !== 'bon') {
+    throw new Error('Hanya transaksi bon yang bisa ditambah item.')
+  }
+
+  if (sale.dibayar >= sale.total) {
+    throw new Error('Bon sudah lunas, tidak bisa ditambah item.')
+  }
+
+  const resolvedItems = resolveItems(db, items)
+
+  return db.transaction((tx) => {
+    const now = new Date()
+    let tambahan = 0
+
+    for (const line of resolvedItems) {
+      const subtotal = Math.round(line.qty * line.hargaJual)
+      tambahan += subtotal
+
+      tx.insert(saleItems)
+        .values({
+          saleId,
+          productId: line.productId,
+          productUnitId: line.productUnitId,
+          qty: line.qty,
+          konversi: line.konversi,
+          baseQuantity: line.qtyDasar,
+          satuan: line.satuan,
+          hargaJual: line.hargaJual,
+          hargaPokok: line.hargaPokok,
+          priceSource: line.priceSource,
+          subtotal,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+
+      tx.update(products)
+        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .where(eq(products.id, line.productId))
+        .run()
+
+      tx.insert(stockMovements)
+        .values({
+          productId: line.productId,
+          productUnitId: line.productUnitId,
+          quantity: -line.qty,
+          conversionFactor: line.konversi,
+          baseQuantity: -line.qtyDasar,
+          movementType: 'sale',
+          referenceId: saleId,
+          createdAt: now,
+        })
+        .run()
+    }
+
+    const total = sale.total + tambahan
+
+    tx.update(sales).set({ total, updatedAt: now }).where(eq(sales.id, saleId)).run()
+
+    return { total }
   })
 }
 

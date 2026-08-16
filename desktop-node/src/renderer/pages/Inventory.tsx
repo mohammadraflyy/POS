@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Column, RowsChangeData } from 'react-data-grid'
@@ -72,6 +72,10 @@ export function Inventory() {
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
   const [search, setSearch] = useState('')
+  const [scanMiss, setScanMiss] = useState<string | null>(null)
+  // Bumped at the start of every submitSearch call so a slower, earlier lookup
+  // can tell it's been superseded and skip applying its (stale) result.
+  const searchRequestId = useRef(0)
   const [rows, setRows] = useState<DraftRow[]>([])
   const [rawProducts, setRawProducts] = useState<ProductRow[]>([])
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(new Set())
@@ -161,8 +165,53 @@ export function Inventory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function submitSearch(e: FormEvent) {
+  // A USB barcode scanner types the digits and then sends Enter, which submits this
+  // form. Try an exact barcode first so a scan lands on one product instead of a
+  // result list the cashier still has to click through.
+  async function submitSearch(e: FormEvent) {
     e.preventDefault()
+
+    const requestId = ++searchRequestId.current
+    const typed = search.trim()
+    setScanMiss(null)
+    setDeleteError(null)
+
+    if (typed !== '') {
+      let scanned: Awaited<ReturnType<typeof window.api.inventory.findByBarcode>>
+
+      try {
+        scanned = await window.api.inventory.findByBarcode(typed)
+      } catch (err) {
+        // A newer submit (key-repeat, or a fast second scan) started while this
+        // lookup was in flight - let that one own the UI, not this stale result.
+        if (requestId !== searchRequestId.current) {
+          return
+        }
+
+        setDeleteError(err instanceof Error ? err.message : 'Gagal mencari barcode.')
+
+        return
+      }
+
+      // A newer submit (key-repeat, or a fast second scan) started while this
+      // lookup was in flight - let that one own the UI, not this stale result.
+      if (requestId !== searchRequestId.current) {
+        return
+      }
+
+      if (scanned) {
+        navigate(`/inventory/${scanned.id}`)
+
+        return
+      }
+
+      if (/^\d{8,}$/.test(typed)) {
+        setScanMiss(typed)
+
+        return
+      }
+    }
+
     loadPage(1)
   }
 
@@ -481,7 +530,10 @@ export function Inventory() {
             <div className="relative w-64">
               <Input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setScanMiss(null)
+                }}
                 placeholder="Cari kode / nama / barcode produk..."
                 className="pr-8"
               />
@@ -493,6 +545,21 @@ export function Inventory() {
               Cari
             </Button>
           </form>
+          {scanMiss && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Barcode {scanMiss} belum terdaftar.</span>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => navigate(`/inventory/mass-input?barcode=${encodeURIComponent(scanMiss)}`)}
+              >
+                Buat produk baru dengan barcode ini
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setScanMiss(null)}>
+                Tutup
+              </Button>
+            </div>
+          )}
           <div className="flex gap-2">
             <Button type="button" variant="outline" disabled={importing} onClick={runImport}>
               {importing ? 'Mengimpor...' : 'Import Excel'}

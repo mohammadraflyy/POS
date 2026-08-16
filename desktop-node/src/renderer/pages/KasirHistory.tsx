@@ -1,11 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Column } from 'react-data-grid'
 import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
+import { MoreHorizontal } from 'lucide-react'
 import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -13,6 +22,7 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { METODE_LABEL } from '@/lib/metode'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
@@ -33,7 +43,7 @@ interface SaleHistoryRow {
   items: SaleHistoryItem[]
 }
 
-const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 140 + 120 + 380
+const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 120 + 140 + 120 + 60
 const MIN_ITEM_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -58,6 +68,36 @@ export function KasirHistory() {
   const [currentPage, setCurrentPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
+
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [dateTarget, setDateTarget] = useState<SaleHistoryRow | null>(null)
+  const [dateValue, setDateValue] = useState('')
+  const [savingDate, setSavingDate] = useState(false)
+
+  useEffect(() => {
+    // the main process enforces requireAdmin anyway; this only hides a menu item
+    // the cashier would always be refused
+    window.api.auth
+      .me()
+      .then((user) => setIsAdmin(user?.role === 'admin'))
+      .catch(() => setIsAdmin(false))
+  }, [])
+
+  // dialog-opening dropdown items defer via this ref; cleared on unmount so a
+  // pending callback can't fire setState after the component is gone
+  const pendingActionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pendingActionRef.current !== null) {
+        clearTimeout(pendingActionRef.current)
+      }
+    }
+  }, [])
+
+  function deferAction(fn: () => void) {
+    pendingActionRef.current = setTimeout(fn, 0)
+  }
 
   function loadPage(page: number) {
     window.api.kasir
@@ -154,6 +194,36 @@ export function KasirHistory() {
     }
   }
 
+  function openDateDialog(sale: SaleHistoryRow) {
+    // local time, not toISOString(), so the prefilled value matches the sale's own clock
+    const created = new Date(sale.createdAt)
+    const pad = (n: number) => String(n).padStart(2, '0')
+
+    setDateValue(
+      `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}T${pad(created.getHours())}:${pad(created.getMinutes())}`,
+    )
+    setDateTarget(sale)
+  }
+
+  async function saveDate() {
+    if (!dateTarget) {
+      return
+    }
+
+    setSavingDate(true)
+    setError(null)
+
+    try {
+      await window.api.kasir.updateSaleDate({ saleId: dateTarget.id, tanggal: dateValue })
+      setDateTarget(null)
+      loadPage(currentPage)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal mengubah tanggal')
+    } finally {
+      setSavingDate(false)
+    }
+  }
+
   const itemWidth = Math.max(MIN_ITEM_WIDTH, gridWidth - OTHER_COLUMNS_WIDTH - 2)
 
   const columns: Column<SaleHistoryRow>[] = [
@@ -176,10 +246,17 @@ export function KasirHistory() {
       renderCell: ({ row }) => row.items.map((i) => `${i.namaItem} x${i.qty}`).join(', '),
     },
     {
+      key: 'namaPelanggan',
+      name: 'Pelanggan',
+      width: 200,
+      renderCell: ({ row }) => row.namaPelanggan ?? 'UMUM',
+    },
+    {
       key: 'metodePembayaran',
       name: 'Metode',
-      width: 200,
-      renderCell: ({ row }) => (row.metodePembayaran === 'bon' ? `Pending Payment (${row.namaPelanggan})` : 'Tunai'),
+      width: 120,
+      // the old ternary here predated qris and transfer and rendered both as "Tunai"
+      renderCell: ({ row }) => METODE_LABEL[row.metodePembayaran],
     },
     {
       key: 'status',
@@ -208,27 +285,72 @@ export function KasirHistory() {
     {
       key: 'aksi',
       name: '',
-      width: 380,
-      renderCell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          {row.metodePembayaran === 'bon' && row.status === 'selesai' && row.total - row.dibayar > 0 && (
-            <Button variant="default" size="sm" onClick={() => navigate(`/bon-payment/${row.id}`)}>
-              Pending Payment
-            </Button>
-          )}
-          {row.status === 'selesai' && row.dibayar === 0 && (
-            <Button variant="destructive" size="sm" onClick={() => cancelSale(row)}>
-              Batalkan
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => printSale(row.id)}>
-            Cetak
-          </Button>
-          <Button variant="destructive" size="sm" onClick={() => deleteSale(row)}>
-            Hapus
-          </Button>
-        </div>
-      ),
+      width: 60,
+      renderCell: ({ row }) => {
+        const sisaPiutang = row.total - row.dibayar
+        const bonBelumLunas = row.metodePembayaran === 'bon' && row.status === 'selesai' && sisaPiutang > 0
+
+        // Opening a Dialog from a DropdownMenuItem's onSelect races Radix's own
+        // focus-return/dismiss handling for the closing menu, which can close the
+        // dialog it just opened. preventDefault() stops the menu's synchronous
+        // focus-return, and deferAction() waits a tick before opening the dialog.
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" aria-label={`Aksi transaksi ${row.id}`}>
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => navigate(`/sale/${row.id}`)}>Detail</DropdownMenuItem>
+              {bonBelumLunas && (
+                <DropdownMenuItem onSelect={() => navigate(`/sale/${row.id}`)}>Tambah Item</DropdownMenuItem>
+              )}
+              {bonBelumLunas && (
+                <DropdownMenuItem onSelect={() => navigate(`/bon-payment/${row.id}`)}>Bayar Bon</DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  deferAction(() => printSale(row.id))
+                }}
+              >
+                Cetak Struk
+              </DropdownMenuItem>
+              {isAdmin && (
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    deferAction(() => openDateDialog(row))
+                  }}
+                >
+                  Ubah Tanggal
+                </DropdownMenuItem>
+              )}
+              {row.status === 'selesai' && row.dibayar === 0 && (
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault()
+                    deferAction(() => cancelSale(row))
+                  }}
+                >
+                  Batalkan
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={(e) => {
+                  e.preventDefault()
+                  deferAction(() => deleteSale(row))
+                }}
+              >
+                Hapus
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
     },
   ]
 
@@ -283,6 +405,8 @@ export function KasirHistory() {
               <SelectContent>
                 <SelectItem value="tunai">Tunai</SelectItem>
                 <SelectItem value="bon">Bon</SelectItem>
+                <SelectItem value="qris">QRIS</SelectItem>
+                <SelectItem value="transfer">Transfer</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -306,6 +430,11 @@ export function KasirHistory() {
               columns={columns}
               rows={rows}
               rowKeyGetter={(row) => row.id}
+              onCellClick={({ row, column }) => {
+                if (column.key !== 'aksi') {
+                  navigate(`/sale/${row.id}`)
+                }
+              }}
               renderers={{
                 noRowsFallback: (
                   <div className="col-span-full p-6 text-center text-sm text-muted-foreground">Tidak ada transaksi.</div>
@@ -330,6 +459,30 @@ export function KasirHistory() {
       </Page>
       </AppShell>
       {ConfirmDialog}
+      <Dialog open={dateTarget !== null} onOpenChange={(open) => !open && setDateTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ubah Tanggal Transaksi #{dateTarget?.id}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1">
+              <Label className="text-xs">Tanggal &amp; Jam</Label>
+              <Input type="datetime-local" value={dateValue} onChange={(e) => setDateValue(e.target.value)} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Mengubah tanggal menggeser transaksi ini di rekap dan buku kas, pada hari lama maupun hari baru.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDateTarget(null)}>
+                Batal
+              </Button>
+              <Button disabled={savingDate} onClick={saveDate}>
+                {savingDate ? 'Menyimpan...' : 'Simpan'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

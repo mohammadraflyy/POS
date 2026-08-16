@@ -69,8 +69,14 @@ export function MassInput() {
 
   useEffect(() => {
     const idsParam = searchParams.get('ids')
+    const barcodeParam = searchParams.get('barcode')
 
     if (!idsParam) {
+      // arriving from a scan that matched nothing - start with the barcode already filled
+      if (barcodeParam) {
+        setRows([{ ...emptyRow(), barcode: barcodeParam }])
+      }
+
       setLoaded(true)
       return
     }

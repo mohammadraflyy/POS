@@ -5,6 +5,7 @@ import {
   recordPurchase,
   listPurchases,
   searchProductsForPurchase,
+  findProductForPurchaseByBarcode,
   recordSupplierPayment,
   listSupplierDebts,
   listSupplierPayments,
@@ -132,5 +133,24 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
       hargaPokok: toRupiah(product.hargaPokok),
       units: product.units,
     }))
+  })
+
+  ipcMain.handle('purchase:findProductByBarcode', (_event, barcode: string) => {
+    requireUser()
+
+    const product = findProductForPurchaseByBarcode(db, barcode)
+
+    if (!product) {
+      return null
+    }
+
+    return {
+      id: product.id,
+      kodeItem: product.kodeItem,
+      namaItem: product.namaItem,
+      satuan: product.satuan,
+      hargaPokok: toRupiah(product.hargaPokok),
+      units: product.units,
+    }
   })
 }

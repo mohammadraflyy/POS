@@ -18,6 +18,7 @@ import {
   recordPurchase,
   listPurchases,
   searchProductsForPurchase,
+  findProductForPurchaseByBarcode,
   hitungHargaPokokRataRata,
   hitungHargaPokokSatuan,
   recordSupplierPayment,
@@ -819,5 +820,37 @@ describe('listPurchases with debt', () => {
 
     const list = listPurchases(db, { page: 1 })
     expect(list.data[0]).toMatchObject({ total: 14000_00, dibayar: 4000_00, sisa: 10000_00 })
+  })
+})
+
+describe('findProductForPurchaseByBarcode', () => {
+  it('returns the product whose barcode matches exactly, with its units', () => {
+    const db = seedDb()
+    db.update(products).set({ barcode: '8991002101234' }).where(eq(products.id, 1)).run()
+
+    const found = findProductForPurchaseByBarcode(db, '8991002101234')
+
+    expect(found?.id).toBe(1)
+    expect(found?.satuan).toBe('PCS')
+    expect(Array.isArray(found?.units)).toBe(true)
+  })
+
+  it('returns null for a barcode nothing carries', () => {
+    const db = seedDb()
+
+    expect(findProductForPurchaseByBarcode(db, '0000000000')).toBeNull()
+  })
+
+  it('returns null for a partial match', () => {
+    const db = seedDb()
+    db.update(products).set({ barcode: '8991002101234' }).where(eq(products.id, 1)).run()
+
+    expect(findProductForPurchaseByBarcode(db, '899100')).toBeNull()
+  })
+
+  it('returns null for an empty barcode', () => {
+    const db = seedDb()
+
+    expect(findProductForPurchaseByBarcode(db, '')).toBeNull()
   })
 })

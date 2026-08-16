@@ -29,10 +29,12 @@ const api = {
       metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
       namaPelanggan: string | null
       dibayar: number | null
+      tanggal?: string | null
       items: { productId: number; productUnitId: number | null; qty: number }[]
     }) => invoke('kasir:checkout', input),
     cancelSale: (saleId: number) => invoke('kasir:cancelSale', saleId),
     deleteSale: (saleId: number) => invoke('kasir:deleteSale', saleId),
+    updateSaleDate: (input: { saleId: number; tanggal: string }) => invoke('kasir:updateSaleDate', input),
     getStoreSettings: () => invoke('kasir:getStoreSettings'),
     printReceipt: (saleId: number) => invoke('kasir:printReceipt', saleId),
     listPrinters: () => invoke('kasir:listPrinters'),
@@ -48,6 +50,10 @@ const api = {
     getSaleDetail: (saleId: number) => invoke('kasir:getSaleDetail', saleId),
     recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) =>
       invoke('kasir:recordBonPayment', input),
+    addItemsToSale: (input: {
+      saleId: number
+      items: { productId: number; productUnitId: number | null; qty: number }[]
+    }) => invoke('kasir:addItemsToSale', input),
     updateStoreSettings: (input: {
       namaToko: string
       alamat: string | null
@@ -78,6 +84,7 @@ const api = {
     deleteProduct: (id: number) => invoke('inventory:deleteProduct', id),
     bulkDeleteProducts: (ids: number[]) => invoke('inventory:bulkDeleteProducts', ids),
     searchProducts: (q: string) => invoke('inventory:searchProducts', q),
+    findByBarcode: (barcode: string) => invoke('inventory:findByBarcode', barcode),
     getProductDetail: (productId: number) => invoke('inventory:getProductDetail', productId),
     addProductUnit: (productId: number, input: { unitId: number; jumlahKemasan: number; hargaJual: number }) =>
       invoke('inventory:addProductUnit', productId, input),
@@ -131,6 +138,7 @@ const api = {
     }) => invoke('purchase:recordPurchase', input),
     listPurchases: (input: { page: number; pageSize?: number }) => invoke('purchase:listPurchases', input),
     searchProducts: (q: string) => invoke('purchase:searchProducts', q),
+    findProductByBarcode: (barcode: string) => invoke('purchase:findProductByBarcode', barcode),
     listSupplierDebts: (supplierId?: number | null) => invoke('purchase:listSupplierDebts', supplierId ?? null),
     recordSupplierPayment: (input: { supplierId: number; jumlah: number; tanggal: string; keterangan: string | null }) =>
       invoke('purchase:recordSupplierPayment', input),

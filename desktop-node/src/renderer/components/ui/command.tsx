@@ -30,6 +30,8 @@ function CommandDialog({
   className,
   shouldFilter,
   onCloseAutoFocus,
+  value,
+  onValueChange,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
@@ -37,6 +39,8 @@ function CommandDialog({
   className?: string
   shouldFilter?: boolean
   onCloseAutoFocus?: React.ComponentProps<typeof DialogContent>['onCloseAutoFocus']
+  value?: React.ComponentProps<typeof Command>['value']
+  onValueChange?: React.ComponentProps<typeof Command>['onValueChange']
 }) {
   return (
     <Dialog {...props}>
@@ -47,6 +51,8 @@ function CommandDialog({
         </DialogHeader>
         <Command
           shouldFilter={shouldFilter}
+          value={value}
+          onValueChange={onValueChange}
           className="[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
         >
           {children}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Plus, Search, Trash2 } from 'lucide-react'
 import { ReportTable } from '@/components/report-table'
 import { Page, PageHeader } from '@/components/page'
@@ -80,6 +80,9 @@ export function Purchase() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
   const [paletteResults, setPaletteResults] = useState<SearchResult[]>([])
+  // cmdk's own highlighted row, mirrored here now that Enter is handled by hand
+  // instead of cmdk's native (synchronous) Enter handler.
+  const [paletteHighlighted, setPaletteHighlighted] = useState('')
 
   const [newSupplierOpen, setNewSupplierOpen] = useState(false)
   const [newSupplierNama, setNewSupplierNama] = useState('')
@@ -276,6 +279,52 @@ export function Purchase() {
       .finally(() => setProcessing(false))
   }
 
+  // The palette's search runs in a useEffect, so a scanner's trailing Enter lands
+  // before the results do. cmdk's own Enter handler runs synchronously on the same
+  // bubble, so a late preventDefault() (after the await) is already too late - cmdk
+  // has selected the highlighted row by then. Own Enter completely instead: block
+  // cmdk synchronously, then decide ourselves whether it was a barcode scan (exact
+  // match - add that product, and leave the palette open so consecutive scans stack
+  // up) or a human search (no exact barcode match - fall back to whatever row cmdk
+  // has highlighted, same as its native behaviour would have added).
+  async function handlePaletteKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') {
+      return
+    }
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    const typed = paletteQuery.trim()
+
+    if (typed === '') {
+      return
+    }
+
+    let scanned: Awaited<ReturnType<typeof window.api.purchase.findProductByBarcode>>
+
+    try {
+      scanned = await window.api.purchase.findProductByBarcode(typed)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Gagal mencari barcode.')
+
+      return
+    }
+
+    if (scanned) {
+      addItem(scanned)
+      setPaletteOpen(true)
+      setPaletteQuery('')
+      return
+    }
+
+    const highlighted = paletteResults.find((p) => p.id.toString() === paletteHighlighted)
+
+    if (highlighted) {
+      addItem(highlighted)
+    }
+  }
+
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
       <Page>
@@ -454,8 +503,15 @@ export function Purchase() {
         title="Cari Produk"
         description="Cari produk untuk ditambahkan ke pembelian"
         shouldFilter={false}
+        value={paletteHighlighted}
+        onValueChange={setPaletteHighlighted}
       >
-        <CommandInput value={paletteQuery} onValueChange={setPaletteQuery} placeholder="Cari nama / kode / barcode..." />
+        <CommandInput
+          value={paletteQuery}
+          onValueChange={setPaletteQuery}
+          onKeyDown={handlePaletteKeyDown}
+          placeholder="Cari nama / kode / barcode, atau scan barcode..."
+        />
         <CommandList>
           <CommandEmpty>{paletteQuery.trim() === '' ? 'Ketik untuk mencari produk.' : 'Produk tidak ditemukan.'}</CommandEmpty>
           {paletteResults.length > 0 && (
