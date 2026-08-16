@@ -1210,6 +1210,7 @@ describe('addItemsToSale', () => {
 
     expect(result.total).toBe(totalAwal + 3 * 3000_00)
     expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.total).toBe(totalAwal + 3 * 3000_00)
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.dibayar).toBe(0)
     expect(db.select().from(products).where(eq(products.id, 2)).get()?.stok).toBe(stokAwal - 3)
     expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()).toHaveLength(2)
   })
@@ -1221,8 +1222,9 @@ describe('addItemsToSale', () => {
 
     const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, saleId)).all()
     expect(movements).toHaveLength(2)
-    expect(movements[1].movementType).toBe('sale')
-    expect(movements[1].quantity).toBe(-3)
+    const addedMovement = movements.find((movement) => movement.movementType === 'sale' && movement.quantity === -3)
+    expect(addedMovement?.movementType).toBe('sale')
+    expect(addedMovement?.quantity).toBe(-3)
   })
 
   it('does not move the sale date, because the bon is still the old bon', () => {
