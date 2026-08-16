@@ -48,9 +48,6 @@ function renderQtyEditCell({ row, onRowChange, onClose }: RenderEditCellProps<Ca
   )
 }
 
-/** index of the 'qty' column within the columns array (produk, satuan, harga, qty, subtotal, aksi) */
-export const QTY_COLUMN_IDX = 3
-
 export interface CartGridProps {
   cart: CartLine[]
   width: number
@@ -72,10 +69,17 @@ export function CartGrid({
   onChangeUnit,
   onRemoveLine,
 }: CartGridProps) {
-  const CART_OTHER_COLUMNS_WIDTH = 180 + 120 + 80 + 130 + 50
+  const CART_OTHER_COLUMNS_WIDTH = 50 + 180 + 120 + 80 + 130 + 50
   const produkWidth = Math.max(160, width - CART_OTHER_COLUMNS_WIDTH - 2)
 
   const columns: Column<CartLine>[] = [
+    {
+      key: 'no',
+      name: 'No',
+      width: 50,
+      // the cart is never paginated, so the row number is just its position
+      renderCell: ({ rowIdx }) => <span className="text-muted-foreground">{rowIdx + 1}</span>,
+    },
     {
       key: 'produk',
       name: 'Produk',

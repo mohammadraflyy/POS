@@ -151,7 +151,11 @@ export function addLine(cart: CartLine[], product: Product, qty = 1): CartLine[]
     return cart.map((i) => (i.key === key ? { ...i, qty: roundQty(i.qty + addedQty) } : i))
   }
 
-  return [...cart, { key, product, productUnitId: null, satuan: product.satuan, qty: addedQty }]
+  // newest first: the cashier watches the top of the list, so a just-scanned
+  // item must land where they are already looking. A merged line stays put -
+  // rows jumping around while the same barcode is scanned repeatedly is worse
+  // than a slightly out-of-order list.
+  return [{ key, product, productUnitId: null, satuan: product.satuan, qty: addedQty }, ...cart]
 }
 
 /** moves line onto productUnitId, merging into an existing line for that unit if one exists */

@@ -132,6 +132,28 @@ describe('addLine', () => {
     expect(addLine([], product, 0)).toEqual([{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }])
     expect(addLine([], product, -3)).toEqual([{ key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 }])
   })
+
+  it('puts a new line at the top so the newest item is first', () => {
+    const other: Product = { ...product, id: 2, kodeItem: 'MIE1', namaItem: 'Mie Instan', baseProductUnitId: 2 }
+    const cart: CartLine[] = [{ key: lineKey(2, null), product: other, productUnitId: null, satuan: 'PCS', qty: 1 }]
+
+    const result = addLine(cart, product)
+
+    expect(result.map((line) => line.key)).toEqual([lineKey(1, null), lineKey(2, null)])
+  })
+
+  it('leaves a merged line where it is instead of moving it to the top', () => {
+    const other: Product = { ...product, id: 2, kodeItem: 'MIE1', namaItem: 'Mie Instan', baseProductUnitId: 2 }
+    const cart: CartLine[] = [
+      { key: lineKey(2, null), product: other, productUnitId: null, satuan: 'PCS', qty: 1 },
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 1 },
+    ]
+
+    const result = addLine(cart, product)
+
+    expect(result.map((line) => line.key)).toEqual([lineKey(2, null), lineKey(1, null)])
+    expect(result[1].qty).toBe(2)
+  })
 })
 
 describe('toStoredCart / restoreCart', () => {
