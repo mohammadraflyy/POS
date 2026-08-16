@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route, useSearchParams } from 'react-router-dom'
 import { Login } from './pages/Login'
 import { Kasir } from './pages/Kasir'
 import { KasirHistory } from './pages/KasirHistory'
@@ -18,13 +18,24 @@ import { StockOpname } from './pages/StockOpname'
 import { Rekap } from './pages/Rekap'
 import { Dashboard } from './pages/Dashboard'
 
+function KasirRoute() {
+  const [searchParams] = useSearchParams()
+
+  // A search-param change on the same route does not remount by default, so
+  // leaving edit mode would keep the edited sale in state and let the draft
+  // effect overwrite the cashier's parked cart. Keying on the param makes
+  // entering and leaving edit mode a real mount, so the parked draft is
+  // re-read on the way out.
+  return <Kasir key={searchParams.get('edit') ?? 'new'} />
+}
+
 export function App() {
   return (
     <HashRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<Dashboard />} />
-        <Route path="/kasir" element={<Kasir />} />
+        <Route path="/kasir" element={<KasirRoute />} />
         <Route path="/history" element={<KasirHistory />} />
         <Route path="/bon-payment/:saleId" element={<BonPayment />} />
         <Route path="/sale/:saleId" element={<SaleDetail />} />

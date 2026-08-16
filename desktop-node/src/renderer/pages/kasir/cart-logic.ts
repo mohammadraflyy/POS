@@ -245,9 +245,19 @@ export interface EditSaleItem {
  * Only a line that was priced by hand comes back as an override. A `price_tier` or
  * `normal` line is left to be recomputed, so correcting its qty re-prices it the way
  * the till would have.
+ *
+ * A line whose derived unit has since been deleted from the catalog is dropped
+ * rather than kept with a dangling productUnitId - updateSale would reject it on
+ * every save with no indication on screen of which line was at fault.
+ *
+ * addItemsToSale (main process) plain-inserts a sale_items row rather than merging,
+ * so a bon topped up with a product already on it can carry two rows for the same
+ * product+unit. Those collapse into one CartLine here (qty summed, last non-null
+ * hargaOverride wins) - applyQty/applyHarga key by lineKey and would otherwise edit
+ * both rows at once, and React would see duplicate grid keys.
  */
 export function cartFromSale(items: EditSaleItem[], products: Product[]): CartLine[] {
-  const cart: CartLine[] = []
+  const cart = new Map<string, CartLine>()
 
   for (const item of items) {
     const product = products.find((p) => p.id === item.productId)
@@ -260,17 +270,35 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartLi
     const productUnitId = isBase ? null : item.productUnitId
     const unit = productUnitId === null ? null : product.productUnits.find((u) => u.id === productUnitId)
 
-    cart.push({
-      key: lineKey(product.id, productUnitId),
+    if (productUnitId !== null && !unit) {
+      continue
+    }
+
+    const key = lineKey(product.id, productUnitId)
+    const hargaOverride = item.priceSource === 'manual' ? item.hargaJual : null
+    const existing = cart.get(key)
+
+    if (existing) {
+      existing.qty = roundQty(existing.qty + item.qty)
+
+      if (hargaOverride != null) {
+        existing.hargaOverride = hargaOverride
+      }
+
+      continue
+    }
+
+    cart.set(key, {
+      key,
       product,
       productUnitId,
       satuan: unit?.satuan ?? product.satuan,
       qty: item.qty,
-      hargaOverride: item.priceSource === 'manual' ? item.hargaJual : null,
+      hargaOverride,
     })
   }
 
-  return cart
+  return [...cart.values()]
 }
 
 /**

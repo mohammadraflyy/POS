@@ -428,4 +428,38 @@ describe('cartFromSale', () => {
 
     expect(cartFromSale(items, [product]).map((line) => line.key)).toEqual([lineKey(1, 9), lineKey(1, null)])
   })
+
+  it('drops a line whose derived unit was deleted from the catalog', () => {
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 999, qty: 1, hargaJual: 700000, priceSource: 'normal' },
+    ]
+
+    expect(cartFromSale(items, [product])).toEqual([])
+  })
+
+  it('coalesces two sale_items rows for the same product and unit into one line', () => {
+    // addItemsToSale plain-inserts rather than merging, so a bon topped up with a
+    // product already on it can carry two rows for the same product+unit
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 1, qty: 2, hargaJual: 65000, priceSource: 'normal' },
+      { productId: 1, productUnitId: 1, qty: 3, hargaJual: 65000, priceSource: 'normal' },
+    ]
+
+    const result = cartFromSale(items, [product])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].qty).toBe(5)
+  })
+
+  it('keeps the last non-null manual override when coalescing duplicate rows', () => {
+    const items: EditSaleItem[] = [
+      { productId: 1, productUnitId: 1, qty: 1, hargaJual: 50000, priceSource: 'manual' },
+      { productId: 1, productUnitId: 1, qty: 1, hargaJual: 55000, priceSource: 'manual' },
+    ]
+
+    const result = cartFromSale(items, [product])
+
+    expect(result).toHaveLength(1)
+    expect(result[0].hargaOverride).toBe(55000)
+  })
 })
