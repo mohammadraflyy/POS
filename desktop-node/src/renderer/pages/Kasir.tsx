@@ -101,6 +101,11 @@ export function Kasir() {
   const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
   const [dibayar, setDibayar] = useState(initialDraft.dibayar)
   const [tanggal, setTanggal] = useState(nowForInput())
+  // Set once the cashier types a time of their own, so the staleness refresh
+  // below stops overwriting it. Without this the field cannot really be edited:
+  // it sits on the page, but any deliberate time is replaced by "now" the next
+  // time the payment dialog opens.
+  const [tanggalDirty, setTanggalDirty] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
@@ -162,6 +167,8 @@ export function Kasir() {
         setTanggal(
           `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}T${pad(created.getHours())}:${pad(created.getMinutes())}`,
         )
+        // the sale's own date is never "stale" - nothing may refresh it to now
+        setTanggalDirty(true)
         pendingEditRef.current = sale.items
         refreshProducts()
       })
@@ -169,15 +176,16 @@ export function Kasir() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editSaleId])
 
-  // tanggal is seeded once at mount, so without this a sale would carry
-  // whatever time the page happened to load (or the previous checkout) -
-  // refresh it every time the payment dialog opens so it reflects now.
-  // Edit mode carries the sale's own date instead, loaded below.
+  // tanggal is seeded once at mount, so without this a sale left open all
+  // morning would be filed under whatever time the page happened to load.
+  // Refreshing it when the payment dialog opens keeps that from happening -
+  // but only while the cashier has not set a time themselves, and never in
+  // edit mode, which carries the sale's own date.
   useEffect(() => {
-    if (paymentOpen && editSaleId === null) {
+    if (paymentOpen && editSaleId === null && !tanggalDirty) {
       setTanggal(nowForInput())
     }
-  }, [paymentOpen, editSaleId])
+  }, [paymentOpen, editSaleId, tanggalDirty])
 
   useEffect(() => {
     if (editSaleId !== null) {
@@ -410,6 +418,8 @@ export function Kasir() {
     setNamaPelanggan(DEFAULT_PELANGGAN)
     setDibayar('')
     setTanggal(nowForInput())
+    // the next sale starts on the clock again, not on the last one's time
+    setTanggalDirty(false)
   }
 
   async function handleCheckout(shouldPrint: boolean) {
@@ -597,6 +607,28 @@ export function Kasir() {
               <kbd className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">Alt+P</kbd>
             </button>
 
+            {/* Backdating is normal here: yesterday's sale often gets entered the
+                next morning, and an edited sale carries its own date. The field
+                lives on the page rather than inside the payment dialog so the
+                cashier can see and set the time before committing to anything.
+                The main process rejects a future date. */}
+            <div className="rounded-xl border p-4">
+              <label htmlFor="tanggal-transaksi" className="block text-xs text-muted-foreground">
+                Tanggal &amp; Jam Transaksi
+              </label>
+              <Input
+                id="tanggal-transaksi"
+                type="datetime-local"
+                value={tanggal}
+                disabled={processing}
+                onChange={(e) => {
+                  setTanggal(e.target.value)
+                  setTanggalDirty(true)
+                }}
+                className="mt-1.5 tabular-nums"
+              />
+            </div>
+
             <div className="rounded-xl border p-5">
               <span className="text-sm text-muted-foreground">Total</span>
               <p className="mt-1 text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
@@ -692,7 +724,6 @@ export function Kasir() {
         dibayar={dibayar}
         setDibayar={setDibayar}
         tanggal={tanggal}
-        setTanggal={setTanggal}
         processing={processing}
         error={checkoutError}
         onSubmit={editSaleId === null ? handleCheckout : () => handleSaveEdit()}

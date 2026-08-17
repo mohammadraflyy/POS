@@ -25,7 +25,6 @@ export interface PaymentDialogProps {
   setDibayar: (value: string) => void
   /** local `YYYY-MM-DDTHH:mm` the sale will be filed under */
   tanggal: string
-  setTanggal: (value: string) => void
   processing: boolean
   error: string | null
   onSubmit: (shouldPrint: boolean) => void
@@ -50,7 +49,6 @@ export function PaymentDialog({
   dibayar,
   setDibayar,
   tanggal,
-  setTanggal,
   processing,
   error,
   onSubmit,
@@ -249,25 +247,12 @@ export function PaymentDialog({
             </span>
           </button>
 
-          {/* backdating a sale is normal here: the cashier often enters yesterday's
-              sale the next morning. The main process rejects future dates. */}
-          <div className="grid gap-2">
-            <Label htmlFor="tanggal-transaksi">Tanggal &amp; Jam Transaksi</Label>
-            <Input
-              id="tanggal-transaksi"
-              type="datetime-local"
-              value={tanggal}
-              disabled={processing}
-              onChange={(e) => setTanggal(e.target.value)}
-              onKeyDown={(e) => {
-                // Keep the form-level PageUp/PageDown/Enter shortcuts from
-                // firing while the native date/time segments are being
-                // driven - Enter here must not silently save a real sale.
-                if (e.key === 'Enter' || e.key === 'PageUp' || e.key === 'PageDown') {
-                  e.stopPropagation()
-                }
-              }}
-            />
+          {/* The time is set on the Penjualan page, not here - one field, one
+              place. It is still shown at the commit point so a mistyped date
+              cannot slip past unnoticed. */}
+          <div className="flex items-center justify-between rounded-xl border px-5 py-3.5">
+            <span className="text-sm text-muted-foreground">Tanggal &amp; Jam</span>
+            <span className="font-medium tabular-nums">{new Date(tanggal).toLocaleString('id-ID')}</span>
           </div>
 
           {bonNeedsCustomer && (
