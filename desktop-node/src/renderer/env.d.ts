@@ -5,6 +5,9 @@ import type { AuthUser, UserRole } from './types'
 declare global {
   interface Window {
     api: {
+      app: {
+        setTitleBarTheme: (isDark: boolean) => void
+      }
       auth: {
         login: (username: string, password: string) => Promise<AuthUser>
         logout: () => Promise<void>

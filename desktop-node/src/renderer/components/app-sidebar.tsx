@@ -16,6 +16,7 @@ import {
 import { AppLogo } from './app-logo'
 import { NavMain } from './nav-main'
 import { NavUser } from './nav-user'
+import { TITLE_BAR_HEIGHT } from './title-bar'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar'
 import type { AuthUser, NavItem } from '../types'
 
@@ -45,7 +46,13 @@ const adminNavItems: NavItem[] = [{ title: 'Pengguna', href: '/users', icon: Use
 
 export function AppSidebar({ storeName, user }: { storeName: string; user: AuthUser }) {
   return (
-    <Sidebar collapsible="icon" variant="inset">
+    // The sidebar is fixed to the viewport, so it has to be pushed below the
+    // title bar row by hand instead of flowing after it.
+    <Sidebar
+      collapsible="icon"
+      variant="inset"
+      style={{ top: TITLE_BAR_HEIGHT, height: `calc(100svh - ${TITLE_BAR_HEIGHT}px)` }}
+    >
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1.5">
           <AppLogo name={storeName} />

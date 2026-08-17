@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu } from 'electron'
 import { join } from 'path'
 import { createDb } from './db/migrate'
 import { registerAuthIpc } from './ipc/auth'
@@ -30,12 +30,27 @@ function getMigrationsFolder(): string {
   return join(__dirname, '../../drizzle')
 }
 
+/**
+ * Caption buttons sit in the app's own 36px title bar row. The colours mirror
+ * --sidebar / --foreground in the renderer theme, so the strip has to be
+ * repainted whenever the cashier switches light/dark.
+ */
+function titleBarOverlayFor(isDark: boolean): { color: string; symbolColor: string; height: number } {
+  return {
+    color: isDark ? '#171717' : '#fafafa',
+    symbolColor: isDark ? '#fafafa' : '#171717',
+    height: 36
+  }
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 1024,
     show: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: titleBarOverlayFor(true),
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false
@@ -56,6 +71,16 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // The application menu is gone, and with it the View > Toggle Developer
+  // Tools accelerator, so wire F12 back up for development.
+  if (isDev) {
+    mainWindow.webContents.on('before-input-event', (_event, input) => {
+      if (input.type === 'keyDown' && input.key === 'F12') {
+        mainWindow?.webContents.toggleDevTools()
+      }
+    })
+  }
 }
 
 app.on('window-all-closed', () => {
@@ -71,6 +96,10 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
+  ipcMain.on('app:titleBarTheme', (_event, isDark: boolean) => {
+    mainWindow?.setTitleBarOverlay(titleBarOverlayFor(isDark))
+  })
   db = createDb(getDbPath(), getMigrationsFolder())
   seedDefaultAdmin(db)
   registerAuthIpc(db)

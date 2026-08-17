@@ -7,6 +7,9 @@ function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 }
 
 const api = {
+  app: {
+    setTitleBarTheme: (isDark: boolean) => ipcRenderer.send('app:titleBarTheme', isDark),
+  },
   auth: {
     login: (username: string, password: string) =>
       invoke('auth:login', username, password),

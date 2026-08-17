@@ -43,6 +43,10 @@ const applyTheme = (appearance: Appearance): void => {
 
   document.documentElement.classList.toggle('dark', isDark)
   document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
+
+  // The native title bar is hidden, so the window-controls overlay is painted
+  // by the main process and has to be repainted alongside the page theme.
+  window.api?.app?.setTitleBarTheme(isDark)
 }
 
 const subscribe = (callback: () => void) => {
