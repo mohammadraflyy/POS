@@ -200,11 +200,16 @@
   --rdg-border-color: light-dark(oklch(0.82 0 0), oklch(0.4 0 0));
 }
 
+/* border-block-end is the row separator. The grid already sets it, but inside
+   @layer rdg, and that layer is declared before Tailwind's - so preflight's
+   `border: 0 solid` in @layer base wins and every grid border collapses to zero
+   width. Restating both sides here, unlayered, is what actually draws them. */
 .rdg-light .rdg-cell,
 .rdg-dark .rdg-cell {
   padding-inline: 12px;
   padding-block: 6px;
   border-inline-start: var(--rdg-border-width) solid var(--rdg-border-color);
+  border-block-end: var(--rdg-border-width) solid var(--rdg-border-color);
 }
 
 .rdg-light .rdg-header-row .rdg-cell,
