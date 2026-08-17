@@ -55,6 +55,19 @@ const EMPTY_DRAFT: KasirDraft = {
 }
 
 /** current local time in the `YYYY-MM-DDTHH:mm` shape a datetime-local input wants */
+/**
+ * Drops focus back to the document body.
+ *
+ * The Bayar shortcut and the global barcode scanner both refuse to act while an
+ * input is focused, so "focused nowhere" is a real state this page needs, not an
+ * absence of one.
+ */
+function blurActiveElement(): void {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+}
+
 function nowForInput(): string {
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -545,16 +558,27 @@ export function Kasir() {
 
                   e.preventDefault()
                   const code = paletteQuery.trim()
+
+                  // Empty box: step back out to the sale rather than opening a
+                  // palette with nothing to show. Focus goes nowhere, so the
+                  // next Enter reaches Bayar.
+                  if (code === '') {
+                    blurActiveElement()
+
+                    return
+                  }
+
                   // A scanner types the barcode then Enter. Resolving it here means a
                   // scan never has to travel through the palette at all, and repeated
                   // scans work without touching the mouse.
-                  const scanned = code === '' ? undefined : products.find((p) => p.barcode === code)
+                  const scanned = products.find((p) => p.barcode === code)
 
                   if (scanned) {
                     addProductToCart(scanned, Number(jumlah) || 1)
                     setPaletteQuery('')
                     setJumlah('1.00')
                     setScanError('')
+                    blurActiveElement()
 
                     return
                   }
@@ -591,20 +615,25 @@ export function Kasir() {
 
       <div className="grid flex-1 items-start gap-6">
         <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
+            {/* Both are supporting details, not the main event - they share one
+                compact row so the cart and the Total keep the vertical space. */}
+            <div className="grid gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={() => setCustomerOpen(true)}
-              className="flex items-center justify-between gap-2 rounded-xl border p-4 text-left hover:bg-muted/50"
+              className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left hover:bg-muted/50"
             >
               <span className="flex min-w-0 items-center gap-2">
-                <UserRound className="size-4 shrink-0 text-muted-foreground" />
+                <UserRound className="size-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
-                  <span className="block text-xs text-muted-foreground">Pelanggan</span>
-                  <span className="block truncate font-medium">{namaPelanggan.trim() || DEFAULT_PELANGGAN}</span>
+                  <span className="block text-[11px] leading-tight text-muted-foreground">Pelanggan</span>
+                  <span className="block truncate text-sm font-medium">
+                    {namaPelanggan.trim() || DEFAULT_PELANGGAN}
+                  </span>
                 </span>
               </span>
-              <kbd className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">Alt+P</kbd>
+              <kbd className="shrink-0 rounded border px-1 py-0.5 text-[10px] text-muted-foreground">Alt+P</kbd>
             </button>
 
             {/* Backdating is normal here: yesterday's sale often gets entered the
@@ -612,9 +641,9 @@ export function Kasir() {
                 lives on the page rather than inside the payment dialog so the
                 cashier can see and set the time before committing to anything.
                 The main process rejects a future date. */}
-            <div className="rounded-xl border p-4">
-              <label htmlFor="tanggal-transaksi" className="block text-xs text-muted-foreground">
-                Tanggal &amp; Jam Transaksi
+            <div className="rounded-lg border px-3 py-2">
+              <label htmlFor="tanggal-transaksi" className="block text-[11px] leading-tight text-muted-foreground">
+                Tanggal &amp; Jam
               </label>
               <Input
                 id="tanggal-transaksi"
@@ -625,8 +654,9 @@ export function Kasir() {
                   setTanggal(e.target.value)
                   setTanggalDirty(true)
                 }}
-                className="mt-1.5 tabular-nums"
+                className="mt-0.5 h-8 border-0 px-0 text-sm shadow-none tabular-nums focus-visible:ring-0"
               />
+            </div>
             </div>
 
             <div className="rounded-xl border p-5">
@@ -754,9 +784,13 @@ export function Kasir() {
           setPaletteOpen(false)
         }}
         onCloseAutoFocus={(e) => {
+          // Deliberately focus nothing. Returning focus to the search box made
+          // Enter reopen this palette instead of paying: while that box is
+          // focused its own Enter handler owns the key, and the Bayar shortcut
+          // only fires when nothing is focused. Leaving focus on the body also
+          // hands the global barcode scanner back its keystrokes.
           e.preventDefault()
-          searchInputRef.current?.focus()
-          searchInputRef.current?.select()
+          blurActiveElement()
         }}
       />
 
