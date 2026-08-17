@@ -43,6 +43,10 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    // The till runs on one screen all day, so it opens filling it. Maximising
+    // before show() avoids a flash of the 1200x800 window, which stays as the
+    // restore-down size.
+    mainWindow?.maximize()
     mainWindow?.show()
   })
 
