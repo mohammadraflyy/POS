@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import XLSX from 'xlsx'
 import { createDb } from './db/migrate'
-import { categories, products, productUnits, purchases, sales, saleItems, suppliers, units, users } from './db/schema'
+import { bonPayments, categories, products, productUnits, purchases, sales, saleItems, suppliers, units, users } from './db/schema'
 import { getRekap, getStockValue, getSalesHistory, buildRekapWorkbook } from './rekap'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
@@ -113,6 +113,8 @@ function insertSale(
     metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
     status: 'selesai' | 'dibatalkan'
     total: number
+    /** bill-wide discount, already taken off `total`; omit for a sale that had none */
+    diskon?: number
     dibayar: number
     createdAt: Date
     items: {
@@ -137,6 +139,7 @@ function insertSale(
       metodePembayaran: input.metodePembayaran,
       status: input.status,
       total: input.total,
+      diskon: input.diskon ?? 0,
       dibayar: input.dibayar,
       createdAt: input.createdAt,
       updatedAt: input.createdAt,
@@ -388,7 +391,167 @@ describe('getRekap', () => {
     })
 
     const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
-    expect(result.summary.jumlahTransaksi).toBe(2)
+    // the report is on a cash basis, so the unpaid bon is not a transaction yet
+    expect(result.summary.jumlahTransaksi).toBe(1)
+  })
+
+  it('leaves an unpaid bon out of omzet and out of laba entirely', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'bon',
+      status: 'selesai',
+      total: 30000_00,
+      dibayar: 0,
+      createdAt: new Date(2026, 0, 15, 11, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 30000_00, hargaPokok: 1000_00, subtotal: 30000_00 }],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(result.summary.omzetTunai).toBe(0)
+    expect(result.summary.labaKotor).toBe(0)
+    expect(result.produkTerlaris).toEqual([])
+    // it is still money owed, which is the one place an unpaid bon does belong
+    expect(result.summary.piutangBeredar).toBe(30000_00)
+  })
+
+  it('counts a settled bon on the day it was paid, not the day it was sold', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'bon',
+      status: 'selesai',
+      total: 30000_00,
+      dibayar: 30000_00,
+      createdAt: new Date(2026, 0, 15, 11, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 30000_00, hargaPokok: 1000_00, subtotal: 30000_00 }],
+    })
+    db.insert(bonPayments)
+      .values({
+        saleId: 1,
+        jumlah: 30000_00,
+        tanggal: '2026-02-03',
+        keterangan: null,
+        createdAt: new Date(2026, 1, 3),
+        updatedAt: new Date(2026, 1, 3),
+      })
+      .run()
+
+    const januari = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(januari.summary.omzetTunai).toBe(0)
+    expect(januari.summary.labaKotor).toBe(0)
+
+    const februari = getRekap(db, { from: '2026-02-01', to: '2026-02-28' })
+    expect(februari.summary.omzetTunai).toBe(30000_00)
+    expect(februari.summary.jumlahTransaksi).toBe(1)
+    expect(februari.summary.labaKotor).toBe(29000_00)
+    expect(februari.labaPerHari).toEqual([{ tanggal: '2026-02-03', omzet: 30000_00, laba: 29000_00 }])
+  })
+
+  it('recognises a part-paid bon nowhere - it is all or nothing', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'bon',
+      status: 'selesai',
+      total: 30000_00,
+      dibayar: 20000_00,
+      createdAt: new Date(2026, 0, 15, 11, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 30000_00, hargaPokok: 1000_00, subtotal: 30000_00 }],
+    })
+    db.insert(bonPayments)
+      .values({
+        saleId: 1,
+        jumlah: 20000_00,
+        tanggal: '2026-01-20',
+        keterangan: null,
+        createdAt: new Date(2026, 0, 20),
+        updatedAt: new Date(2026, 0, 20),
+      })
+      .run()
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(result.summary.omzetTunai).toBe(0)
+    expect(result.summary.jumlahTransaksi).toBe(0)
+  })
+
+  it('falls back to the sale date for a bon marked paid with no payment recorded', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'bon',
+      status: 'selesai',
+      total: 30000_00,
+      dibayar: 30000_00,
+      createdAt: new Date(2026, 0, 15, 11, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 30000_00, hargaPokok: 1000_00, subtotal: 30000_00 }],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(result.summary.omzetTunai).toBe(30000_00)
+  })
+
+  it('takes the bill-wide discount off laba and off every omzet breakdown', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    // one line worth 10.000 against 1.000 of cost, with 2.000 taken off the whole bill
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 8000_00,
+      diskon: 2000_00,
+      dibayar: 8000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 10000_00, hargaPokok: 1000_00, subtotal: 10000_00 }],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(result.summary.omzetTunai).toBe(8000_00)
+    // 8.000 taken in against 1.000 of cost - not 9.000, which is what ignoring the
+    // bill-wide discount would show
+    expect(result.summary.labaKotor).toBe(7000_00)
+    expect(result.labaPerHari).toEqual([{ tanggal: '2026-01-15', omzet: 8000_00, laba: 7000_00 }])
+    expect(result.produkTerlaris[0].totalPenjualan).toBe(8000_00)
+    // the breakdowns have to add back up to the headline omzet
+    expect(result.labaPerKategori.reduce((sum, row) => sum + row.omzet, 0)).toBe(8000_00)
+    expect(result.labaPerSatuan.reduce((sum, row) => sum + row.omzet, 0)).toBe(8000_00)
+  })
+
+  it('splits the bill-wide discount across lines and loses nothing to rounding', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    // 1.000 over 3.000 + 6.000 does not divide evenly; the remainder must still land
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 8000_00,
+      diskon: 1000_00,
+      dibayar: 8000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [
+        { productId: 1, qty: 1, konversi: 1, hargaJual: 3000_00, hargaPokok: 0, subtotal: 3000_00 },
+        { productId: 2, qty: 1, konversi: 1, hargaJual: 6000_00, hargaPokok: 0, subtotal: 6000_00 },
+      ],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(result.summary.labaKotor).toBe(8000_00)
+    expect(result.labaPerKategori.reduce((sum, row) => sum + row.omzet, 0)).toBe(8000_00)
   })
 
   it('keeps qris and transfer out of omzetTunai and sums them into omzetNonTunai', () => {
