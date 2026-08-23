@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   addLine,
+  applyDiskon,
   applyHarga,
   applyQty,
   cartFromSale,
   changeUnit,
   expandUnitResults,
+  lineGross,
   lineKey,
+  lineSubtotal,
   matchingProducts,
+  parseDiskon,
   restoreCart,
   toStoredCart,
   unitKonversi,
@@ -184,10 +188,10 @@ describe('addLine', () => {
 })
 
 describe('toStoredCart / restoreCart', () => {
-  it('round-trips a cart through the stored shape', () => {
+  it('round-trips a cart through the stored shape, discounts included', () => {
     const cart: CartLine[] = [
-      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 0.25 },
-      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2 },
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 0.25, diskon: 0 },
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2, diskon: 50000 },
     ]
 
     expect(restoreCart(toStoredCart(cart), [product])).toEqual(cart)
@@ -203,7 +207,9 @@ describe('toStoredCart / restoreCart', () => {
 
     const result = restoreCart([{ productId: 1, productUnitId: 9, qty: 2 }], [renamed])
 
-    expect(result).toEqual([{ key: lineKey(1, 9), product: renamed, productUnitId: 9, satuan: 'KARTON', qty: 2 }])
+    expect(result).toEqual([
+      { key: lineKey(1, 9), product: renamed, productUnitId: 9, satuan: 'KARTON', qty: 2, diskon: 0 },
+    ])
   })
 
   it('drops lines whose product, satuan or qty is no longer valid', () => {
@@ -220,7 +226,7 @@ describe('toStoredCart / restoreCart', () => {
     )
 
     expect(result).toEqual([
-      { key: lineKey(1, null), product: withoutUnits, productUnitId: null, satuan: 'PCS', qty: 3 },
+      { key: lineKey(1, null), product: withoutUnits, productUnitId: null, satuan: 'PCS', qty: 3, diskon: 0 },
     ])
   })
 })
@@ -415,6 +421,76 @@ describe('applyHarga', () => {
   })
 })
 
+describe('parseDiskon', () => {
+  it('reads a plain number as whole rupiah', () => {
+    expect(parseDiskon('5000', 65000)).toBe(5000)
+  })
+
+  it('resolves a percentage against the base it is given', () => {
+    expect(parseDiskon('10%', 65000)).toBe(6500)
+    expect(parseDiskon('12.5%', 80000)).toBe(10000)
+  })
+
+  it('never gives away more than the line is worth', () => {
+    expect(parseDiskon('999999', 65000)).toBe(65000)
+    expect(parseDiskon('150%', 65000)).toBe(65000)
+  })
+
+  it('reads an empty box, junk and negatives as no discount', () => {
+    expect(parseDiskon('', 65000)).toBe(0)
+    expect(parseDiskon('   ', 65000)).toBe(0)
+    expect(parseDiskon('abc', 65000)).toBe(0)
+    expect(parseDiskon('-500', 65000)).toBe(500)
+  })
+
+  it('cannot manufacture a discount on an empty line', () => {
+    expect(parseDiskon('10%', 0)).toBe(0)
+    expect(parseDiskon('5000', 0)).toBe(0)
+  })
+})
+
+describe('lineSubtotal', () => {
+  const line: CartLine = { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2 }
+
+  it('is the gross when nothing was discounted', () => {
+    expect(lineGross(line)).toBe(130000)
+    expect(lineSubtotal(line)).toBe(130000)
+  })
+
+  it('takes the discount off the gross', () => {
+    expect(lineSubtotal({ ...line, diskon: 30000 })).toBe(100000)
+  })
+
+  it('floors at zero rather than paying the customer', () => {
+    expect(lineSubtotal({ ...line, diskon: 999999 })).toBe(0)
+  })
+
+  it('discounts the tier price, not the master price, when a tier applies', () => {
+    // 6 x 62000 tier price = 372000, less 2000
+    const tiered: CartLine = { ...line, qty: 6 }
+    expect(lineGross(tiered)).toBe(372000)
+    expect(lineSubtotal({ ...tiered, diskon: 2000 })).toBe(370000)
+  })
+})
+
+describe('applyDiskon', () => {
+  const cart: CartLine[] = [
+    { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2 },
+    { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1 },
+  ]
+
+  it('sets a percentage against the line it lands on, not the whole cart', () => {
+    const result = applyDiskon(cart, lineKey(1, null), '10%')
+
+    expect(result[0].diskon).toBe(13000)
+    expect(result[1].diskon).toBeUndefined()
+  })
+
+  it('clamps to the line it lands on', () => {
+    expect(applyDiskon(cart, lineKey(1, null), '999999')[0].diskon).toBe(130000)
+  })
+})
+
 describe('cartFromSale', () => {
   it('maps the stored base product_units id back to the cart null base unit', () => {
     const items: EditSaleItem[] = [
@@ -422,7 +498,7 @@ describe('cartFromSale', () => {
     ]
 
     expect(cartFromSale(items, [product]).cart).toEqual([
-      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2, hargaOverride: null },
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2, hargaOverride: null, diskon: 0 },
     ])
     expect(cartFromSale(items, [product]).dropped).toBe(0)
   })
@@ -433,7 +509,7 @@ describe('cartFromSale', () => {
     ]
 
     expect(cartFromSale(items, [product]).cart).toEqual([
-      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1, hargaOverride: null },
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1, hargaOverride: null, diskon: 0 },
     ])
   })
 

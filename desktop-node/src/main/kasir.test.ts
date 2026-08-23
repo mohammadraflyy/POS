@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { priceForQty, resolveCartItem, type ProductRow, type ProductUnitRow } from './kasir'
+import { lineSubtotal, priceForQty, resolveCartItem, type ProductRow, type ProductUnitRow } from './kasir'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
@@ -245,6 +245,7 @@ describe('resolveCartItem', () => {
       qty: 5,
       qtyDasar: 5,
       priceSource: 'price_tier',
+      diskon: 0,
     })
   })
 
@@ -271,6 +272,7 @@ describe('resolveCartItem', () => {
       qty: 2,
       qtyDasar: 24,
       priceSource: 'normal',
+      diskon: 0,
     })
   })
 
@@ -280,6 +282,133 @@ describe('resolveCartItem', () => {
 
   it('throws when a product-unit purchase would exceed base-unit stock', () => {
     expect(() => resolveCartItem(product, dusUnit, [], 3)).toThrow('Stok Beras 5kg tidak cukup.')
+  })
+
+  it('carries a line discount through and leaves the price it was given away from alone', () => {
+    const result = resolveCartItem(product, baseUnit, [], 2, null, 5000_00)
+    expect(result).toMatchObject({ hargaJual: 65000_00, diskon: 5000_00, priceSource: 'normal' })
+    expect(lineSubtotal(result)).toBe(125000_00)
+  })
+
+  it('measures the discount against the tier price when a tier applies', () => {
+    // 5 x 62000 = 310000; a 10000 discount leaves 300000, not 315000
+    const result = resolveCartItem(product, baseUnit, [{ minQty: 5, maxQty: null, hargaJual: 62000_00 }], 5, null, 10000_00)
+    expect(lineSubtotal(result)).toBe(300000_00)
+  })
+
+  it('rejects a discount bigger than the line', () => {
+    expect(() => resolveCartItem(product, baseUnit, [], 1, null, 65001_00)).toThrow(
+      'Diskon Beras 5kg melebihi harga barisnya.',
+    )
+  })
+
+  it('rejects a negative or fractional-cent discount', () => {
+    expect(() => resolveCartItem(product, baseUnit, [], 1, null, -1)).toThrow('Diskon Beras 5kg tidak valid.')
+    expect(() => resolveCartItem(product, baseUnit, [], 1, null, 1.5)).toThrow('Diskon Beras 5kg tidak valid.')
+  })
+})
+
+describe('checkout with discounts', () => {
+  it('takes a line discount off that line and off the sale total', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 60000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1, diskon: 5000_00 }],
+    })
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items[0].diskon).toBe(5000_00)
+    // the price charged is untouched - only the subtotal moves
+    expect(items[0].hargaJual).toBe(65000_00)
+    expect(items[0].subtotal).toBe(60000_00)
+    expect(result.total).toBe(60000_00)
+  })
+
+  it('takes a bill-wide discount off the total and records it on the sale', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 55000_00,
+      userId: 1,
+      diskon: 10000_00,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.diskon).toBe(10000_00)
+    expect(sale?.total).toBe(55000_00)
+    // the line keeps its own full subtotal - the bill-wide discount lives on the sale
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items[0].subtotal).toBe(65000_00)
+  })
+
+  it('stacks a line discount and a bill-wide discount', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 58000_00,
+      userId: 1,
+      diskon: 2000_00,
+      items: [{ productId: 1, productUnitId: null, qty: 1, diskon: 5000_00 }],
+    })
+
+    expect(result.total).toBe(58000_00)
+  })
+
+  it('refuses a bill-wide discount larger than the bill', () => {
+    const db = seedDb()
+
+    expect(() =>
+      checkout(db, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 0,
+        userId: 1,
+        diskon: 65001_00,
+        items: [{ productId: 1, productUnitId: null, qty: 1 }],
+      }),
+    ).toThrow('Diskon nota melebihi total belanja.')
+  })
+
+  it('measures the bill-wide discount after the line discounts, not before', () => {
+    const db = seedDb()
+
+    // line drops to 60000, so 60000 of bill-wide discount is exactly allowed and 60001 is not
+    expect(() =>
+      checkout(db, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 0,
+        userId: 1,
+        diskon: 60001_00,
+        items: [{ productId: 1, productUnitId: null, qty: 1, diskon: 5000_00 }],
+      }),
+    ).toThrow('Diskon nota melebihi total belanja.')
+  })
+
+  it('lets a bon carry a discount without confusing what is still owed', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Sri',
+      dibayar: null,
+      userId: 1,
+      diskon: 5000_00,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.total).toBe(60000_00)
+    expect(sale?.dibayar).toBe(0)
   })
 })
 

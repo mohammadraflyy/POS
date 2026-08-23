@@ -20,6 +20,8 @@ interface SaleDetailItem {
   satuan: string | null
   namaItem: string
   hargaJual: number
+  /** already taken off `subtotal` */
+  diskon: number
   subtotal: number
   priceSource: 'normal' | 'price_tier' | 'manual'
 }
@@ -48,6 +50,8 @@ interface SaleDetailData {
   namaPelanggan: string | null
   metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   status: 'selesai' | 'dibatalkan'
+  /** bill-wide discount, already taken off `total` */
+  diskon: number
   total: number
   dibayar: number
   createdAt: string
@@ -80,6 +84,16 @@ const ITEM_COLUMNS: Column<SaleDetailItem>[] = [
     name: 'Harga',
     width: 140,
     renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.hargaJual)}</span>,
+  },
+  {
+    key: 'diskon',
+    name: 'Diskon',
+    width: 140,
+    renderCell: ({ row }) => (
+      <span className="w-full text-right">
+        {row.diskon > 0 ? <span className="text-destructive">-{formatRupiah(row.diskon)}</span> : '-'}
+      </span>
+    ),
   },
   {
     key: 'subtotal',
@@ -253,6 +267,9 @@ export function SaleDetail() {
             />
 
             <div className="grid gap-3 sm:grid-cols-3">
+              {/* only takes a slot when there was one - an ordinary sale keeps the
+                  three-field row it always had */}
+              {sale.diskon > 0 && <Field label="Diskon Nota" value={`-${formatRupiah(sale.diskon)}`} />}
               <Field label="Total" value={formatRupiah(sale.total)} />
               <Field label="Dibayar" value={formatRupiah(sale.dibayar)} />
               <Field

@@ -7,11 +7,15 @@ export interface EscPosReceiptItem {
   qty: number
   satuan: string | null
   hargaJual: number
+  /** already taken off `subtotal`; printed on its own line so the customer can see it */
+  diskon: number
   subtotal: number
 }
 
 export interface EscPosReceiptSale {
   saleId: number
+  /** bill-wide discount, already taken off `total` */
+  diskon: number
   total: number
   dibayar: number
   metodePembayaran: MetodePembayaran
@@ -115,13 +119,30 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
 
   out.push(...textLine(dashLine))
 
+  let subtotalBarang = 0
+
   for (const item of sale.items) {
     out.push(...textLine(item.namaItem))
     const qtyLabel = `${item.qty} ${item.satuan ?? ''} x ${formatRupiah(item.hargaJual)}`.replace(/\s+/g, ' ').trim()
-    out.push(...textLine(padLine(qtyLabel, formatRupiah(item.subtotal), width)))
+    subtotalBarang += item.subtotal
+
+    if (item.diskon > 0) {
+      // the line prints at its undiscounted price first, then gives the discount back -
+      // a customer checking the struk against the shelf price finds the shelf price here
+      out.push(...textLine(padLine(qtyLabel, formatRupiah(item.subtotal + item.diskon), width)))
+      out.push(...textLine(padLine('  Diskon', `-${formatRupiah(item.diskon)}`, width)))
+    } else {
+      out.push(...textLine(padLine(qtyLabel, formatRupiah(item.subtotal), width)))
+    }
   }
 
   out.push(...textLine(dashLine))
+
+  // only worth the paper when something was actually given away
+  if (sale.diskon > 0) {
+    out.push(...textLine(padLine('Subtotal', formatRupiah(subtotalBarang), width)))
+    out.push(...textLine(padLine('Diskon', `-${formatRupiah(sale.diskon)}`, width)))
+  }
 
   out.push(...setBold(true))
   out.push(...textLine(padLine('TOTAL', formatRupiah(sale.total), width)))
@@ -154,6 +175,7 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
 /** Fixed sample receipt for the Settings page's Test Print tool — matches the web app's dummySale() precedent. */
 export const SAMPLE_RECEIPT: EscPosReceiptSale = {
   saleId: 0,
+  diskon: 0,
   total: 25000,
   dibayar: 30000,
   metodePembayaran: 'tunai',
@@ -161,7 +183,7 @@ export const SAMPLE_RECEIPT: EscPosReceiptSale = {
   createdAt: new Date().toISOString(),
   kasirName: 'Test',
   items: [
-    { namaItem: 'Contoh Produk A', qty: 2, satuan: 'PCS', hargaJual: 10000, subtotal: 20000 },
-    { namaItem: 'Contoh Produk B', qty: 1, satuan: 'PCS', hargaJual: 5000, subtotal: 5000 },
+    { namaItem: 'Contoh Produk A', qty: 2, satuan: 'PCS', hargaJual: 10000, diskon: 0, subtotal: 20000 },
+    { namaItem: 'Contoh Produk B', qty: 1, satuan: 'PCS', hargaJual: 5000, diskon: 0, subtotal: 5000 },
   ],
 }

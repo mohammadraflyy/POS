@@ -16,6 +16,12 @@ export interface PaymentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   total: number
+  /** what the goods came to before any discount */
+  subtotal: number
+  /** the sum of the per-line discounts, in whole rupiah */
+  diskonItem: number
+  /** the bill-wide discount, already resolved from any percentage the cashier typed */
+  diskonNota: number
   metode: 'tunai' | 'bon' | 'qris' | 'transfer'
   setMetode: (metode: 'tunai' | 'bon' | 'qris' | 'transfer') => void
   namaPelanggan: string
@@ -42,6 +48,9 @@ export function PaymentDialog({
   open,
   onOpenChange,
   total,
+  subtotal,
+  diskonItem,
+  diskonNota,
   metode,
   setMetode,
   namaPelanggan,
@@ -210,6 +219,30 @@ export function PaymentDialog({
               <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+R</kbd>
             </Button>
           </div>
+
+          {/* Read-only: the discount is set on the Penjualan page, where the cart it
+              applies to is visible. Shown here so a mistyped discount cannot slip past
+              at the one point where the money is actually committed. */}
+          {(diskonItem > 0 || diskonNota > 0) && (
+            <div className="space-y-1 rounded-xl border px-5 py-3 text-sm tabular-nums">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Subtotal</span>
+                <span>{formatRupiah(subtotal)}</span>
+              </div>
+              {diskonItem > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Diskon item</span>
+                  <span className="font-semibold text-destructive">-{formatRupiah(diskonItem)}</span>
+                </div>
+              )}
+              {diskonNota > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Diskon nota</span>
+                  <span className="font-semibold text-destructive">-{formatRupiah(diskonNota)}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between rounded-xl bg-foreground px-5 py-4">
             <span className="text-sm text-background/60">Total Tagihan</span>

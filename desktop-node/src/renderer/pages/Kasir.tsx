@@ -18,15 +18,18 @@ import { CommandPalette } from './kasir/CommandPalette'
 import { CustomerPicker, DEFAULT_PELANGGAN } from './kasir/CustomerPicker'
 import {
   addLine,
+  applyDiskon,
   applyHarga,
   applyQty,
   cartFromSale,
   changeUnit,
   expandUnitResults,
+  lineGross,
+  lineSubtotal,
   matchingProducts,
+  parseDiskon,
   restoreCart,
   toStoredCart,
-  unitPrice,
   type CartLine,
   type EditSaleItem,
   type Product,
@@ -45,6 +48,8 @@ interface KasirDraft {
   namaPelanggan: string
   dibayar: string
   jumlah: string
+  /** kept as typed ("5000" or "10%") so the cashier sees back what they entered */
+  diskonNota: string
 }
 
 const EMPTY_DRAFT: KasirDraft = {
@@ -53,6 +58,7 @@ const EMPTY_DRAFT: KasirDraft = {
   namaPelanggan: DEFAULT_PELANGGAN,
   dibayar: '',
   jumlah: '1.00',
+  diskonNota: '',
 }
 
 /** current local time in the `YYYY-MM-DDTHH:mm` shape a datetime-local input wants */
@@ -92,6 +98,7 @@ function readStoredDraft(): KasirDraft {
       namaPelanggan: typeof parsed.namaPelanggan === 'string' ? parsed.namaPelanggan : DEFAULT_PELANGGAN,
       dibayar: typeof parsed.dibayar === 'string' ? parsed.dibayar : '',
       jumlah: typeof parsed.jumlah === 'string' ? parsed.jumlah : EMPTY_DRAFT.jumlah,
+      diskonNota: typeof parsed.diskonNota === 'string' ? parsed.diskonNota : '',
     }
   } catch {
     return EMPTY_DRAFT
@@ -114,6 +121,7 @@ export function Kasir() {
   const [metode, setMetode] = useState<'tunai' | 'bon' | 'qris' | 'transfer'>(initialDraft.metode)
   const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
   const [dibayar, setDibayar] = useState(initialDraft.dibayar)
+  const [diskonNota, setDiskonNota] = useState(initialDraft.diskonNota)
   const [tanggal, setTanggal] = useState(nowForInput())
   // Set once the cashier types a time of their own, so the staleness refresh
   // below stops overwriting it. Without this the field cannot really be edited:
@@ -178,6 +186,9 @@ export function Kasir() {
         setMetode(sale.metodePembayaran)
         setNamaPelanggan(sale.namaPelanggan ?? DEFAULT_PELANGGAN)
         setDibayar(String(sale.dibayar))
+        // comes back as the nominal that was charged, not as the "10%" that produced it -
+        // the percentage is not stored, and re-deriving it would change the sale's total
+        setDiskonNota(sale.diskon > 0 ? String(sale.diskon) : '')
         setTanggal(
           `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}T${pad(created.getHours())}:${pad(created.getMinutes())}`,
         )
@@ -206,10 +217,10 @@ export function Kasir() {
       return
     }
 
-    const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah }
+    const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah, diskonNota }
 
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
-  }, [cart, metode, namaPelanggan, dibayar, jumlah, editSaleId])
+  }, [cart, metode, namaPelanggan, dibayar, jumlah, diskonNota, editSaleId])
 
   function refreshProducts() {
     window.api.kasir
@@ -250,7 +261,14 @@ export function Kasir() {
       .catch(() => setError('Gagal memuat data.'))
   }
 
-  const total = useMemo(() => cart.reduce((sum, line) => sum + line.qty * unitPrice(line), 0), [cart])
+  // what the goods cost before anything was given away
+  const subtotalKotor = useMemo(() => cart.reduce((sum, line) => sum + lineGross(line), 0), [cart])
+  // what the lines come to once their own discounts are off - this is what a bill-wide
+  // discount is measured against, both here and in main/kasir.ts
+  const subtotalBarang = useMemo(() => cart.reduce((sum, line) => sum + lineSubtotal(line), 0), [cart])
+  const diskonItem = subtotalKotor - subtotalBarang
+  const diskonNotaValue = useMemo(() => parseDiskon(diskonNota, subtotalBarang), [diskonNota, subtotalBarang])
+  const total = subtotalBarang - diskonNotaValue
   const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart])
 
   // the walk-in name is always offered, even on a fresh database where no sale
@@ -421,6 +439,14 @@ export function Kasir() {
       return
     }
 
+    if (column.key === 'diskon') {
+      // the edit cell already resolved any "%", but it is re-run through the same parser
+      // so clamping to the line's gross happens in exactly one place
+      setCart((prev) => applyDiskon(prev, editedRow.key, String(editedRow.diskon ?? 0)))
+
+      return
+    }
+
     applyResolvedQty(editedRow.key, editedRow.qty)
   }
 
@@ -452,6 +478,8 @@ export function Kasir() {
     setCart([])
     setNamaPelanggan(DEFAULT_PELANGGAN)
     setDibayar('')
+    // a discount belongs to the sale that earned it, never to the next customer
+    setDiskonNota('')
     setTanggal(nowForInput())
     // the next sale starts on the clock again, not on the last one's time
     setTanggalDirty(false)
@@ -471,10 +499,12 @@ export function Kasir() {
         namaPelanggan: metode === 'bon' ? namaPelanggan.trim() || null : namaPelanggan.trim() || DEFAULT_PELANGGAN,
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
         tanggal,
+        diskon: diskonNotaValue,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
           qty: line.qty,
+          diskon: line.diskon ?? 0,
         })),
       })
 
@@ -520,11 +550,13 @@ export function Kasir() {
         // on every single save. Only qris and transfer settle themselves.
         dibayar: metode === 'qris' || metode === 'transfer' ? null : Number(dibayar || 0),
         tanggal,
+        diskon: diskonNotaValue,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
           qty: line.qty,
           hargaJual: line.hargaOverride ?? null,
+          diskon: line.diskon ?? 0,
         })),
       })
 
@@ -684,6 +716,54 @@ export function Kasir() {
             <div className="rounded-xl border p-5">
               <span className="text-sm text-muted-foreground">Total</span>
               <p className="mt-1 text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
+
+              {/* only shown once something has actually been given away - an untouched
+                  sale keeps the single big number it had before */}
+              {(diskonItem > 0 || diskonNotaValue > 0) && (
+                <div className="mt-2 space-y-0.5 text-xs tabular-nums text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>{formatRupiah(subtotalKotor)}</span>
+                  </div>
+                  {diskonItem > 0 && (
+                    <div className="flex justify-between">
+                      <span>Diskon item</span>
+                      <span className="text-destructive">-{formatRupiah(diskonItem)}</span>
+                    </div>
+                  )}
+                  {diskonNotaValue > 0 && (
+                    <div className="flex justify-between">
+                      <span>Diskon nota</span>
+                      <span className="text-destructive">-{formatRupiah(diskonNotaValue)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Lives here rather than in the payment dialog so the big Total above is
+                  always the number the customer will be asked for. */}
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <label htmlFor="diskon-nota" className="text-xs text-muted-foreground">
+                  Diskon nota
+                </label>
+                <Input
+                  id="diskon-nota"
+                  type="text"
+                  value={diskonNota}
+                  disabled={processing}
+                  onChange={(e) => setDiskonNota(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      // hand focus back to nobody so the next Enter reaches Bayar
+                      e.preventDefault()
+                      blurActiveElement()
+                    }
+                  }}
+                  placeholder="0 atau 10%"
+                  title="Isi nominal rupiah (5000) atau persen (10%) - dihitung dari subtotal setelah diskon item"
+                  className="h-8 w-28 text-right tabular-nums"
+                />
+              </div>
               <Button
                 type="button"
                 size="lg"
@@ -770,6 +850,9 @@ export function Kasir() {
         open={paymentOpen}
         onOpenChange={setPaymentOpen}
         total={total}
+        subtotal={subtotalKotor}
+        diskonItem={diskonItem}
+        diskonNota={diskonNotaValue}
         metode={metode}
         setMetode={setMetode}
         namaPelanggan={namaPelanggan}

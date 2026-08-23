@@ -12,13 +12,13 @@ import 'react-data-grid/lib/styles.css'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatRupiah } from '@/lib/utils'
-import { activeTier, unitPrice, type CartLine } from './cart-logic'
+import { activeTier, lineGross, lineSubtotal, parseDiskon, unitPrice, type CartLine } from './cart-logic'
 
 /**
  * Column order, single-sourced so a keyboard shortcut can aim at a column by name.
  * Keep it in step with `columns` below - the grid is built from these keys in order.
  */
-const COLUMN_KEYS = ['no', 'produk', 'satuan', 'harga', 'qty', 'subtotal', 'aksi'] as const
+const COLUMN_KEYS = ['no', 'produk', 'satuan', 'harga', 'diskon', 'qty', 'subtotal', 'aksi'] as const
 
 export const QTY_COLUMN_IDX = COLUMN_KEYS.indexOf('qty')
 
@@ -45,6 +45,33 @@ function renderHargaEditCell({ row, onRowChange, onClose }: RenderEditCellProps<
       onChange={(e) =>
         onRowChange({ ...row, hargaOverride: Number(e.target.value.replace(/[^0-9]/g, '')) || 0 })
       }
+      onBlur={() => onClose(true, false)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          onClose(true, false)
+        } else if (e.key === 'Escape') {
+          onClose(false)
+        }
+      }}
+    />
+  )
+}
+
+function renderDiskonEditCell({ row, onRowChange, onClose }: RenderEditCellProps<CartLine>) {
+  // resolved against the line as it stands, so "10%" means 10% of what this line costs now
+  const base = lineGross(row)
+
+  return (
+    <input
+      type="text"
+      ref={focusAndSelectQtyInput}
+      // uncontrolled like qty and harga: "10%" has to survive being typed one key at a
+      // time, and a value re-synced from the parsed number would eat the "%"
+      defaultValue={row.diskon ? String(row.diskon) : ''}
+      title="Isi nominal rupiah (5000) atau persen (10%) - dihitung dari subtotal baris ini"
+      placeholder="0 atau 10%"
+      className="h-full w-full bg-background px-2 text-right text-sm outline-none"
+      onChange={(e) => onRowChange({ ...row, diskon: parseDiskon(e.target.value, base) })}
       onBlur={() => onClose(true, false)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -106,7 +133,7 @@ export function CartGrid({
   onChangeUnit,
   onRemoveLine,
 }: CartGridProps) {
-  const CART_OTHER_COLUMNS_WIDTH = 50 + 180 + 120 + 80 + 130 + 50
+  const CART_OTHER_COLUMNS_WIDTH = 50 + 180 + 120 + 110 + 80 + 130 + 50
   const produkWidth = Math.max(160, width - CART_OTHER_COLUMNS_WIDTH - 2)
 
   const columns: Column<CartLine>[] = [
@@ -190,6 +217,36 @@ export function CartGrid({
       },
     },
     {
+      // unlike Harga, this is editable on a brand new sale too: giving a discount at the
+      // till is the whole point, where correcting a charged price is a repair job
+      key: 'diskon',
+      name: 'Diskon',
+      width: 110,
+      editable: true,
+      renderEditCell: renderDiskonEditCell,
+      renderCell: ({ row }) => {
+        const diskon = row.diskon ?? 0
+        const gross = lineGross(row)
+
+        return (
+          <span className="w-full text-right text-xs tabular-nums">
+            {diskon > 0 ? (
+              <>
+                <span className="text-destructive">-{formatRupiah(diskon)}</span>
+                {gross > 0 && (
+                  <span className="block text-[10px] text-muted-foreground">
+                    {Math.round((diskon / gross) * 100)}%
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-muted-foreground">-</span>
+            )}
+          </span>
+        )
+      },
+    },
+    {
       key: 'qty',
       name: 'Qty',
       width: 80,
@@ -209,7 +266,14 @@ export function CartGrid({
       name: 'Subtotal',
       width: 130,
       renderCell: ({ row }) => (
-        <span className="w-full text-right font-semibold">{formatRupiah(row.qty * unitPrice(row))}</span>
+        <span className="w-full text-right font-semibold tabular-nums">
+          {formatRupiah(lineSubtotal(row))}
+          {(row.diskon ?? 0) > 0 && (
+            <span className="block text-[10px] font-normal text-muted-foreground line-through">
+              {formatRupiah(lineGross(row))}
+            </span>
+          )}
+        </span>
       ),
     },
     {

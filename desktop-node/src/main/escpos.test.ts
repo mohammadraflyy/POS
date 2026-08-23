@@ -28,14 +28,48 @@ describe('buildReceiptEscPos', () => {
 
   const tunaiSale: EscPosReceiptSale = {
     saleId: 8,
+    diskon: 0,
     total: 65000,
     dibayar: 100000,
     metodePembayaran: 'tunai',
     namaPelanggan: null,
     createdAt: '2026-08-07T04:03:06.000Z',
     kasirName: 'Admin',
-    items: [{ namaItem: 'Beras 5kg', qty: 1, satuan: 'PCS', hargaJual: 65000, subtotal: 65000 }],
+    items: [{ namaItem: 'Beras 5kg', qty: 1, satuan: 'PCS', hargaJual: 65000, diskon: 0, subtotal: 65000 }],
   }
+
+  it('prints a discounted line at its full price and gives the discount back below it', () => {
+    const text = buildReceiptEscPos(
+      {
+        ...tunaiSale,
+        total: 60000,
+        items: [{ namaItem: 'Beras 5kg', qty: 1, satuan: 'PCS', hargaJual: 65000, diskon: 5000, subtotal: 60000 }],
+      },
+      storeSettings,
+      '58mm',
+    ).toString('ascii')
+
+    expect(text).toContain('Rp 65.000')
+    expect(text).toContain('Diskon')
+    expect(text).toContain('-Rp 5.000')
+  })
+
+  it('prints a subtotal above the bill-wide discount', () => {
+    const text = buildReceiptEscPos({ ...tunaiSale, diskon: 5000, total: 60000 }, storeSettings, '58mm').toString(
+      'ascii',
+    )
+
+    expect(text).toContain('Subtotal')
+    expect(text).toContain('-Rp 5.000')
+    expect(text).toContain('Rp 60.000')
+  })
+
+  it('leaves the discount lines off a sale that had none', () => {
+    const text = buildReceiptEscPos(tunaiSale, storeSettings, '58mm').toString('ascii')
+
+    expect(text).not.toContain('Diskon')
+    expect(text).not.toContain('Subtotal')
+  })
 
   it('starts with the ESC @ initialize sequence', () => {
     const bytes = buildReceiptEscPos(tunaiSale, storeSettings, '58mm')

@@ -54,6 +54,18 @@ export interface ResolvedItem {
   qty: number
   qtyDasar: number
   priceSource: 'normal' | 'price_tier' | 'manual'
+  /** whole cents taken off this line by hand, already checked against the line's gross */
+  diskon: number
+}
+
+/** what a line is worth before any discount - qty may be fractional, prices are integer cents */
+export function lineGross(qty: number, hargaJual: number): number {
+  return Math.round(qty * hargaJual)
+}
+
+/** what a line actually contributes to the bill: its gross less its own manual discount */
+export function lineSubtotal(item: { qty: number; hargaJual: number; diskon: number }): number {
+  return lineGross(item.qty, item.hargaJual) - item.diskon
 }
 
 export function resolveCartItem(
@@ -63,6 +75,8 @@ export function resolveCartItem(
   qty: number,
   /** whole cents; set only when a sale is being corrected by hand */
   hargaOverride?: number | null,
+  /** whole cents off this line; may zero the line but never take it below zero */
+  diskon?: number | null,
 ): ResolvedItem {
   const normalPrice = productUnit.hargaJual
   const tier = findTierForQty(priceTiers, qty)
@@ -77,6 +91,16 @@ export function resolveCartItem(
     throw new Error(`Stok ${product.namaItem} tidak cukup.`)
   }
 
+  const diskonBaris = diskon ?? 0
+
+  if (!Number.isInteger(diskonBaris) || diskonBaris < 0) {
+    throw new Error(`Diskon ${product.namaItem} tidak valid.`)
+  }
+
+  if (diskonBaris > lineGross(qty, hargaJual)) {
+    throw new Error(`Diskon ${product.namaItem} melebihi harga barisnya.`)
+  }
+
   return {
     productId: product.id,
     productUnitId: productUnit.id,
@@ -89,6 +113,7 @@ export function resolveCartItem(
     qty,
     qtyDasar,
     priceSource,
+    diskon: diskonBaris,
   }
 }
 
@@ -116,6 +141,23 @@ export interface CartItemInput {
   qty: number
   /** whole cents; overrides master and tier pricing for this line alone */
   hargaJual?: number | null
+  /** whole cents off this line alone, on top of any bill-wide discount */
+  diskon?: number | null
+}
+
+/**
+ * Checks a bill-wide discount against what the lines came to. Rejecting rather than
+ * clamping is deliberate: a discount larger than the bill means the cashier and the
+ * till disagree about what is being sold, and silently charging zero hides that.
+ */
+function assertDiskonNota(diskon: number, subtotal: number): void {
+  if (!Number.isInteger(diskon) || diskon < 0) {
+    throw new Error('Diskon nota tidak valid.')
+  }
+
+  if (diskon > subtotal) {
+    throw new Error('Diskon nota melebihi total belanja.')
+  }
 }
 
 /** settled in full at checkout, but the money never lands in the drawer */
@@ -149,6 +191,8 @@ export interface CheckoutInput {
   userId: number
   /** local `YYYY-MM-DDTHH:mm`; omit to stamp the sale with the current time */
   tanggal?: string | null
+  /** whole cents off the whole bill, applied after every line's own discount */
+  diskon?: number | null
   items: CartItemInput[]
 }
 
@@ -216,7 +260,7 @@ function resolveItems(db: Pick<Db, 'select'>, items: CartItemInput[]): ResolvedI
       .filter((row) => row.productUnitId === unit.id)
       .map((row) => ({ minQty: row.minQty, maxQty: row.maxQty, hargaJual: row.hargaJual }))
 
-    const resolved = resolveCartItem(product, unit, tiers, item.qty, item.hargaJual)
+    const resolved = resolveCartItem(product, unit, tiers, item.qty, item.hargaJual, item.diskon)
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
     const totalQtyDasar = previousQtyDasar + resolved.qtyDasar
 
@@ -247,6 +291,8 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   }
 
   const resolvedItems = resolveItems(db, input.items)
+  const diskonNota = input.diskon ?? 0
+  assertDiskonNota(diskonNota, resolvedItems.reduce((sum, line) => sum + lineSubtotal(line), 0))
 
   const now = input.tanggal ? parseTanggalTransaksi(input.tanggal) : new Date()
 
@@ -260,6 +306,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         namaPelanggan: input.namaPelanggan,
         metodePembayaran: input.metodePembayaran,
         status: 'selesai',
+        diskon: diskonNota,
         total: 0,
         dibayar: dibayarAwal,
         createdAt: now,
@@ -272,7 +319,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
 
     for (const line of resolvedItems) {
       // qty may be fractional (e.g. 0.25 kg) - hargaJual is stored in integer cents
-      const subtotal = Math.round(line.qty * line.hargaJual)
+      const subtotal = lineSubtotal(line)
       total += subtotal
 
       tx.insert(saleItems)
@@ -287,6 +334,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
           hargaJual: line.hargaJual,
           hargaPokok: line.hargaPokok,
           priceSource: line.priceSource,
+          diskon: line.diskon,
           subtotal,
           createdAt: now,
           updatedAt: now,
@@ -311,6 +359,8 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         })
         .run()
     }
+
+    total -= diskonNota
 
     // qris and transfer settle the exact amount at checkout - nothing owed, no change given
     const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
@@ -391,6 +441,8 @@ export interface UpdateSaleInput {
   dibayar: number | null
   /** local `YYYY-MM-DDTHH:mm` */
   tanggal: string
+  /** whole cents off the whole bill, applied after every line's own discount */
+  diskon?: number | null
   items: CartItemInput[]
 }
 
@@ -459,6 +511,8 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
     tx.delete(saleItems).where(eq(saleItems.saleId, saleId)).run()
 
     const resolvedItems = resolveItems(tx, input.items)
+    const diskonNota = input.diskon ?? 0
+    assertDiskonNota(diskonNota, resolvedItems.reduce((sum, line) => sum + lineSubtotal(line), 0))
 
     const hargaPokokLama = new Map(oldItems.map((item) => [`${item.productId}:${item.productUnitId}`, item.hargaPokok]))
 
@@ -466,7 +520,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
     let total = 0
 
     for (const line of resolvedItems) {
-      const subtotal = Math.round(line.qty * line.hargaJual)
+      const subtotal = lineSubtotal(line)
       total += subtotal
 
       tx.insert(saleItems)
@@ -481,6 +535,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
           hargaJual: line.hargaJual,
           hargaPokok: hargaPokokLama.get(`${line.productId}:${line.productUnitId}`) ?? line.hargaPokok,
           priceSource: line.priceSource,
+          diskon: line.diskon,
           subtotal,
           createdAt: tanggalBaru,
           updatedAt: now,
@@ -506,6 +561,8 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
         .run()
     }
 
+    total -= diskonNota
+
     const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
     // for bon, dibayar is allowed to sit above the sum of recorded bon_payments - deliberate,
     // so an admin can correct money that was taken but never entered. Consequence: recordBonPayment
@@ -524,6 +581,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
       .set({
         namaPelanggan: input.namaPelanggan,
         metodePembayaran: input.metodePembayaran,
+        diskon: diskonNota,
         total,
         dibayar: dibayarBaru,
         createdAt: tanggalBaru,
@@ -582,7 +640,7 @@ export function addItemsToSale(db: Db, saleId: number, items: CartItemInput[]): 
     let tambahan = 0
 
     for (const line of resolvedItems) {
-      const subtotal = Math.round(line.qty * line.hargaJual)
+      const subtotal = lineSubtotal(line)
       tambahan += subtotal
 
       tx.insert(saleItems)
@@ -597,6 +655,7 @@ export function addItemsToSale(db: Db, saleId: number, items: CartItemInput[]): 
           hargaJual: line.hargaJual,
           hargaPokok: line.hargaPokok,
           priceSource: line.priceSource,
+          diskon: line.diskon,
           subtotal,
           createdAt: now,
           updatedAt: now,

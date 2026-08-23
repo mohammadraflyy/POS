@@ -41,6 +41,16 @@ export interface CartLine {
    * call sites that build a CartLine keep compiling.
    */
   hargaOverride?: number | null
+  /**
+   * Whole rupiah taken off this line by hand. Stored as a plain amount even when the
+   * cashier typed a percentage: the percentage is resolved the moment it is entered, so
+   * changing qty afterwards leaves the discount where the cashier put it rather than
+   * silently growing it.
+   *
+   * ponytail: frozen nominal, not a live percentage. If "10% off, whatever the qty ends
+   * up being" is ever wanted, store the raw entry alongside this and re-resolve on qty change.
+   */
+  diskon?: number
 }
 
 // Mirrors main/kasir.ts's findTierForQty/priceForQty — duplicated (not
@@ -90,6 +100,41 @@ export function unitPrice(line: CartLine): number {
   return priceForQty(tiersForLine(line), normalPrice, line.qty)
 }
 
+/** what the line is worth before its own discount */
+export function lineGross(line: CartLine): number {
+  return Math.round(line.qty * unitPrice(line))
+}
+
+/** what the line contributes to the bill; a discount can zero a line but never invert it */
+export function lineSubtotal(line: CartLine): number {
+  return Math.max(0, lineGross(line) - (line.diskon ?? 0))
+}
+
+/**
+ * Reads a discount the cashier typed. `10%` is resolved against `base` there and then;
+ * anything else is read as whole rupiah. Junk and negatives read as no discount, and the
+ * result never exceeds `base` - main/kasir.ts rejects an over-large discount outright, so
+ * clamping here keeps the till from ever sending one.
+ */
+export function parseDiskon(raw: string, base: number): number {
+  const trimmed = raw.trim()
+
+  if (trimmed === '') {
+    return 0
+  }
+
+  const isPersen = trimmed.endsWith('%')
+  const digits = Number(trimmed.replace(/[^0-9.]/g, ''))
+
+  if (!Number.isFinite(digits) || digits <= 0) {
+    return 0
+  }
+
+  const nominal = isPersen ? Math.round((base * digits) / 100) : Math.round(digits)
+
+  return Math.min(Math.max(0, nominal), Math.max(0, base))
+}
+
 export function lineKey(productId: number, productUnitId: number | null): string {
   return `${productId}:${productUnitId ?? 'base'}`
 }
@@ -111,10 +156,16 @@ export interface StoredCartLine {
   productId: number
   productUnitId: number | null
   qty: number
+  diskon?: number
 }
 
 export function toStoredCart(cart: CartLine[]): StoredCartLine[] {
-  return cart.map((line) => ({ productId: line.product.id, productUnitId: line.productUnitId, qty: line.qty }))
+  return cart.map((line) => ({
+    productId: line.product.id,
+    productUnitId: line.productUnitId,
+    qty: line.qty,
+    diskon: line.diskon ?? 0,
+  }))
 }
 
 /** rebuilds cart lines against the current catalog, dropping products or satuan that no longer exist */
@@ -140,6 +191,7 @@ export function restoreCart(stored: StoredCartLine[], products: Product[]): Cart
       productUnitId: line.productUnitId,
       satuan: unit?.satuan ?? product.satuan,
       qty: line.qty,
+      diskon: line.diskon ?? 0,
     })
   }
 
@@ -214,6 +266,14 @@ export function applyHarga(cart: CartLine[], key: string, rawHarga: number): Car
   return cart.map((i) => (i.key === key ? { ...i, hargaOverride: harga } : i))
 }
 
+/**
+ * Sets a manual discount on one line from what the cashier typed (`5000` or `10%`).
+ * Resolved against that line's own gross, so the percentage means what it looks like.
+ */
+export function applyDiskon(cart: CartLine[], key: string, raw: string): CartLine[] {
+  return cart.map((i) => (i.key === key ? { ...i, diskon: parseDiskon(raw, lineGross(i)) } : i))
+}
+
 /** one selectable row in the product palette: a product *at one of its units* */
 export interface UnitResult {
   /** same shape as a cart line's key, so React keys stay unique across units */
@@ -233,6 +293,8 @@ export interface EditSaleItem {
   productUnitId: number | null
   qty: number
   hargaJual: number
+  /** whole rupiah taken off this line when the sale was saved; absent on pre-discount sales */
+  diskon?: number
   priceSource: 'normal' | 'price_tier' | 'manual'
 }
 
@@ -295,6 +357,8 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
 
     if (existing) {
       existing.qty = roundQty(existing.qty + item.qty)
+      // both rows' discounts were really given, so the merged line carries their sum
+      existing.diskon = (existing.diskon ?? 0) + (item.diskon ?? 0)
 
       if (hargaOverride != null) {
         existing.hargaOverride = hargaOverride
@@ -310,6 +374,7 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
       satuan: unit?.satuan ?? product.satuan,
       qty: item.qty,
       hargaOverride,
+      diskon: item.diskon ?? 0,
     })
   }
 

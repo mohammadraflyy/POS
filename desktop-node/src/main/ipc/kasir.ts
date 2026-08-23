@@ -34,7 +34,9 @@ interface CheckoutRendererInput {
   namaPelanggan: string | null
   dibayar: number | null
   tanggal?: string | null
-  items: { productId: number; productUnitId: number | null; qty: number }[]
+  /** rupiah off the whole bill */
+  diskon?: number | null
+  items: { productId: number; productUnitId: number | null; qty: number; diskon?: number | null }[]
 }
 
 function getReceipt(db: BetterSQLite3Database<typeof schema>, saleId: number, kasirName: string | null) {
@@ -51,6 +53,7 @@ function getReceipt(db: BetterSQLite3Database<typeof schema>, saleId: number, ka
 
   return {
     saleId: sale.id,
+    diskon: toRupiah(sale.diskon),
     total: toRupiah(sale.total),
     dibayar: toRupiah(sale.dibayar),
     metodePembayaran: sale.metodePembayaran,
@@ -62,6 +65,7 @@ function getReceipt(db: BetterSQLite3Database<typeof schema>, saleId: number, ka
       qty: item.qty,
       satuan: item.satuan,
       hargaJual: toRupiah(item.hargaJual),
+      diskon: toRupiah(item.diskon),
       subtotal: toRupiah(item.subtotal),
     })),
   }
@@ -191,7 +195,13 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       dibayar: input.dibayar === null ? null : toCents(input.dibayar),
       userId: user.id,
       tanggal: input.tanggal ?? null,
-      items: input.items,
+      diskon: input.diskon == null ? null : toCents(input.diskon),
+      items: input.items.map((item) => ({
+        productId: item.productId,
+        productUnitId: item.productUnitId,
+        qty: item.qty,
+        diskon: item.diskon == null ? null : toCents(item.diskon),
+      })),
     }
 
     const result = checkout(db, checkoutInput)
@@ -229,6 +239,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       namaPelanggan: sale.namaPelanggan,
       metodePembayaran: sale.metodePembayaran,
       status: sale.status,
+      diskon: toRupiah(sale.diskon),
       dibayar: toRupiah(sale.dibayar),
       createdAt: sale.createdAt.toISOString(),
       items: itemRows.map((item) => ({
@@ -236,6 +247,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         productUnitId: item.productUnitId,
         qty: item.qty,
         hargaJual: toRupiah(item.hargaJual),
+        diskon: toRupiah(item.diskon),
         priceSource: item.priceSource,
       })),
     }
@@ -251,7 +263,14 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         namaPelanggan: string | null
         dibayar: number | null
         tanggal: string
-        items: { productId: number; productUnitId: number | null; qty: number; hargaJual?: number | null }[]
+        diskon?: number | null
+        items: {
+          productId: number
+          productUnitId: number | null
+          qty: number
+          hargaJual?: number | null
+          diskon?: number | null
+        }[]
       },
     ) => {
       requireAdmin()
@@ -261,11 +280,13 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         namaPelanggan: input.namaPelanggan,
         dibayar: input.dibayar === null ? null : toCents(input.dibayar),
         tanggal: input.tanggal,
+        diskon: input.diskon == null ? null : toCents(input.diskon),
         items: input.items.map((item) => ({
           productId: item.productId,
           productUnitId: item.productUnitId,
           qty: item.qty,
           hargaJual: item.hargaJual == null ? null : toCents(item.hargaJual),
+          diskon: item.diskon == null ? null : toCents(item.diskon),
         })),
       })
 
@@ -462,6 +483,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       namaPelanggan: sale.namaPelanggan,
       metodePembayaran: sale.metodePembayaran,
       status: sale.status,
+      diskon: toRupiah(sale.diskon),
       total: toRupiah(sale.total),
       dibayar: toRupiah(sale.dibayar),
       createdAt: sale.createdAt.toISOString(),
@@ -474,6 +496,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         satuan: item.satuan,
         namaItem: productNameById.get(item.productId) ?? '',
         hargaJual: toRupiah(item.hargaJual),
+        diskon: toRupiah(item.diskon),
         subtotal: toRupiah(item.subtotal),
         priceSource: item.priceSource,
       })),

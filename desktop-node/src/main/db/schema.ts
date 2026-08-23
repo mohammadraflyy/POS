@@ -149,6 +149,12 @@ export const sales = sqliteTable('sales', {
    */
   metodePembayaran: text('metode_pembayaran', { enum: ['tunai', 'bon', 'qris', 'transfer'] }).notNull(),
   status: text('status', { enum: ['selesai', 'dibatalkan'] }).notNull().default('selesai'),
+  /**
+   * A manual discount on the whole bill, on top of whatever the individual lines were
+   * discounted by. Already subtracted from `total`, so nothing that reads `total` has to
+   * know this column exists.
+   */
+  diskon: integer('diskon').notNull().default(0),
   total: integer('total').notNull().default(0),
   dibayar: integer('dibayar').notNull().default(0),
   ...timestamps(),
@@ -169,6 +175,12 @@ export const saleItems = sqliteTable('sale_items', {
   hargaPokok: integer('harga_pokok').notNull(),
   /** where hargaJual came from, so a later tier edit can never re-explain a past sale */
   priceSource: text('price_source', { enum: ['normal', 'price_tier', 'manual'] }).notNull().default('normal'),
+  /**
+   * A manual discount on this line alone, already subtracted from `subtotal`. Kept apart
+   * from `hargaJual` so the struk can still show what the goods were priced at before the
+   * cashier gave anything away - and so rekap's margin keeps using the real selling price.
+   */
+  diskon: integer('diskon').notNull().default(0),
   subtotal: integer('subtotal').notNull(),
   ...timestamps(),
 })

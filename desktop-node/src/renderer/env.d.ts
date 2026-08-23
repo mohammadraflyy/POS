@@ -51,16 +51,25 @@ declare global {
           namaPelanggan: string | null
           dibayar: number | null
           tanggal?: string | null
-          items: { productId: number; productUnitId: number | null; qty: number }[]
+          diskon?: number | null
+          items: { productId: number; productUnitId: number | null; qty: number; diskon?: number | null }[]
         }) => Promise<{
           saleId: number
+          diskon: number
           total: number
           dibayar: number
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           namaPelanggan: string | null
           createdAt: string
           kasirName: string | null
-          items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
+          items: {
+            namaItem: string
+            qty: number
+            satuan: string | null
+            hargaJual: number
+            diskon: number
+            subtotal: number
+          }[]
         }>
         cancelSale: (saleId: number) => Promise<void>
         deleteSale: (saleId: number) => Promise<void>
@@ -69,6 +78,7 @@ declare global {
           namaPelanggan: string | null
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           status: 'selesai' | 'dibatalkan'
+          diskon: number
           dibayar: number
           createdAt: string
           items: {
@@ -76,6 +86,7 @@ declare global {
             productUnitId: number | null
             qty: number
             hargaJual: number
+            diskon: number
             priceSource: 'normal' | 'price_tier' | 'manual'
           }[]
         }>
@@ -85,7 +96,14 @@ declare global {
           namaPelanggan: string | null
           dibayar: number | null
           tanggal: string
-          items: { productId: number; productUnitId: number | null; qty: number; hargaJual?: number | null }[]
+          diskon?: number | null
+          items: {
+            productId: number
+            productUnitId: number | null
+            qty: number
+            hargaJual?: number | null
+            diskon?: number | null
+          }[]
         }) => Promise<{ total: number }>
         getStoreSettings: () => Promise<{
           namaToko: string
@@ -125,6 +143,7 @@ declare global {
           namaPelanggan: string | null
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           status: 'selesai' | 'dibatalkan'
+          diskon: number
           total: number
           dibayar: number
           createdAt: string
@@ -137,6 +156,7 @@ declare global {
             satuan: string | null
             namaItem: string
             hargaJual: number
+            diskon: number
             subtotal: number
             priceSource: 'normal' | 'price_tier' | 'manual'
           }[]
