@@ -6,7 +6,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { formatRupiah } from '@/lib/utils'
+import { formatQty, formatRupiah } from '@/lib/utils'
 import { lineKey, type Product, type UnitResult } from './cart-logic'
 
 export interface CommandPaletteProps {
@@ -15,6 +15,8 @@ export interface CommandPaletteProps {
   query: string
   onQueryChange: (query: string) => void
   results: UnitResult[]
+  /** matching products the row cap left out, so the list never lies by omission */
+  hiddenCount: number
   products: Product[]
   jumlah: string
   onSelect: (result: UnitResult) => void
@@ -27,6 +29,7 @@ export function CommandPalette({
   query,
   onQueryChange,
   results,
+  hiddenCount,
   products,
   jumlah,
   onSelect,
@@ -76,6 +79,7 @@ export function CommandPalette({
             productUnitId: null,
             satuan: product.satuan,
             hargaJual: product.hargaJual,
+            stok: product.stok,
           })
         }}
         placeholder="Cari nama / kode produk..."
@@ -97,12 +101,27 @@ export function CommandPalette({
                   <span className="text-muted-foreground"> &middot; {result.product.kodeItem}</span>
                 </span>
                 <span className="flex items-center gap-2 text-xs">
-                  {formatRupiah(result.hargaJual)} / {result.satuan}
-                  {result.product.stok <= 0 && <span className="text-destructive">Habis</span>}
+                  {/* stock is what decides whether this row can be sold at all, so it sits
+                      next to the price rather than behind a hover or a second screen */}
+                  {result.product.stok <= 0 ? (
+                    <span className="text-destructive">Habis</span>
+                  ) : (
+                    <span className="tabular-nums text-muted-foreground">
+                      Stok {formatQty(result.stok)} {result.satuan}
+                    </span>
+                  )}
+                  <span>
+                    {formatRupiah(result.hargaJual)} / {result.satuan}
+                  </span>
                 </span>
               </CommandItem>
             ))}
           </CommandGroup>
+        )}
+        {hiddenCount > 0 && (
+          <p className="px-3 py-2 text-center text-xs text-muted-foreground">
+            {hiddenCount} produk lain cocok tapi belum ditampilkan. Ketik lebih spesifik.
+          </p>
         )}
       </CommandList>
       <div className="flex items-center gap-3 border-t px-3 py-2 text-xs text-muted-foreground">

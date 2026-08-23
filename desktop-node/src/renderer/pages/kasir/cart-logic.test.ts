@@ -7,6 +7,7 @@ import {
   changeUnit,
   expandUnitResults,
   lineKey,
+  matchingProducts,
   restoreCart,
   toStoredCart,
   unitKonversi,
@@ -268,8 +269,9 @@ describe('expandUnitResults', () => {
     const results = expandUnitResults([product], 'beras', 50)
 
     expect(results).toEqual([
-      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', hargaJual: 65000 },
-      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', hargaJual: 700000 },
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', hargaJual: 65000, stok: 100 },
+      // 100 PCS at 12 to the DUS reads as 8.33 DUS, not as the product's raw base stock
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', hargaJual: 700000, stok: 8.333 },
     ])
   })
 
@@ -297,6 +299,44 @@ describe('expandUnitResults', () => {
     const noBarcode: Product = { ...product, barcode: null }
 
     expect(expandUnitResults([noBarcode], 'beras', 50)).toHaveLength(2)
+  })
+
+  // The row cap used to cut the catalog in plain order, so a cashier searching a
+  // short string only ever saw products near the front of the alphabet.
+  it('spends its row budget on the best matches, not on whatever comes first', () => {
+    const filler: Product[] = Array.from({ length: 40 }, (_, i) => ({
+      ...product,
+      id: 100 + i,
+      kodeItem: `AAA${i}`,
+      barcode: null,
+      namaItem: `Aneka Beras Campur ${i}`,
+      productUnits: [],
+    }))
+    const wanted: Product = { ...product, id: 7, namaItem: 'Beras', barcode: null, productUnits: [] }
+
+    const results = expandUnitResults([...filler, wanted], 'beras', 10)
+
+    expect(results[0].product.id).toBe(7)
+  })
+})
+
+describe('matchingProducts', () => {
+  const exact: Product = { ...product, id: 2, namaItem: 'Zeta', kodeItem: 'ZET', barcode: null }
+  const prefix: Product = { ...product, id: 3, namaItem: 'Zeta Manis', kodeItem: 'ZTM', barcode: null }
+  const contains: Product = { ...product, id: 4, namaItem: 'Apel Zeta', kodeItem: 'APZ', barcode: null }
+
+  it('ranks an exact field above a prefix, and a prefix above a substring', () => {
+    expect(matchingProducts([contains, prefix, exact], 'zeta').map((p) => p.id)).toEqual([2, 3, 4])
+  })
+
+  it('breaks ties on name so equal matches keep a stable order', () => {
+    const b: Product = { ...contains, id: 5, namaItem: 'Bakwan Zeta' }
+
+    expect(matchingProducts([b, contains], 'zeta').map((p) => p.id)).toEqual([4, 5])
+  })
+
+  it('returns nothing for a blank query', () => {
+    expect(matchingProducts([product], '  ')).toEqual([])
   })
 })
 

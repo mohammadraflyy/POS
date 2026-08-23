@@ -23,6 +23,7 @@ import {
   cartFromSale,
   changeUnit,
   expandUnitResults,
+  matchingProducts,
   restoreCart,
   toStoredCart,
   unitPrice,
@@ -261,6 +262,15 @@ export function Kasir() {
   }, [customers, namaPelanggan])
 
   const paletteResults = useMemo(() => expandUnitResults(products, paletteQuery, 50), [products, paletteQuery])
+
+  // The 50 caps rows, and every product brings one row per satuan, so a broad
+  // query runs out of room long before it runs out of products. Cutting the rest
+  // silently is what made items look like they had vanished from the catalog.
+  const paletteHiddenCount = useMemo(() => {
+    const shown = new Set(paletteResults.map((result) => result.product.id))
+
+    return matchingProducts(products, paletteQuery).length - shown.size
+  }, [products, paletteQuery, paletteResults])
 
   function addProductToCart(product: Product, qty = 1, productUnitId: number | null = null) {
     setCart((prev) => addLine(prev, product, qty, productUnitId))
@@ -775,6 +785,7 @@ export function Kasir() {
         query={paletteQuery}
         onQueryChange={setPaletteQuery}
         results={paletteResults}
+        hiddenCount={paletteHiddenCount}
         products={products}
         jumlah={jumlah}
         onSelect={(result: UnitResult) => {

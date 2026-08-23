@@ -223,6 +223,8 @@ export interface UnitResult {
   productUnitId: number | null
   satuan: string
   hargaJual: number
+  /** stock expressed in this row's own satuan, so a DUS row reads in DUS and not in PCS */
+  stok: number
 }
 
 /** one line of a saved sale, as `kasir:getSaleForEdit` hands it over */
@@ -315,36 +317,63 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
 }
 
 /**
- * Expands matching products into one row per satuan, so the cashier can pick DUS
- * without adding PCS first and converting. Matches barcode as well as name and
- * kode - a scanner types the barcode straight into the search box, and leaving
- * barcode out of this filter is what made scanning look broken.
+ * How well a product answers the query: 0 the query *is* one of its fields, 1 a
+ * field starts with it, 2 a field only contains it, -1 no match at all. Matches
+ * barcode as well as name and kode - a scanner types the barcode straight into
+ * the search box, and leaving barcode out of this filter is what made scanning
+ * look broken.
  */
-export function expandUnitResults(products: Product[], query: string, limit: number): UnitResult[] {
+function matchRank(product: Product, q: string): number {
+  const fields = [product.namaItem, product.kodeItem, product.barcode ?? ''].map((field) => field.toLowerCase())
+
+  if (fields.some((field) => field === q)) {
+    return 0
+  }
+
+  if (fields.some((field) => field.startsWith(q))) {
+    return 1
+  }
+
+  return fields.some((field) => field.includes(q)) ? 2 : -1
+}
+
+/**
+ * Every product the query matches, best match first. The palette can only show
+ * so many rows, so this ordering decides which products a cashier ever sees:
+ * plain catalog order meant a short query filled the list with products whose
+ * name starts in A, and anything later in the alphabet never appeared at all.
+ */
+export function matchingProducts(products: Product[], query: string): Product[] {
   const q = query.trim().toLowerCase()
 
   if (!q) {
     return []
   }
 
+  return products
+    .map((product) => ({ product, rank: matchRank(product, q) }))
+    .filter((entry) => entry.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.product.namaItem.localeCompare(b.product.namaItem))
+    .map((entry) => entry.product)
+}
+
+/**
+ * Expands matching products into one row per satuan, so the cashier can pick DUS
+ * without adding PCS first and converting. `limit` counts rows, not products - a
+ * product with three satuan eats four slots - so pair it with `matchingProducts`
+ * to tell the cashier how many products the cap left out.
+ */
+export function expandUnitResults(products: Product[], query: string, limit: number): UnitResult[] {
   const results: UnitResult[] = []
 
-  for (const product of products) {
-    const matches =
-      product.namaItem.toLowerCase().includes(q) ||
-      product.kodeItem.toLowerCase().includes(q) ||
-      (product.barcode ?? '').toLowerCase().includes(q)
-
-    if (!matches) {
-      continue
-    }
-
+  for (const product of matchingProducts(products, query)) {
     results.push({
       key: lineKey(product.id, null),
       product,
       productUnitId: null,
       satuan: product.satuan,
       hargaJual: product.hargaJual,
+      stok: product.stok,
     })
 
     for (const unit of product.productUnits) {
@@ -354,6 +383,8 @@ export function expandUnitResults(products: Product[], query: string, limit: num
         productUnitId: unit.id,
         satuan: unit.satuan,
         hargaJual: unit.hargaJual,
+        // konversi 0 would be a broken catalog row; guard so the row shows 0 rather than Infinity
+        stok: unit.konversi > 0 ? roundQty(product.stok / unit.konversi) : 0,
       })
     }
 
