@@ -12,7 +12,7 @@ import { useElementWidth } from '@/hooks/use-element-width'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
-import { CartGrid } from './kasir/CartGrid'
+import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
 import { CustomerPicker, DEFAULT_PELANGGAN } from './kasir/CustomerPicker'
@@ -295,6 +295,18 @@ export function Kasir() {
     }
 
     function handleKeydown(e: globalThis.KeyboardEvent) {
+      // Checked before the focus guard, unlike every other shortcut here: a function key
+      // types nothing, so it is safe from the search box, and this is the only way into
+      // the qty editor without a mouse - the palette deliberately leaves focus nowhere,
+      // and the grid's own Enter is taken by Bayar.
+      if (e.key === 'F3' && cart.length > 0) {
+        e.preventDefault()
+        blurActiveElement()
+        cartGridRef.current?.setActivePosition({ idx: QTY_COLUMN_IDX, rowIdx: 0 }, { enableEditor: true })
+
+        return
+      }
+
       if (isEditableFocused()) {
         return
       }
@@ -743,8 +755,12 @@ export function Kasir() {
               Kosongkan
             </span>
             <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">F3</kbd>
+              Ubah Qty Baris Teratas
+            </span>
+            <span className="flex items-center gap-1">
               <kbd className="rounded border bg-muted px-1.5 py-0.5">F2</kbd>
-              Edit Qty / Satuan
+              Edit Qty / Satuan / Diskon
             </span>
           </div>
         </div>

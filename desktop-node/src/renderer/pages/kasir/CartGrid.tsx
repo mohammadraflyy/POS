@@ -14,6 +14,14 @@ import { Button } from '@/components/ui/button'
 import { formatRupiah } from '@/lib/utils'
 import { activeTier, unitPrice, type CartLine } from './cart-logic'
 
+/**
+ * Column order, single-sourced so a keyboard shortcut can aim at a column by name.
+ * Keep it in step with `columns` below - the grid is built from these keys in order.
+ */
+const COLUMN_KEYS = ['no', 'produk', 'satuan', 'harga', 'qty', 'subtotal', 'aksi'] as const
+
+export const QTY_COLUMN_IDX = COLUMN_KEYS.indexOf('qty')
+
 function focusAndSelectQtyInput(input: HTMLInputElement | null) {
   input?.focus()
   input?.select()
