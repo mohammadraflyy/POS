@@ -1,158 +1,78 @@
-import { execFile } from 'node:child_process'
-import { writeFileSync, unlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { promisify } from 'node:util'
-import { randomUUID } from 'node:crypto'
+import koffi from 'koffi'
 
-const execFileAsync = promisify(execFile)
+/**
+ * Raw ESC/POS output straight to the Windows spooler.
+ *
+ * This used to spawn `powershell.exe` once per receipt to P/Invoke the same functions.
+ * Caching the compiled helper DLL removed the C# compile, but PowerShell's own process
+ * startup still cost ~300-600 ms on every single struk - that was the whole of the
+ * "print lemot" complaint. Calling winspool.drv in-process removes the process entirely.
+ */
+const winspool = koffi.load('winspool.drv')
 
-// Bump this when the C# below changes - the compiled DLL is cached by name, and a
-// stale one would be reused silently.
-const HELPER_VERSION = 'v1'
-const DLL_PATH = join(tmpdir(), `pos-rawprint-${HELPER_VERSION}.dll`)
-const SCRIPT_PATH = join(tmpdir(), `pos-rawprint-${HELPER_VERSION}.ps1`)
+const DOC_INFO_1 = koffi.struct('DOC_INFO_1', {
+  pDocName: 'str',
+  pOutputFile: 'str',
+  pDatatype: 'str',
+})
 
-// Standard Microsoft-documented "RawPrinterHelper" technique (KB322091):
-// P/Invoke winspool.drv directly so the byte buffer reaches the printer
-// as-is, datatype "RAW" - no driver-side re-rendering, which is exactly
-// what made Electron's webContents.print({silent:true}) unreliable here.
-//
-// Add-Type used to recompile this class on every single receipt, and that csc
-// run was the bulk of the delay. It is now compiled once to a DLL and merely
-// loaded on every later print.
-const RAW_PRINT_SCRIPT = `
-param(
-  [Parameter(Mandatory=$true)][string]$PrinterName,
-  [Parameter(Mandatory=$true)][string]$DataPath,
-  [Parameter(Mandatory=$true)][string]$DllPath
-)
+const OpenPrinter = winspool.func('__stdcall', 'OpenPrinterA', 'bool', ['str', 'void **', 'void *'])
+const ClosePrinter = winspool.func('__stdcall', 'ClosePrinter', 'bool', ['void *'])
+const StartDocPrinter = winspool.func('__stdcall', 'StartDocPrinterA', 'int32', ['void *', 'uint32', koffi.pointer(DOC_INFO_1)])
+const EndDocPrinter = winspool.func('__stdcall', 'EndDocPrinter', 'bool', ['void *'])
+const StartPagePrinter = winspool.func('__stdcall', 'StartPagePrinter', 'bool', ['void *'])
+const EndPagePrinter = winspool.func('__stdcall', 'EndPagePrinter', 'bool', ['void *'])
+const WritePrinter = winspool.func('__stdcall', 'WritePrinter', 'bool', ['void *', 'void *', 'uint32', 'uint32 *'])
 
-$ErrorActionPreference = 'Stop'
+function sendToPrinter(printerName: string, data: Buffer): void {
+  const handleOut = [null] as unknown[]
 
-$source = @"
-using System;
-using System.Runtime.InteropServices;
+  if (!OpenPrinter(printerName, handleOut, null)) {
+    throw new Error(`printer "${printerName}" tidak bisa dibuka`)
+  }
 
-public class RawPrinterHelper
-{
-    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
-    public class DOCINFOA
-    {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
-
-    [DllImport("winspool.drv", EntryPoint="OpenPrinterA", SetLastError=true, CharSet=CharSet.Ansi, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
-
-    [DllImport("winspool.drv", EntryPoint="ClosePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint="StartDocPrinterA", SetLastError=true, CharSet=CharSet.Ansi, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
-
-    [DllImport("winspool.drv", EntryPoint="EndDocPrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint="StartPagePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint="EndPagePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint="WritePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
-
-    public static void SendBytesToPrinter(string szPrinterName, byte[] pBytes)
-    {
-        IntPtr hPrinter;
-        DOCINFOA di = new DOCINFOA();
-        int dwWritten;
-        bool bSuccess = false;
-
-        di.pDocName = "POS Receipt";
-        di.pDataType = "RAW";
-
-        if (OpenPrinter(szPrinterName, out hPrinter, IntPtr.Zero))
-        {
-            if (StartDocPrinter(hPrinter, 1, di))
-            {
-                if (StartPagePrinter(hPrinter))
-                {
-                    bSuccess = WritePrinter(hPrinter, pBytes, pBytes.Length, out dwWritten);
-                    EndPagePrinter(hPrinter);
-                }
-                EndDocPrinter(hPrinter);
-            }
-            ClosePrinter(hPrinter);
-        }
-
-        if (!bSuccess)
-        {
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-        }
-    }
-}
-"@
-
-if (-not (Test-Path $DllPath)) {
-  Add-Type -TypeDefinition $source -OutputAssembly $DllPath -OutputType Library
-}
-
-try {
-  Add-Type -Path $DllPath
-} catch {
-  Remove-Item $DllPath -Force -ErrorAction SilentlyContinue
-  Add-Type -TypeDefinition $source -OutputAssembly $DllPath -OutputType Library
-  Add-Type -Path $DllPath
-}
-
-$bytes = [System.IO.File]::ReadAllBytes($DataPath)
-[RawPrinterHelper]::SendBytesToPrinter($PrinterName, $bytes)
-`
-
-async function runPrint(printerName: string, data: Buffer): Promise<void> {
-  const dataPath = join(tmpdir(), `pos-print-${randomUUID()}.bin`)
-
-  writeFileSync(dataPath, data)
-  writeFileSync(SCRIPT_PATH, RAW_PRINT_SCRIPT)
+  const handle = handleOut[0]
 
   try {
-    await execFileAsync(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        SCRIPT_PATH,
-        '-PrinterName',
-        printerName,
-        '-DataPath',
-        dataPath,
-        '-DllPath',
-        DLL_PATH,
-      ],
-      { timeout: 30_000 },
-    )
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    throw new Error(`Gagal mencetak: ${message}`)
-  } finally {
-    try {
-      unlinkSync(dataPath)
-    } catch {
-      // best-effort cleanup
+    const docInfo = { pDocName: 'POS Receipt', pOutputFile: null, pDatatype: 'RAW' }
+
+    if (StartDocPrinter(handle, 1, docInfo) === 0) {
+      throw new Error('spooler menolak dokumen baru')
     }
+
+    try {
+      if (!StartPagePrinter(handle)) {
+        throw new Error('spooler menolak halaman baru')
+      }
+
+      try {
+        const written = [0]
+
+        if (!WritePrinter(handle, data, data.length, written)) {
+          throw new Error('data gagal dikirim ke printer')
+        }
+      } finally {
+        EndPagePrinter(handle)
+      }
+    } finally {
+      EndDocPrinter(handle)
+    }
+  } finally {
+    ClosePrinter(handle)
   }
 }
 
-// One receipt at a time. Two concurrent runs would race to compile the same DLL
-// and could interleave on the printer; the renderer now fires prints without
-// awaiting them, so overlap is a real possibility rather than a theoretical one.
+async function runPrint(printerName: string, data: Buffer): Promise<void> {
+  try {
+    sendToPrinter(printerName, data)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Gagal mencetak: ${message}`)
+  }
+}
+
+// One receipt at a time. The renderer fires prints without awaiting them, so two receipts
+// really can overlap - this is not a theoretical race.
 let printQueue: Promise<unknown> = Promise.resolve()
 
 export function printRaw(printerName: string, data: Buffer): Promise<void> {
