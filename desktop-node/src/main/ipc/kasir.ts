@@ -264,6 +264,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         dibayar: number | null
         tanggal: string
         diskon?: number | null
+        keterangan: string
         items: {
           productId: number
           productUnitId: number | null
@@ -273,7 +274,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         }[]
       },
     ) => {
-      requireAdmin()
+      const admin = requireAdmin()
 
       const result = updateSale(db, input.saleId, {
         metodePembayaran: input.metodePembayaran,
@@ -281,6 +282,8 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         dibayar: input.dibayar === null ? null : toCents(input.dibayar),
         tanggal: input.tanggal,
         diskon: input.diskon == null ? null : toCents(input.diskon),
+        keterangan: input.keterangan,
+        userId: admin.id,
         items: input.items.map((item) => ({
           productId: item.productId,
           productUnitId: item.productUnitId,

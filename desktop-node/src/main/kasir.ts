@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, stockMovements, storeSettings } from './db/schema'
+import { products, productUnits, productPriceTiers, units, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
 
 export interface PriceTier {
   minQty: number
@@ -443,6 +443,10 @@ export interface UpdateSaleInput {
   tanggal: string
   /** whole cents off the whole bill, applied after every line's own discount */
   diskon?: number | null
+  /** why this sale was edited; required, and kept forever in `sale_edits` */
+  keterangan: string
+  /** the account doing the editing, taken from the session by the IPC layer */
+  userId: number
   items: CartItemInput[]
 }
 
@@ -462,6 +466,10 @@ export interface UpdateSaleInput {
 export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { total: number } {
   if (input.items.length < 1) {
     throw new Error('Keranjang tidak boleh kosong.')
+  }
+
+  if (!input.keterangan.trim()) {
+    throw new Error('Keterangan wajib diisi saat mengedit transaksi.')
   }
 
   for (const item of input.items) {
@@ -496,6 +504,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
 
   return db.transaction((tx) => {
     const oldItems = tx.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+    const totalSebelum = sale.total
 
     restoreStockForItems(
       tx,
@@ -588,6 +597,20 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
         updatedAt: now,
       })
       .where(eq(sales.id, saleId))
+      .run()
+
+    // Inside the same transaction as the rewrite on purpose: a log describing a change
+    // that never happened would be worse than no log.
+    tx.insert(saleEdits)
+      .values({
+        saleId,
+        userId: input.userId,
+        keterangan: input.keterangan.trim(),
+        totalSebelum,
+        totalSesudah: total,
+        createdAt: now,
+        updatedAt: now,
+      })
       .run()
 
     return { total }

@@ -186,6 +186,25 @@ export const saleItems = sqliteTable('sale_items', {
 })
 
 /**
+ * One row per saved edit of a sale, never overwritten.
+ *
+ * A single `keterangan` column on `sales` would have been cheaper, but the second edit
+ * would erase the first edit's reason - and it is exactly that sequence the owner wants
+ * to be able to follow. The two totals are stored so the log can be read without
+ * reconstructing the sale.
+ */
+export const saleEdits = sqliteTable('sale_edits', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  saleId: integer('sale_id').notNull().references(() => sales.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  keterangan: text('keterangan').notNull(),
+  /** whole cents, as `sales.total` is */
+  totalSebelum: integer('total_sebelum').notNull(),
+  totalSesudah: integer('total_sesudah').notNull(),
+  ...timestamps(),
+})
+
+/**
  * Instalments paid against a purchase, the mirror image of {@link bonPayments}: same
  * shape, opposite party. These are the cash book's `byr <supplier>` rows, which land on
  * the day the money leaves - not on the day the goods arrived.

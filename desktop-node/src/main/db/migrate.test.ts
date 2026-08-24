@@ -42,7 +42,7 @@ function partialMigrationsBefore(tag: string) {
 }
 
 describe('createDb', () => {
-  it('creates all 18 business tables', () => {
+  it('creates all 19 business tables', () => {
     const db = createDb(':memory:', migrationsFolder)
 
     const rows = db.all<{ name: string }>(
@@ -62,6 +62,7 @@ describe('createDb', () => {
         'purchase_items',
         'purchase_payments',
         'purchases',
+        'sale_edits',
         'sale_items',
         'sales',
         'stock_adjustments',

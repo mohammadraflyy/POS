@@ -97,6 +97,7 @@ declare global {
           dibayar: number | null
           tanggal: string
           diskon?: number | null
+          keterangan: string
           items: {
             productId: number
             productUnitId: number | null

@@ -44,6 +44,7 @@ const api = {
       namaPelanggan: string | null
       dibayar: number | null
       tanggal: string
+      keterangan: string
       items: { productId: number; productUnitId: number | null; qty: number; hargaJual?: number | null }[]
     }) => invoke('kasir:updateSale', input),
     getStoreSettings: () => invoke('kasir:getStoreSettings'),

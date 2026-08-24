@@ -3,7 +3,7 @@ import { lineSubtotal, priceForQty, resolveCartItem, type ProductRow, type Produ
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { users, products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, stockMovements, storeSettings } from './db/schema'
+import { users, products, productUnits, productPriceTiers, units, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
 import {
   checkout,
   type CheckoutInput,
@@ -1997,6 +1997,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 6000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2 }],
     })
 
@@ -2011,6 +2013,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 3000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 1 }],
     })
 
@@ -2035,6 +2039,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 620000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 1, productUnitId: null, qty: 8 }],
     })
 
@@ -2057,6 +2063,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 999999_00,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 1, productUnitId: null, qty: 11 }],
       }),
     ).toThrow('Stok Beras 5kg tidak cukup.')
@@ -2075,6 +2083,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 6000_00,
       tanggal: '2026-07-04T14:05',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2 }],
     })
 
@@ -2091,6 +2101,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 6000_00,
         tanggal: '2099-01-01T00:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
@@ -2104,6 +2116,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 5000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2, hargaJual: 2500_00 }],
     })
 
@@ -2126,6 +2140,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 9000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 3 }],
     })
 
@@ -2140,6 +2156,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 71000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [
         { productId: 2, productUnitId: null, qty: 2 },
         { productId: 1, productUnitId: null, qty: 1 },
@@ -2159,6 +2177,8 @@ describe('updateSale', () => {
         namaPelanggan: '  ',
         dibayar: 0,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Nama pelanggan wajib diisi untuk transaksi bon.')
@@ -2173,6 +2193,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 1000_00,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Uang bayar kurang dari total belanja.')
@@ -2195,6 +2217,8 @@ describe('updateSale', () => {
         namaPelanggan: 'Budi',
         dibayar: 1000_00,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Dibayar tidak boleh kurang dari pembayaran yang sudah tercatat.')
@@ -2216,6 +2240,8 @@ describe('updateSale', () => {
       namaPelanggan: 'Budi',
       dibayar: 4000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 3 }],
     })
 
@@ -2241,6 +2267,8 @@ describe('updateSale', () => {
       namaPelanggan: 'Budi',
       dibayar: 6000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2 }],
     })
 
@@ -2256,6 +2284,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 100_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2 }],
     })
 
@@ -2275,6 +2305,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 6000_00,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Transaksi yang dibatalkan tidak bisa diubah.')
@@ -2291,6 +2323,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 0,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [],
       }),
     ).toThrow('Keranjang tidak boleh kosong.')
@@ -2305,6 +2339,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 0,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 1 }],
       }),
     ).toThrow('Transaksi tidak ditemukan.')
@@ -2318,6 +2354,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 15000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 5 }],
     })
 
@@ -2326,5 +2364,97 @@ describe('updateSale', () => {
     const stok = db.select().from(products).where(eq(products.id, 2)).get()?.stok
 
     expect(stok).toBe(100 + netMoved)
+  })
+})
+
+describe('updateSale keterangan', () => {
+  function seedBaseSale() {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    return { db, saleId }
+  }
+
+  it('refuses to save an edit without a reason', () => {
+    const { db, saleId } = seedBaseSale()
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 6000_00,
+        tanggal: '2026-08-15T09:00',
+        keterangan: '   ',
+        userId: 1,
+        items: [{ productId: 2, productUnitId: null, qty: 2 }],
+      }),
+    ).toThrow('Keterangan wajib diisi saat mengedit transaksi.')
+  })
+
+  it('writes one log row per save, with the totals on both sides of the change', () => {
+    const { db, saleId } = seedBaseSale()
+    const totalSebelum = db.select().from(sales).where(eq(sales.id, saleId)).get()!.total
+
+    const hasil = updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 9000_00,
+      tanggal: '2026-08-15T09:00',
+      keterangan: 'salah input qty',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 3 }],
+    })
+
+    const logs = db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).all()
+
+    expect(logs).toHaveLength(1)
+    expect(logs[0].keterangan).toBe('salah input qty')
+    expect(logs[0].userId).toBe(1)
+    expect(logs[0].totalSebelum).toBe(totalSebelum)
+    expect(logs[0].totalSesudah).toBe(hasil.total)
+  })
+
+  it('keeps the reason from the first edit when a second edit is saved', () => {
+    const { db, saleId } = seedBaseSale()
+    const base = {
+      metodePembayaran: 'tunai' as const,
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2026-08-15T09:00',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    }
+
+    updateSale(db, saleId, { ...base, keterangan: 'alasan pertama' })
+    updateSale(db, saleId, { ...base, keterangan: 'alasan kedua' })
+
+    const logs = db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).orderBy(saleEdits.id).all()
+
+    expect(logs.map((row) => row.keterangan)).toEqual(['alasan pertama', 'alasan kedua'])
+  })
+
+  it('writes no log row when the rewrite itself fails', () => {
+    const { db, saleId } = seedBaseSale()
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        // deliberately below the line total, which updateSale rejects inside the transaction
+        dibayar: 1,
+        tanggal: '2026-08-15T09:00',
+        keterangan: 'ini tidak boleh tercatat',
+        userId: 1,
+        items: [{ productId: 2, productUnitId: null, qty: 2 }],
+      }),
+    ).toThrow()
+
+    expect(db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).all()).toHaveLength(0)
   })
 })
