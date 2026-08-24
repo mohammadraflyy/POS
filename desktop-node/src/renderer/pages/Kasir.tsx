@@ -453,7 +453,12 @@ export function Kasir() {
       return
     }
 
-    if (event.key === 'End' && cart.length > 0 && !paymentOpen && (editSaleId === null || editReady)) {
+    if (
+      event.key === 'End' &&
+      cart.length > 0 &&
+      !(paymentOpen || paletteOpen || customerOpen) &&
+      (editSaleId === null || editReady)
+    ) {
       event.preventGridDefault()
       event.preventDefault()
       setPaymentOpen(true)
@@ -480,10 +485,16 @@ export function Kasir() {
     setTanggalDirty(false)
   }
 
-  async function handleCheckout(shouldPrint: boolean) {
+  async function handleCheckout() {
     setProcessing(true)
     setCheckoutError(null)
     setMessage(null)
+
+    // Captured before resetAfterCheckout wipes them - the confirmation below still has to
+    // be able to say what the change was.
+    const totalTersimpan = total
+    const kembalian = metode === 'tunai' ? Number(dibayar || 0) - total : 0
+    const metodeTersimpan = metode
 
     try {
       const sale = await window.api.kasir.checkout({
@@ -503,22 +514,36 @@ export function Kasir() {
         })),
       })
 
-      if (shouldPrint) {
-        // The sale is already committed. Printing reaches hardware and can stall,
-        // so it runs in the background rather than holding the till hostage - a
-        // failure surfaces as an error naming the sale, which can be reprinted
-        // from Riwayat.
-        window.api.kasir.printReceipt(sale.saleId).catch((err) => {
-          const reason = err instanceof Error ? err.message : 'kesalahan tidak diketahui'
-          setError(`Transaksi #${sale.saleId} tersimpan, tetapi struk gagal dicetak: ${reason}. Cetak ulang dari Riwayat.`)
-        })
-      }
-
       setMessage('Transaksi disimpan.')
       setCheckoutError(null)
       resetAfterCheckout()
       refreshProducts()
       refreshCustomers()
+
+      const cetak = await confirm({
+        title: `Cetak struk #${sale.saleId}?`,
+        description:
+          metodeTersimpan === 'tunai'
+            ? `Kembalian ${formatRupiah(Math.max(kembalian, 0))}.`
+            : `Total ${formatRupiah(totalTersimpan)}.`,
+        confirmLabel: 'Cetak',
+        cancelLabel: 'Lewati',
+      })
+
+      if (cetak) {
+        // The sale is already committed. Printing reaches hardware and can stall, so it runs
+        // in the background rather than holding the till hostage - a failure surfaces as an
+        // error naming the sale, which can be reprinted from Riwayat.
+        window.api.kasir
+          .printReceipt(sale.saleId)
+          .then(() => setMessage(`Struk #${sale.saleId} dicetak.`))
+          .catch((err) => {
+            const reason = err instanceof Error ? err.message : 'kesalahan tidak diketahui'
+            setError(
+              `Transaksi #${sale.saleId} tersimpan, tetapi struk gagal dicetak: ${reason}. Cetak ulang dari Riwayat.`,
+            )
+          })
+      }
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Gagal checkout')
     } finally {
@@ -611,7 +636,7 @@ export function Kasir() {
 
                   // Empty box: step back out to the sale rather than opening a
                   // palette with nothing to show. Focus goes nowhere, so the
-                  // next Enter reaches Bayar.
+                  // next End reaches Bayar.
                   if (code === '') {
                     blurActiveElement()
 
@@ -750,7 +775,7 @@ export function Kasir() {
                   onChange={(e) => setDiskonNota(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      // hand focus back to nobody so the next Enter reaches Bayar
+                      // hand focus back to nobody so the next End reaches Bayar
                       e.preventDefault()
                       blurActiveElement()
                     }
@@ -869,7 +894,7 @@ export function Kasir() {
         tanggal={tanggal}
         processing={processing}
         error={checkoutError}
-        onSubmit={editSaleId === null ? handleCheckout : () => handleSaveEdit()}
+        onSubmit={editSaleId === null ? handleCheckout : handleSaveEdit}
         editMode={editSaleId !== null}
         editReady={editReady}
       />
@@ -898,9 +923,9 @@ export function Kasir() {
           setPaletteOpen(false)
         }}
         onCloseAutoFocus={(e) => {
-          // Deliberately focus nothing. Returning focus to the search box made
-          // Enter reopen this palette instead of paying: while that box is
-          // focused its own Enter handler owns the key, and the Bayar shortcut
+          // Deliberately focus nothing. Returning focus to the search box would make
+          // Enter reopen this palette instead of letting End reach Bayar: while that
+          // box is focused its own Enter handler owns the key, and the Bayar shortcut
           // only fires when nothing is focused. Leaving focus on the body also
           // hands the global barcode scanner back its keystrokes.
           e.preventDefault()

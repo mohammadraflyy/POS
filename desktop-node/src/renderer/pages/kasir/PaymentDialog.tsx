@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ArrowLeftRight, Banknote, CornerDownLeft, HandCoins, Pencil, Printer, QrCode } from 'lucide-react'
+import { ArrowLeftRight, Banknote, CornerDownLeft, HandCoins, Pencil, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -8,8 +8,9 @@ import { Label } from '@/components/ui/label'
 import { cn, formatRupiah } from '@/lib/utils'
 import { DEFAULT_PELANGGAN } from './CustomerPicker'
 
-const actions = ['cetak', 'simpan', 'batal'] as const
-const editActions = ['simpan', 'batal'] as const
+// One list for both modes now. Printing is no longer decided here - it is asked after the
+// sale is saved, where the cashier can see the change first.
+const actions = ['simpan', 'batal'] as const
 type Action = (typeof actions)[number]
 
 export interface PaymentDialogProps {
@@ -33,7 +34,7 @@ export interface PaymentDialogProps {
   tanggal: string
   processing: boolean
   error: string | null
-  onSubmit: (shouldPrint: boolean) => void
+  onSubmit: () => void
   /** editing a saved sale: there is nothing to print, only changes to save */
   editMode: boolean
   /**
@@ -81,15 +82,15 @@ export function PaymentDialog({
   // dialog can be driven without a mouse: type the amount, PgDn/PgUp to
   // the action you want, Enter to run it. Alt+letter shortcuts don't type
   // into focused inputs, so those work regardless of what's focused too.
-  const availableActions: readonly Action[] = editMode ? editActions : actions
-  const [selectedAction, setSelectedAction] = useState<Action>(editMode ? 'simpan' : 'cetak')
+  const availableActions: readonly Action[] = actions
+  const [selectedAction, setSelectedAction] = useState<Action>('simpan')
   const [prevOpen, setPrevOpen] = useState(open)
 
   if (open !== prevOpen) {
     setPrevOpen(open)
 
     if (open) {
-      setSelectedAction(editMode ? 'simpan' : 'cetak')
+      setSelectedAction('simpan')
     }
   }
 
@@ -104,10 +105,8 @@ export function PaymentDialog({
       return
     }
 
-    if (action === 'cetak') {
-      onSubmit(true)
-    } else if (action === 'simpan') {
-      onSubmit(false)
+    if (action === 'simpan') {
+      onSubmit()
     } else {
       onOpenChange(false)
     }
@@ -171,7 +170,7 @@ export function PaymentDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            runAction(editMode ? 'simpan' : 'cetak')
+            runAction('simpan')
           }}
           onKeyDown={handleShortcut}
           className="space-y-5"
@@ -336,29 +335,13 @@ export function PaymentDialog({
           )}
 
           <div className="space-y-2">
-            {!editMode && (
-              <Button
-                type="submit"
-                disabled={processing || bonNeedsCustomer}
-                className={cn(
-                  'w-full',
-                  selectedAction === 'cetak' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
-                )}
-              >
-                {selectedAction === 'cetak' && <CornerDownLeft className="size-4" />}
-                <Printer className="size-4" />
-                Print/Cetak
-              </Button>
-            )}
             <div className="grid grid-cols-2 gap-2">
               <Button
-                type="button"
-                variant="secondary"
+                type="submit"
                 disabled={processing || bonNeedsCustomer || (editMode && !editReady)}
                 className={cn(
                   selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
                 )}
-                onClick={() => onSubmit(false)}
               >
                 {selectedAction === 'simpan' && <CornerDownLeft className="size-3.5" />}
                 {editMode ? 'Simpan Perubahan' : 'Simpan'}
