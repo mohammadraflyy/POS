@@ -123,6 +123,9 @@ export function Kasir() {
   const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
   const [dibayar, setDibayar] = useState(initialDraft.dibayar)
   const [diskonNota, setDiskonNota] = useState(initialDraft.diskonNota)
+  // edit mode only, and deliberately never persisted to the draft - a reason belongs to
+  // the one save it explains
+  const [keteranganEdit, setKeteranganEdit] = useState('')
   const [tanggal, setTanggal] = useState(nowForInput())
   // Set once the cashier types a time of their own, so the staleness refresh
   // below stops overwriting it. Without this the field cannot really be edited:
@@ -571,6 +574,7 @@ export function Kasir() {
         dibayar: metode === 'qris' || metode === 'transfer' ? null : Number(dibayar || 0),
         tanggal,
         diskon: diskonNotaValue,
+        keterangan: keteranganEdit,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
@@ -897,6 +901,8 @@ export function Kasir() {
         onSubmit={editSaleId === null ? handleCheckout : handleSaveEdit}
         editMode={editSaleId !== null}
         editReady={editReady}
+        keterangan={keteranganEdit}
+        setKeterangan={setKeteranganEdit}
       />
 
       <CustomerPicker

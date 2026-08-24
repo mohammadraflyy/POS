@@ -162,6 +162,14 @@ declare global {
             priceSource: 'normal' | 'price_tier' | 'manual'
           }[]
           bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
+          edits: {
+            id: number
+            keterangan: string
+            kasirName: string | null
+            totalSebelum: number
+            totalSesudah: number
+            createdAt: string
+          }[]
         }>
         recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) => Promise<void>
         addItemsToSale: (input: {

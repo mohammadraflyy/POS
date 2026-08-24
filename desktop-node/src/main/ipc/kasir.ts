@@ -2,7 +2,18 @@ import { ipcMain } from 'electron'
 import { and, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
-import { products, productUnits, productPriceTiers, sales, saleItems, bonPayments, storeSettings, units, users } from '../db/schema'
+import {
+  products,
+  productUnits,
+  productPriceTiers,
+  sales,
+  saleItems,
+  saleEdits,
+  bonPayments,
+  storeSettings,
+  units,
+  users,
+} from '../db/schema'
 import {
   checkout,
   addItemsToSale,
@@ -481,6 +492,21 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       ? db.select({ name: users.name }).from(users).where(eq(users.id, sale.userId)).get()
       : null
 
+    const editRows = db
+      .select({
+        id: saleEdits.id,
+        keterangan: saleEdits.keterangan,
+        totalSebelum: saleEdits.totalSebelum,
+        totalSesudah: saleEdits.totalSesudah,
+        createdAt: saleEdits.createdAt,
+        kasirName: users.name,
+      })
+      .from(saleEdits)
+      .leftJoin(users, eq(saleEdits.userId, users.id))
+      .where(eq(saleEdits.saleId, saleId))
+      .orderBy(desc(saleEdits.id))
+      .all()
+
     return {
       id: sale.id,
       namaPelanggan: sale.namaPelanggan,
@@ -508,6 +534,14 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         jumlah: toRupiah(payment.jumlah),
         tanggal: payment.tanggal,
         keterangan: payment.keterangan,
+      })),
+      edits: editRows.map((row) => ({
+        id: row.id,
+        keterangan: row.keterangan,
+        kasirName: row.kasirName,
+        totalSebelum: toRupiah(row.totalSebelum),
+        totalSesudah: toRupiah(row.totalSesudah),
+        createdAt: row.createdAt.toISOString(),
       })),
     }
   })

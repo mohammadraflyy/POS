@@ -58,6 +58,14 @@ interface SaleDetailData {
   kasirName: string | null
   items: SaleDetailItem[]
   bonPayments: BonPaymentRow[]
+  edits: {
+    id: number
+    keterangan: string
+    kasirName: string | null
+    totalSebelum: number
+    totalSesudah: number
+    createdAt: string
+  }[]
 }
 
 // Accepts a plain decimal, with either dot or comma as separator (Indonesian
@@ -286,6 +294,28 @@ export function SaleDetail() {
                 rowKey={(row) => row.id}
                 emptyMessage="Belum ada pembayaran."
               />
+            )}
+
+            {sale.edits.length > 0 && (
+              <div className="rounded-xl border p-5">
+                <h2 className="text-sm font-medium text-muted-foreground">Riwayat Edit</h2>
+                <ul className="mt-3 space-y-3">
+                  {sale.edits.map((edit) => (
+                    <li key={edit.id} className="border-b pb-3 text-sm last:border-b-0 last:pb-0">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="font-medium">{edit.keterangan}</span>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {new Date(edit.createdAt).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {edit.kasirName ?? 'Pengguna dihapus'} &middot; {formatRupiah(edit.totalSebelum)} &rarr;{' '}
+                        {formatRupiah(edit.totalSesudah)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             {sale.metodePembayaran === 'bon' && sale.status === 'selesai' && sisa > 0 && (

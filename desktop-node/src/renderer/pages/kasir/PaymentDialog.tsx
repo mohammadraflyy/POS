@@ -43,6 +43,9 @@ export interface PaymentDialogProps {
    * non-selesai status). Ignored outside edit mode - a new sale is always ready.
    */
   editReady: boolean
+  /** only used in edit mode: why this sale is being changed */
+  keterangan: string
+  setKeterangan: (value: string) => void
 }
 
 export function PaymentDialog({
@@ -64,6 +67,8 @@ export function PaymentDialog({
   onSubmit,
   editMode,
   editReady,
+  keterangan,
+  setKeterangan,
 }: PaymentDialogProps) {
   // qris/transfer land on the exact total; only cash can overpay and only bon can
   // underpay. A bon's dibayar is only ever hand-set in edit mode (see the amount
@@ -96,6 +101,10 @@ export function PaymentDialog({
 
   function runAction(action: Action) {
     if (action === 'simpan' && editMode && !editReady) {
+      return
+    }
+
+    if (action === 'simpan' && editMode && !keterangan.trim()) {
       return
     }
 
@@ -328,6 +337,24 @@ export function PaymentDialog({
             </div>
           </div>
 
+          {editMode && (
+            <div className="grid gap-2">
+              <Label htmlFor="keterangan-edit">Keterangan perubahan</Label>
+              <textarea
+                id="keterangan-edit"
+                value={keterangan}
+                disabled={processing}
+                onChange={(e) => setKeterangan(e.target.value)}
+                placeholder="Contoh: salah input qty, pelanggan tukar barang"
+                rows={2}
+                className="w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              />
+              <p className="text-xs text-muted-foreground">
+                Wajib diisi. Tersimpan permanen di riwayat transaksi.
+              </p>
+            </div>
+          )}
+
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}
@@ -338,7 +365,7 @@ export function PaymentDialog({
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="submit"
-                disabled={processing || bonNeedsCustomer || (editMode && !editReady)}
+                disabled={processing || bonNeedsCustomer || (editMode && (!editReady || !keterangan.trim()))}
                 className={cn(
                   selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
                 )}
