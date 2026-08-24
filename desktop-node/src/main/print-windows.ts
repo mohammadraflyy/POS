@@ -24,10 +24,30 @@ const StartPagePrinter = winspool.func('__stdcall', 'StartPagePrinter', 'bool', 
 const EndPagePrinter = winspool.func('__stdcall', 'EndPagePrinter', 'bool', ['void *'])
 const WritePrinter = winspool.func('__stdcall', 'WritePrinter', 'bool', ['void *', 'void *', 'uint32', 'uint32 *'])
 
-function sendToPrinter(printerName: string, data: Buffer): void {
+const PRINT_TIMEOUT_MS = 30_000
+
+/**
+ * Runs a koffi function on koffi's worker-thread pool instead of the main thread, so a
+ * spooler that never answers cannot freeze every ipcMain handler and all better-sqlite3
+ * access. `fn.async(...args, cb)` is koffi's own async calling convention - see
+ * node_modules/koffi/doc/load.md.
+ */
+function callAsync<T>(fn: { async: (...args: unknown[]) => void }, ...args: unknown[]): Promise<T> {
+  return new Promise((resolve, reject) => {
+    fn.async(...args, (err: unknown, res: T) => {
+      if (err) {
+        reject(err instanceof Error ? err : new Error(String(err)))
+      } else {
+        resolve(res)
+      }
+    })
+  })
+}
+
+async function sendToPrinter(printerName: string, data: Buffer): Promise<void> {
   const handleOut = [null] as unknown[]
 
-  if (!OpenPrinter(printerName, handleOut, null)) {
+  if (!(await callAsync<boolean>(OpenPrinter, printerName, handleOut, null))) {
     throw new Error(`printer "${printerName}" tidak bisa dibuka`)
   }
 
@@ -36,35 +56,59 @@ function sendToPrinter(printerName: string, data: Buffer): void {
   try {
     const docInfo = { pDocName: 'POS Receipt', pOutputFile: null, pDatatype: 'RAW' }
 
-    if (StartDocPrinter(handle, 1, docInfo) === 0) {
+    if ((await callAsync<number>(StartDocPrinter, handle, 1, docInfo)) === 0) {
       throw new Error('spooler menolak dokumen baru')
     }
 
     try {
-      if (!StartPagePrinter(handle)) {
+      if (!(await callAsync<boolean>(StartPagePrinter, handle))) {
         throw new Error('spooler menolak halaman baru')
       }
 
       try {
         const written = [0]
 
-        if (!WritePrinter(handle, data, data.length, written)) {
+        if (!(await callAsync<boolean>(WritePrinter, handle, data, data.length, written))) {
           throw new Error('data gagal dikirim ke printer')
         }
       } finally {
-        EndPagePrinter(handle)
+        await callAsync(EndPagePrinter, handle)
       }
     } finally {
-      EndDocPrinter(handle)
+      await callAsync(EndDocPrinter, handle)
     }
   } finally {
-    ClosePrinter(handle)
+    await callAsync(ClosePrinter, handle)
   }
+}
+
+/**
+ * Races the actual print against a 30s clock, mirroring the timeout the old
+ * `execFile(..., { timeout: 30_000 })` used to give a hung spooler. Koffi has no way to
+ * cancel an in-flight async call, so a truly-hung native call keeps running in the
+ * background and still releases its handle whenever the OS eventually answers - this
+ * timeout only bounds how long the caller waits, same as any FFI/blocking native call.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
 }
 
 async function runPrint(printerName: string, data: Buffer): Promise<void> {
   try {
-    sendToPrinter(printerName, data)
+    await withTimeout(sendToPrinter(printerName, data), PRINT_TIMEOUT_MS, 'printer tidak merespons dalam 30 detik')
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     throw new Error(`Gagal mencetak: ${message}`)
