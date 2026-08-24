@@ -68,4 +68,10 @@ describe('resolveShortcut', () => {
   it('refuses F3 on an empty cart', () => {
     expect(resolveShortcut({ key: 'F3', altKey: false }, state({ cartCount: 0 }))).toBeNull()
   })
+
+  it('fires F3 even while an input is focused, ahead of the editable-focused guard', () => {
+    expect(resolveShortcut({ key: 'F3', altKey: false }, state({ editableFocused: true }))).toEqual({
+      type: 'editTopQty',
+    })
+  })
 })

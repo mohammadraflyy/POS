@@ -16,6 +16,7 @@ import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
 import { CustomerPicker, DEFAULT_PELANGGAN } from './kasir/CustomerPicker'
+import { resolveShortcut, type KasirShortcut } from './kasir/shortcuts'
 import {
   addLine,
   applyDiskon,
@@ -146,6 +147,7 @@ export function Kasir() {
   const [cartWidthRef, cartGridWidth] = useElementWidth<HTMLDivElement>()
   const cartGridRef = useRef<DataGridHandle>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const jumlahInputRef = useRef<HTMLInputElement>(null)
   // the cart can only be rebuilt once the catalog is loaded, so it waits here
   // while the rest of the draft is restored straight into state above
   const pendingRestoreRef = useRef<StoredCartLine[]>(initialDraft.cart)
@@ -312,42 +314,48 @@ export function Kasir() {
       return el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
     }
 
+    function applyShortcut(shortcut: KasirShortcut) {
+      switch (shortcut.type) {
+        case 'editTopQty':
+          blurActiveElement()
+          cartGridRef.current?.setActivePosition({ idx: QTY_COLUMN_IDX, rowIdx: 0 }, { enableEditor: true })
+          break
+        case 'focusJumlah':
+          jumlahInputRef.current?.focus()
+          jumlahInputRef.current?.select()
+          break
+        case 'focusCari':
+          searchInputRef.current?.focus()
+          searchInputRef.current?.select()
+          break
+        case 'clearCart':
+          clearCart()
+          break
+        case 'openCustomer':
+          setCustomerOpen(true)
+          break
+        case 'openBayar':
+          setPaymentOpen(true)
+          break
+      }
+    }
+
     function handleKeydown(e: globalThis.KeyboardEvent) {
-      // Checked before the focus guard, unlike every other shortcut here: a function key
-      // types nothing, so it is safe from the search box, and this is the only way into
-      // the qty editor without a mouse - the palette deliberately leaves focus nowhere,
-      // and the grid's own Enter is taken by Bayar.
-      if (e.key === 'F3' && cart.length > 0) {
+      const shortcut = resolveShortcut(e, {
+        cartCount: cart.length,
+        anyDialogOpen: paymentOpen || paletteOpen || customerOpen,
+        editableFocused: isEditableFocused(),
+        bayarEnabled: editSaleId === null || editReady,
+      })
+
+      if (shortcut) {
         e.preventDefault()
-        blurActiveElement()
-        cartGridRef.current?.setActivePosition({ idx: QTY_COLUMN_IDX, rowIdx: 0 }, { enableEditor: true })
+        applyShortcut(shortcut)
 
         return
       }
 
       if (isEditableFocused()) {
-        return
-      }
-
-      if (e.key === '/' && scanBuffer.current === '') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-        searchInputRef.current?.select()
-
-        return
-      }
-
-      if (e.altKey && e.key.toLowerCase() === 'k' && !paymentOpen) {
-        e.preventDefault()
-        clearCart()
-
-        return
-      }
-
-      if (e.altKey && e.key.toLowerCase() === 'p') {
-        e.preventDefault()
-        setCustomerOpen(true)
-
         return
       }
 
@@ -364,20 +372,7 @@ export function Kasir() {
         scanBuffer.current = ''
 
         if (code.length < 4) {
-          // Not a fast scan burst - treat a lone Enter as the "Bayar"
-          // shortcut so checkout can be fully keyboard driven. Only when
-          // nothing else is focused, so it doesn't double-fire alongside a
-          // button's own native Enter-activates click.
-          if (
-            cart.length > 0 &&
-            !paymentOpen &&
-            (editSaleId === null || editReady) &&
-            (document.activeElement === document.body || document.activeElement === null)
-          ) {
-            e.preventDefault()
-            setPaymentOpen(true)
-          }
-
+          // not a scan burst, and Enter no longer pays - End does
           return
         }
 
@@ -403,7 +398,7 @@ export function Kasir() {
 
     return () => window.removeEventListener('keydown', handleKeydown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, cart.length, paymentOpen])
+  }, [products, cart.length, paymentOpen, paletteOpen, customerOpen, editSaleId, editReady])
 
   function applyResolvedQty(key: string, rawQty: number) {
     setCart((prev) => applyQty(prev, key, rawQty))
@@ -450,15 +445,15 @@ export function Kasir() {
     applyResolvedQty(editedRow.key, editedRow.qty)
   }
 
-  // A cell being selected (not yet in edit mode) still counts as "nothing
-  // to type" - Enter there should behave like the global lone-Enter
-  // shortcut and jump to Bayar, not start editing the cell.
+  // Alt+K still has to be caught here: while a grid cell is active the grid swallows the
+  // keydown before it reaches the window listener. Enter is deliberately left alone now,
+  // so it falls through to the grid's own "start editing this cell".
   function handleCartCellKeyDown(args: CellKeyDownArgs<CartLine>, event: CellKeyboardEvent) {
     if (args.mode !== 'ACTIVE') {
       return
     }
 
-    if (event.key === 'Enter' && cart.length > 0 && !paymentOpen && (editSaleId === null || editReady)) {
+    if (event.key === 'End' && cart.length > 0 && !paymentOpen && (editSaleId === null || editReady)) {
       event.preventGridDefault()
       event.preventDefault()
       setPaymentOpen(true)
@@ -587,6 +582,7 @@ export function Kasir() {
               </label>
               <Input
                 id="kasir-jumlah"
+                ref={jumlahInputRef}
                 type="text"
                 inputMode="decimal"
                 value={jumlah}
@@ -827,8 +823,16 @@ export function Kasir() {
               Cari Produk
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd>
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">End</kbd>
               Bayar
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">PgUp</kbd>
+              Isi Jumlah
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">PgDn</kbd>
+              Cari Produk
             </span>
             <span className="flex items-center gap-1">
               <kbd className="rounded border bg-muted px-1.5 py-0.5">Alt+K</kbd>
