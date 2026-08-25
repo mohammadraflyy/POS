@@ -332,6 +332,12 @@ declare global {
           dilewatiSatuanTidakCocok: number
           dilewatiRantaiTidakValid: number
         } | null>
+        importHargaBertingkat: () => Promise<{
+          satuanDiperbarui: number
+          tierDitambahkan: number
+          dilewatiProdukTidakDitemukan: number
+          dilewatiSatuanTidakDitemukan: number
+        } | null>
       }
       supplier: {
         listSuppliers: (input: { search?: string; page: number; pageSize?: number }) => Promise<{

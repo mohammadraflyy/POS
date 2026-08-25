@@ -114,6 +114,8 @@ export function Inventory() {
   const [importResult, setImportResult] = useState<string | null>(null)
   const [importingSatuan, setImportingSatuan] = useState(false)
   const [importSatuanResult, setImportSatuanResult] = useState<string | null>(null)
+  const [importingTier, setImportingTier] = useState(false)
+  const [importTierResult, setImportTierResult] = useState<string | null>(null)
 
   function runImport() {
     setImporting(true)
@@ -160,6 +162,32 @@ export function Inventory() {
         setImportSatuanResult(err instanceof Error ? err.message : 'Gagal mengimpor')
       })
       .finally(() => setImportingSatuan(false))
+  }
+
+  function runImportHargaBertingkat() {
+    setImportingTier(true)
+    setImportTierResult(null)
+
+    window.api.inventory
+      .importHargaBertingkat()
+      .then((result) => {
+        if (result === null) {
+          return
+        }
+
+        setImportTierResult(
+          `${result.satuanDiperbarui} satuan diperbarui (${result.tierDitambahkan} tingkatan harga), ` +
+            `${result.dilewatiProdukTidakDitemukan} dilewati (produk tidak ditemukan), ` +
+            `${result.dilewatiSatuanTidakDitemukan} dilewati (satuan tidak ditemukan).`,
+        )
+        // priceTiersCount comes from the server, so the list has to be refetched
+        // for the new tiers to show up at all
+        loadPage(currentPage)
+      })
+      .catch((err) => {
+        setImportTierResult(err instanceof Error ? err.message : 'Gagal mengimpor')
+      })
+      .finally(() => setImportingTier(false))
   }
 
   const { confirm, ConfirmDialog } = useConfirm()
@@ -543,6 +571,11 @@ export function Inventory() {
             {importSatuanResult}
           </p>
         )}
+        {importTierResult && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {importTierResult}
+          </p>
+        )}
         {errorSummary.length > 0 && (
           <div className="space-y-1 text-sm text-destructive">
             {errorSummary.map((message, i) => (
@@ -592,6 +625,9 @@ export function Inventory() {
             </Button>
             <Button type="button" variant="outline" disabled={importingSatuan} onClick={runImportSatuan}>
               {importingSatuan ? 'Mengimpor...' : 'Import Satuan'}
+            </Button>
+            <Button type="button" variant="outline" disabled={importingTier} onClick={runImportHargaBertingkat}>
+              {importingTier ? 'Mengimpor...' : 'Import Harga Bertingkat'}
             </Button>
             <Button
               type="button"

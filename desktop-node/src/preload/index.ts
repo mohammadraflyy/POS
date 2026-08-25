@@ -128,6 +128,7 @@ const api = {
     ) => invoke('inventory:bulkSaveProducts', rows),
     importProducts: () => invoke('inventory:importProducts'),
     importSatuan: () => invoke('inventory:importSatuan'),
+    importHargaBertingkat: () => invoke('inventory:importHargaBertingkat'),
   },
   supplier: {
     listSuppliers: (input: { search?: string; page: number; pageSize?: number }) =>
