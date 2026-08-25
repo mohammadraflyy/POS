@@ -66,7 +66,9 @@ export function importHargaBertingkat(db: Db, filePath: string): ImportHargaBert
 
 ### Header resolution
 
-Reuse the existing label-map + scan-for-header-row pattern. Required labels: `kode item`, `konversi`, `satuan`, `jml 1`, `harga jml 1`. The `jml 2..4` / `harga jml 2..4` pairs are optional and each pair is only used when both of its columns resolve. If the required labels are never found, return an all-zero result rather than throwing — same contract as the other two importers.
+Reuse the existing label-map + scan-for-header-row pattern. Required labels: `kode item`, `satuan`, `jml 1`, `harga jml 1`. The `jml 2..4` / `harga jml 2..4` pairs are optional and each pair is only used when both of its columns resolve. If the required labels are never found, return an all-zero result rather than throwing — same contract as the other two importers.
+
+`Konversi` is deliberately not among them. Nothing in this importer reads it (see Matching below), so requiring it would only add a way for a valid file to be rejected.
 
 ### Per row
 
@@ -79,8 +81,8 @@ Reuse the existing label-map + scan-for-header-row pattern. Required labels: `ko
 ### Matching
 
 - Product by `kodeItem` only. Never creates a product, never creates a satuan.
-- Satuan by `units.code` compared uppercase, against that product's `product_units` rows — base row included.
-- `Konversi` from the file is read only to identify the row; it is not written. `product_units` already owns the conversion, set by `importSatuan` or the product form, and overwriting it from this file would let a price import silently restate the satuan chain.
+- Satuan by `units.code` against that product's `product_units` rows — base row included. `units.code` is stored uppercase by `normalizeCode`, so the file's satuan is uppercased before the comparison. Should a product somehow hold two units with the same code, the base row wins, so the match is deterministic.
+- `Konversi` from the file is never read. `product_units` already owns the conversion, set by `importSatuan` or the product form, and taking it from this file would let a price import silently restate the satuan chain.
 
 Unmatched product → `dilewatiProdukTidakDitemukan`. Matched product but unmatched satuan → `dilewatiSatuanTidakDitemukan`.
 
