@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import * as XLSX from 'xlsx'
 import { and, eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { categories, products, productPriceHistories, productUnits, stockAdjustments, units, users } from './db/schema'
+import { categories, products, productPriceHistories, productPriceTiers, productUnits, stockAdjustments, units, users } from './db/schema'
 import {
   getProductsByIds,
   saveProductRows,
@@ -13,7 +13,9 @@ import {
   bulkSaveProducts,
   importProducts,
   importSatuan,
+  importHargaBertingkat,
   type BulkSaveRow,
+  type ImportHargaBertingkatResult,
 } from './inventory-bulk'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
@@ -625,3 +627,182 @@ function emptySatuanResult() {
     dilewatiRantaiTidakValid: 0,
   }
 }
+
+describe('importHargaBertingkat', () => {
+  // Mirrors the real legacy export: four fixed (Jml N, Harga Jml N) pairs, unused ones zeroed.
+  const TIER_HEADER = [
+    'Kode Item',
+    'Konversi',
+    'Satuan',
+    'Jml 1',
+    'Harga Jml 1',
+    'Jml 2',
+    'Harga Jml 2',
+    'Jml 3',
+    'Harga Jml 3',
+    'Jml 4',
+    'Harga Jml 4',
+  ]
+
+  function emptyTierResult(): ImportHargaBertingkatResult {
+    return {
+      satuanDiperbarui: 0,
+      tierDitambahkan: 0,
+      dilewatiProdukTidakDitemukan: 0,
+      dilewatiSatuanTidakDitemukan: 0,
+    }
+  }
+
+  function tiersFor(db: ReturnType<typeof createDb>, productUnitId: number) {
+    return db
+      .select({
+        minQty: productPriceTiers.minQty,
+        maxQty: productPriceTiers.maxQty,
+        hargaJual: productPriceTiers.hargaJual,
+      })
+      .from(productPriceTiers)
+      .where(eq(productPriceTiers.productUnitId, productUnitId))
+      .orderBy(productPriceTiers.minQty)
+      .all()
+  }
+
+  /** Adds a DUS satuan (12 PCS) to the seeded BRS5 product, as product_units id 102. */
+  function seedDusUnit(db: ReturnType<typeof createDb>) {
+    const now = new Date()
+    db.insert(units).values({ id: 2, code: 'DUS', name: 'Dus', symbol: 'dus', createdAt: now, updatedAt: now }).run()
+    db.insert(productUnits)
+      .values({
+        id: 102,
+        productId: 1,
+        unitId: 2,
+        jumlahKemasan: 12,
+        conversionFactor: 12,
+        hargaJual: 780000_00,
+        isBaseUnit: false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+  }
+
+  it('stores every filled tier pair against the base unit, in cents and open-ended', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 1, 1000, 5, 950, 10, 925, 0, 0]])
+
+    const result = importHargaBertingkat(db, filePath)
+
+    expect(result).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 3 })
+    expect(tiersFor(db, 101)).toEqual([
+      { minQty: 1, maxQty: null, hargaJual: 1000_00 },
+      { minQty: 5, maxQty: null, hargaJual: 950_00 },
+      { minQty: 10, maxQty: null, hargaJual: 925_00 },
+    ])
+  })
+
+  it('takes minQty from Jml verbatim on a derived unit row', () => {
+    const db = seedDb()
+    seedDusUnit(db)
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 12, 'DUS', 3, 770000, 0, 0, 0, 0, 0, 0]])
+
+    const result = importHargaBertingkat(db, filePath)
+
+    expect(result).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    // 3 means three DUS, not three PCS - Konversi is not applied
+    expect(tiersFor(db, 102)).toEqual([{ minQty: 3, maxQty: null, hargaJual: 770000_00 }])
+    expect(tiersFor(db, 101)).toEqual([])
+  })
+
+  it('matches the satuan case-insensitively', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'pcs', 2, 950, 0, 0, 0, 0, 0, 0]])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+  })
+
+  it('leaves existing tiers alone for a row whose tier columns are all zero', () => {
+    const db = seedDb()
+    const now = new Date()
+    db.insert(productPriceTiers)
+      .values({ productId: 1, productUnitId: 101, minQty: 6, maxQty: null, hargaJual: 60000_00, createdAt: now, updatedAt: now })
+      .run()
+
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 0, 0, 0, 0, 0, 0, 0, 0]])
+
+    // a blank tier block means "not specified", never "delete what you have"
+    expect(importHargaBertingkat(db, filePath)).toEqual(emptyTierResult())
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 6, maxQty: null, hargaJual: 60000_00 }])
+  })
+
+  it('skips a tier pair whose price is zero', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 1, 1000, 5, 0, 0, 0, 0, 0]])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 1, maxQty: null, hargaJual: 1000_00 }])
+  })
+
+  it('counts an unknown kodeItem as dilewatiProdukTidakDitemukan', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['GHOST', 1, 'PCS', 1, 1000, 0, 0, 0, 0, 0, 0]])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), dilewatiProdukTidakDitemukan: 1 })
+  })
+
+  it('counts a satuan the product does not have as dilewatiSatuanTidakDitemukan', () => {
+    const db = seedDb() // BRS5 only has PCS
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 12, 'DUS', 1, 780000, 0, 0, 0, 0, 0, 0]])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), dilewatiSatuanTidakDitemukan: 1 })
+  })
+
+  it('collapses a duplicated Jml into one tier, the later pair winning', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 5, 1000, 5, 900, 0, 0, 0, 0]])
+
+    // the unique index on (product_unit_id, min_qty) would reject two rows here
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 5, maxQty: null, hargaJual: 900_00 }])
+  })
+
+  it('replaces rather than accumulates when re-run', () => {
+    const db = seedDb()
+    importHargaBertingkat(db, writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 1, 1000, 5, 950, 0, 0, 0, 0]]))
+
+    const result = importHargaBertingkat(db, writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 1, 1100, 0, 0, 0, 0, 0, 0]]))
+
+    expect(result).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 1, maxQty: null, hargaJual: 1100_00 }])
+  })
+
+  it('works when the sheet carries only the first tier pair', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Satuan', 'Jml 1', 'Harga Jml 1'],
+      ['BRS5', 'PCS', 2, 950],
+    ])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 2, maxQty: null, hargaJual: 950_00 }])
+  })
+
+  it('locates the header row even when preceded by a title block', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['DATA HARGA BERTINGKAT', '', '', '', '', '', '', '', '', '', ''],
+      TIER_HEADER,
+      ['BRS5', 1, 'PCS', 1, 1000, 0, 0, 0, 0, 0, 0],
+    ])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+  })
+
+  it('returns all-zero counts when no header row is found', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Ini', 'Bukan', 'Header'],
+      ['a', 'b', 'c'],
+    ])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual(emptyTierResult())
+  })
+})

@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
@@ -744,6 +744,191 @@ export function importSatuan(db: Db, filePath: string): ImportSatuanResult {
       }
 
       result.produkDiperbarui++
+    }
+  })
+
+  return result
+}
+
+const IMPORT_TIER_COLUMN_LABELS: Record<string, string[]> = {
+  kodeItem: ['kode item'],
+  satuan: ['satuan'],
+  jml1: ['jml 1'],
+  hargaJml1: ['harga jml 1'],
+  jml2: ['jml 2'],
+  hargaJml2: ['harga jml 2'],
+  jml3: ['jml 3'],
+  hargaJml3: ['harga jml 3'],
+  jml4: ['jml 4'],
+  hargaJml4: ['harga jml 4'],
+}
+
+// "Konversi" is deliberately absent: product_units already owns the conversion,
+// and requiring a column nothing reads would only reject otherwise-valid files.
+const IMPORT_TIER_REQUIRED_COLUMNS = ['kodeItem', 'satuan', 'jml1', 'hargaJml1']
+
+const IMPORT_TIER_PAIRS: [string, string][] = [
+  ['jml1', 'hargaJml1'],
+  ['jml2', 'hargaJml2'],
+  ['jml3', 'hargaJml3'],
+  ['jml4', 'hargaJml4'],
+]
+
+function resolveImportTierColumns(sheetRow: unknown[]): Record<string, number> | null {
+  const found: Record<string, number> = {}
+
+  sheetRow.forEach((cell, index) => {
+    const text = String(cell ?? '').trim().toLowerCase()
+    if (!text) {
+      return
+    }
+
+    for (const [field, labels] of Object.entries(IMPORT_TIER_COLUMN_LABELS)) {
+      if (!(field in found) && labels.includes(text)) {
+        found[field] = index
+      }
+    }
+  })
+
+  const hasAllRequired = IMPORT_TIER_REQUIRED_COLUMNS.every((field) => field in found)
+  return hasAllRequired ? found : null
+}
+
+export interface ImportHargaBertingkatResult {
+  satuanDiperbarui: number
+  tierDitambahkan: number
+  dilewatiProdukTidakDitemukan: number
+  dilewatiSatuanTidakDitemukan: number
+}
+
+const EMPTY_IMPORT_HARGA_BERTINGKAT_RESULT: ImportHargaBertingkatResult = {
+  satuanDiperbarui: 0,
+  tierDitambahkan: 0,
+  dilewatiProdukTidakDitemukan: 0,
+  dilewatiSatuanTidakDitemukan: 0,
+}
+
+/**
+ * Reads a legacy POS "harga bertingkat" export: one row per product satuan, each
+ * carrying up to four (Jml N, Harga Jml N) pairs. `Jml` is a minimum quantity in
+ * that row's own satuan - the file's `Konversi` column is never applied to it.
+ *
+ * Matches on kodeItem + satuan against existing rows only; never creates a product,
+ * a unit, or a satuan. For every satuan the file actually prices, its tiers are
+ * replaced wholesale so a re-import converges instead of piling up stale rows.
+ */
+export function importHargaBertingkat(db: Db, filePath: string): ImportHargaBertingkatResult {
+  const workbook = XLSX.readFile(filePath)
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return { ...EMPTY_IMPORT_HARGA_BERTINGKAT_RESULT }
+  }
+
+  const sheet = workbook.Sheets[sheetName]
+  const sheetRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+  let columns: Record<string, number> | null = null
+  let headerIndex = -1
+
+  for (let i = 0; i < sheetRows.length; i++) {
+    const resolved = resolveImportTierColumns(sheetRows[i])
+    if (resolved) {
+      columns = resolved
+      headerIndex = i
+      break
+    }
+  }
+
+  if (!columns) {
+    return { ...EMPTY_IMPORT_HARGA_BERTINGKAT_RESULT }
+  }
+
+  const resolvedColumns = columns
+  const dataRows = sheetRows.slice(headerIndex + 1)
+  const result = { ...EMPTY_IMPORT_HARGA_BERTINGKAT_RESULT }
+  const now = new Date()
+
+  db.transaction((tx) => {
+    for (const sheetRow of dataRows) {
+      const kodeItem = String(sheetRow[resolvedColumns.kodeItem] ?? '').trim()
+      const satuan = String(sheetRow[resolvedColumns.satuan] ?? '').trim().toUpperCase()
+
+      if (!kodeItem || !satuan) {
+        continue
+      }
+
+      // Parsed before the lookups so a row with no tiers at all - by far the common
+      // case in these exports - is never counted as a miss and never deletes anything.
+      const byMinQty = new Map<number, number>()
+
+      for (const [qtyField, hargaField] of IMPORT_TIER_PAIRS) {
+        const qtyIndex = resolvedColumns[qtyField]
+        const hargaIndex = resolvedColumns[hargaField]
+
+        if (qtyIndex === undefined || hargaIndex === undefined) {
+          continue
+        }
+
+        const minQty = parseImportNumber(sheetRow[qtyIndex])
+        const harga = parseImportNumber(sheetRow[hargaIndex])
+
+        if (minQty === null || harga === null || !Number.isInteger(minQty) || minQty <= 0 || harga <= 0) {
+          continue
+        }
+
+        // a repeated Jml would violate the (product_unit_id, min_qty) unique index,
+        // so the later pair simply overwrites the earlier one
+        byMinQty.set(minQty, Math.round(harga * 100))
+      }
+
+      if (byMinQty.size === 0) {
+        continue
+      }
+
+      const product = tx.select({ id: products.id }).from(products).where(eq(products.kodeItem, kodeItem)).get()
+
+      if (!product) {
+        result.dilewatiProdukTidakDitemukan++
+        continue
+      }
+
+      const productUnit = tx
+        .select({ id: productUnits.id })
+        .from(productUnits)
+        .innerJoin(units, eq(productUnits.unitId, units.id))
+        .where(and(eq(productUnits.productId, product.id), eq(units.code, satuan)))
+        // a product holding two rows for one unit code is a data bug, but ordering
+        // makes the pick deterministic rather than whatever sqlite returns first
+        .orderBy(desc(productUnits.isBaseUnit))
+        .get()
+
+      if (!productUnit) {
+        result.dilewatiSatuanTidakDitemukan++
+        continue
+      }
+
+      tx.delete(productPriceTiers).where(eq(productPriceTiers.productUnitId, productUnit.id)).run()
+
+      for (const [minQty, hargaJual] of byMinQty) {
+        tx.insert(productPriceTiers)
+          .values({
+            productId: product.id,
+            productUnitId: productUnit.id,
+            minQty,
+            // findTierForQty picks the highest minQty the quantity clears, so
+            // open-ended tiers already stack into a staircase
+            maxQty: null,
+            hargaJual,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+
+        result.tierDitambahkan++
+      }
+
+      result.satuanDiperbarui++
     }
   })
 
