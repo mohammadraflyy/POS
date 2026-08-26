@@ -9,7 +9,12 @@ import { printRaw } from './print-windows'
 // Ada 12345"), so without this mock both calls settle too close together to prove ordering
 // one way or the other - see the fix report for the empirical check that this actually
 // catches a missing queue.
-const state = vi.hoisted(() => ({ busy: false, overlapped: false, calls: 0 }))
+const state = vi.hoisted(() => ({
+  busy: false,
+  overlapped: false,
+  calls: 0,
+  decls: [] as { name: string; params: unknown[] }[],
+}))
 
 vi.mock('koffi', () => {
   const asyncImpl = (...args: unknown[]) => {
@@ -33,9 +38,17 @@ vi.mock('koffi', () => {
 
   return {
     default: {
-      load: () => ({ func: () => stubFunc }),
+      load: () => ({
+        func: (_convention: string, name: string, _ret: string, params: unknown[]) => {
+          state.decls.push({ name, params })
+
+          return stubFunc
+        },
+      }),
       struct: () => ({}),
-      pointer: (t: unknown) => t,
+      opaque: () => 'opaque',
+      pointer: (t: unknown) => ({ pointerTo: t }),
+      out: (t: unknown) => ({ out: t }),
     },
   }
 })
@@ -47,6 +60,18 @@ beforeEach(() => {
 })
 
 describe('printRaw', () => {
+  // Koffi copies an undecorated pointer argument in only. When OpenPrinterA's handle slot was
+  // declared as a plain `void **`, the call reported success but left the handle null, and
+  // StartDocPrinterA(NULL, ...) failed with "spooler menolak dokumen baru". A mocked FFI can
+  // never catch that at call time, so assert the declaration itself instead.
+  it('declares every pointer the spooler writes into as an output parameter', () => {
+    const openPrinter = state.decls.find((decl) => decl.name === 'OpenPrinterA')
+    const writePrinter = state.decls.find((decl) => decl.name === 'WritePrinter')
+
+    expect(openPrinter?.params[1]).toEqual({ out: expect.anything() })
+    expect(writePrinter?.params[3]).toEqual({ out: expect.anything() })
+  })
+
   it('rejects an unknown printer with a message a cashier can read', async () => {
     await expect(printRaw('Printer Yang Tidak Ada 12345', Buffer.from('x'))).rejects.toThrow(/Gagal mencetak/)
   })

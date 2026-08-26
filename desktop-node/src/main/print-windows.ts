@@ -16,13 +16,22 @@ const DOC_INFO_1 = koffi.struct('DOC_INFO_1', {
   pDatatype: 'str',
 })
 
-const OpenPrinter = winspool.func('__stdcall', 'OpenPrinterA', 'bool', ['str', 'void **', 'void *'])
-const ClosePrinter = winspool.func('__stdcall', 'ClosePrinter', 'bool', ['void *'])
-const StartDocPrinter = winspool.func('__stdcall', 'StartDocPrinterA', 'int32', ['void *', 'uint32', koffi.pointer(DOC_INFO_1)])
-const EndDocPrinter = winspool.func('__stdcall', 'EndDocPrinter', 'bool', ['void *'])
-const StartPagePrinter = winspool.func('__stdcall', 'StartPagePrinter', 'bool', ['void *'])
-const EndPagePrinter = winspool.func('__stdcall', 'EndPagePrinter', 'bool', ['void *'])
-const WritePrinter = winspool.func('__stdcall', 'WritePrinter', 'bool', ['void *', 'void *', 'uint32', 'uint32 *'])
+/**
+ * Both pointers winspool writes into - the printer handle and the written-byte count - have to
+ * be declared with `koffi.out()`. Koffi copies a plain pointer argument in only, so an
+ * undecorated `void **` left the JS array untouched: `OpenPrinterA` returned true while the
+ * handle stayed null, and `StartDocPrinterA(NULL, ...)` then failed with "spooler menolak
+ * dokumen baru". See node_modules/koffi/doc/output.md.
+ */
+const HANDLE = koffi.pointer('HANDLE', koffi.opaque())
+
+const OpenPrinter = winspool.func('__stdcall', 'OpenPrinterA', 'bool', ['str', koffi.out(koffi.pointer(HANDLE)), 'void *'])
+const ClosePrinter = winspool.func('__stdcall', 'ClosePrinter', 'bool', [HANDLE])
+const StartDocPrinter = winspool.func('__stdcall', 'StartDocPrinterA', 'int32', [HANDLE, 'uint32', koffi.pointer(DOC_INFO_1)])
+const EndDocPrinter = winspool.func('__stdcall', 'EndDocPrinter', 'bool', [HANDLE])
+const StartPagePrinter = winspool.func('__stdcall', 'StartPagePrinter', 'bool', [HANDLE])
+const EndPagePrinter = winspool.func('__stdcall', 'EndPagePrinter', 'bool', [HANDLE])
+const WritePrinter = winspool.func('__stdcall', 'WritePrinter', 'bool', [HANDLE, 'uint8_t *', 'uint32', koffi.out(koffi.pointer('uint32'))])
 
 const PRINT_TIMEOUT_MS = 30_000
 
