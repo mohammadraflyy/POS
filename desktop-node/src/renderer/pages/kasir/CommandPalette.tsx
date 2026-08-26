@@ -7,7 +7,7 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { formatQty, formatRupiah } from '@/lib/utils'
-import { lineKey, type Product, type UnitResult } from './cart-logic'
+import { type UnitResult } from './cart-logic'
 
 export interface CommandPaletteProps {
   open: boolean
@@ -17,7 +17,6 @@ export interface CommandPaletteProps {
   results: UnitResult[]
   /** matching products the row cap left out, so the list never lies by omission */
   hiddenCount: number
-  products: Product[]
   jumlah: string
   onSelect: (result: UnitResult) => void
   onCloseAutoFocus: (event: Event) => void
@@ -30,7 +29,6 @@ export function CommandPalette({
   onQueryChange,
   results,
   hiddenCount,
-  products,
   jumlah,
   onSelect,
   onCloseAutoFocus,
@@ -60,27 +58,9 @@ export function CommandPalette({
             return
           }
 
-          if (e.key !== 'Enter') {
-            return
-          }
-
-          const code = query.trim()
-          const product = products.find((p) => p.barcode === code)
-
-          if (!product) {
-            return
-          }
-
-          e.preventDefault()
-          // a scanned barcode always means the base unit
-          onSelect({
-            key: lineKey(product.id, null),
-            product,
-            productUnitId: null,
-            satuan: product.satuan,
-            hargaJual: product.hargaJual,
-            stok: product.stok,
-          })
+          // Enter is left to the list: a scanned barcode lands here as a query
+          // matching one product's rows, and picking which satuan it is sold in
+          // is the whole point of showing them.
         }}
         placeholder="Cari nama / kode produk..."
       />

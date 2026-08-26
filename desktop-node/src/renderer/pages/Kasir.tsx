@@ -299,6 +299,27 @@ export function Kasir() {
     setCart((prev) => addLine(prev, product, qty, productUnitId))
   }
 
+  /**
+   * What a scanned barcode does. A product sold in one satuan has nothing to
+   * choose, so it goes straight into the cart; one with derived satuan opens the
+   * palette on that barcode instead, where every satuan is already a row - the
+   * cashier picks DUS or PCS rather than always getting the base unit.
+   */
+  function scanToCart(product: Product, code: string) {
+    setScanError('')
+
+    if (product.productUnits.length > 0) {
+      setPaletteQuery(code)
+      setPaletteOpen(true)
+
+      return
+    }
+
+    addProductToCart(product, Number(jumlah) || 1)
+    setPaletteQuery('')
+    setJumlah('1.00')
+  }
+
   function changeLineUnit(line: CartLine, productUnitId: number | null) {
     setCart((prev) => changeUnit(prev, line, productUnitId))
   }
@@ -385,8 +406,7 @@ export function Kasir() {
         if (!product) {
           setScanError(`Barcode "${code}" tidak ditemukan.`)
         } else {
-          setScanError('')
-          addProductToCart(product)
+          scanToCart(product, code)
         }
 
         return
@@ -401,7 +421,8 @@ export function Kasir() {
 
     return () => window.removeEventListener('keydown', handleKeydown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, cart.length, paymentOpen, paletteOpen, customerOpen, editSaleId, editReady])
+    // jumlah is read by scanToCart, so a stale closure would scan the wrong qty
+  }, [products, cart.length, paymentOpen, paletteOpen, customerOpen, editSaleId, editReady, jumlah])
 
   function applyResolvedQty(key: string, rawQty: number) {
     setCart((prev) => applyQty(prev, key, rawQty))
@@ -653,10 +674,7 @@ export function Kasir() {
                   const scanned = products.find((p) => p.barcode === code)
 
                   if (scanned) {
-                    addProductToCart(scanned, Number(jumlah) || 1)
-                    setPaletteQuery('')
-                    setJumlah('1.00')
-                    setScanError('')
+                    scanToCart(scanned, code)
                     blurActiveElement()
 
                     return
@@ -920,7 +938,6 @@ export function Kasir() {
         onQueryChange={setPaletteQuery}
         results={paletteResults}
         hiddenCount={paletteHiddenCount}
-        products={products}
         jumlah={jumlah}
         onSelect={(result: UnitResult) => {
           addProductToCart(result.product, Number(jumlah) || 1, result.productUnitId)
