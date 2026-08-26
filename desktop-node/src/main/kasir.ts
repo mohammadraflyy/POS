@@ -719,12 +719,6 @@ export function deleteSale(db: Db, saleId: number): void {
     throw new Error('Transaksi tidak ditemukan.')
   }
 
-  const hasBonPayment = db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).get()
-
-  if (hasBonPayment) {
-    throw new Error('Tidak bisa menghapus, bon sudah ada pembayaran.')
-  }
-
   const items = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
 
   db.transaction((tx) => {
@@ -733,6 +727,10 @@ export function deleteSale(db: Db, saleId: number): void {
       restoreStockForItems(tx, items)
     }
 
+    // A paid bon goes too, instalments and all: `bon_payments` cascades off `sales`, so
+    // the money drops out of the cash book by itself and the sale leaves nothing behind.
+    // Deliberately unguarded - `cancelSale` still refuses, because a cancelled sale keeps
+    // its row and would strand payments against a bill nobody owes.
     tx.delete(sales).where(eq(sales.id, saleId)).run()
   })
 }

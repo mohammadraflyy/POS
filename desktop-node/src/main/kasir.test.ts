@@ -1117,7 +1117,7 @@ describe('deleteSale', () => {
     expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeUndefined()
   })
 
-  it('throws when the sale has bon payments recorded', () => {
+  it('deletes a paid bon along with its payments and gives the stock back', () => {
     const { db, saleId } = seedDbWithOneSale()
     const now = new Date()
 
@@ -1125,8 +1125,11 @@ describe('deleteSale', () => {
       .values({ saleId, jumlah: 10000_00, tanggal: '2026-08-06', createdAt: now, updatedAt: now })
       .run()
 
-    expect(() => deleteSale(db, saleId)).toThrow('Tidak bisa menghapus, bon sudah ada pembayaran.')
-    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeDefined()
+    deleteSale(db, saleId)
+
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeUndefined()
+    expect(db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).all()).toHaveLength(0)
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(5)
   })
 
   it('throws when the sale does not exist', () => {

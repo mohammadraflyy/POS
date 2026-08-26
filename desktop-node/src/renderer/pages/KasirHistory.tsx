@@ -151,7 +151,9 @@ export function KasirHistory() {
       description:
         sale.status === 'dibatalkan'
           ? `Transaksi #${sale.id} dihapus permanen dan datanya tidak bisa dikembalikan.`
-          : `Transaksi #${sale.id} dihapus permanen, stoknya dikembalikan, dan datanya tidak bisa dikembalikan.`,
+          : sale.metodePembayaran === 'bon'
+            ? `Transaksi #${sale.id} dihapus permanen, stoknya dikembalikan, dan seluruh riwayat pembayaran bonnya ikut terhapus. Datanya tidak bisa dikembalikan.`
+            : `Transaksi #${sale.id} dihapus permanen, stoknya dikembalikan, dan datanya tidak bisa dikembalikan.`,
       confirmLabel: 'Hapus',
       destructive: true,
     })
