@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
+import { useStickyState } from '@/hooks/use-sticky-state'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatQty, parseQty } from '@/lib/utils'
@@ -72,9 +73,10 @@ export function StockOpname() {
     [widthRef, heightRef],
   )
 
-  const [search, setSearch] = useState('')
+  // sticky so leaving the page and coming back keeps the filter
+  const [search, setSearch] = useStickyState('opname.search', '')
   const [categories, setCategories] = useState<{ id: number; nama: string }[]>([])
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([])
+  const [selectedCategoryIds, setSelectedCategoryIds] = useStickyState<number[]>('opname.categoryIds', [])
   const [rows, setRows] = useState<DraftRow[]>([])
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const [hasSearched, setHasSearched] = useState(false)
@@ -82,6 +84,12 @@ export function StockOpname() {
 
   useEffect(() => {
     window.api.stockOpname.listCategories().then(setCategories)
+  }, [])
+
+  // a filter restored from a previous visit has to refetch its rows
+  useEffect(() => {
+    runSearch(search, selectedCategoryIds)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function runSearch(q: string, categoryIds: number[]) {

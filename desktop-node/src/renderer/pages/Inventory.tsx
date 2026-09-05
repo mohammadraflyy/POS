@@ -15,6 +15,7 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { useStickyState } from '@/hooks/use-sticky-state'
 import { formatQty } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
@@ -73,7 +74,8 @@ export function Inventory() {
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
-  const [search, setSearch] = useState('')
+  // sticky so returning from the mass-input/detail editors keeps the filter
+  const [search, setSearch] = useStickyState('inventory.search', '')
   const [scanMiss, setScanMiss] = useState<string | null>(null)
   // Bumped at the start of every submitSearch call so a slower, earlier lookup
   // can tell it's been superseded and skip applying its (stale) result.
@@ -105,7 +107,7 @@ export function Inventory() {
   const [currentPage, setCurrentPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
-  const [pageSize, setPageSize] = useState('25')
+  const [pageSize, setPageSize] = useStickyState('inventory.pageSize', '25')
 
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
