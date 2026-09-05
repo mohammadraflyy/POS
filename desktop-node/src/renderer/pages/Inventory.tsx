@@ -15,6 +15,7 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { formatQty } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -488,7 +489,7 @@ export function Inventory() {
       key: 'stok',
       name: 'Stok',
       width: 90,
-      renderCell: ({ row }) => <span className="text-muted-foreground">{row.stok}</span>,
+      renderCell: ({ row }) => <span className="text-muted-foreground">{formatQty(row.stok)}</span>,
     },
     {
       key: 'isActive',

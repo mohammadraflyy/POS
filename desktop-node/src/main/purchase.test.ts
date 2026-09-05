@@ -177,6 +177,26 @@ describe('recordPurchase', () => {
     })
   })
 
+  it('records a fractional purchase, keeping the decimals in stock and rounding the subtotal', () => {
+    const db = seedDb()
+    const result = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 5.5, hargaBeli: 1401_00 })],
+      userId: 1,
+    })
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(15.5) // 10 existing + 5,5 purchased
+
+    const items = db.select().from(purchaseItems).where(eq(purchaseItems.purchaseId, result.purchaseId)).all()
+    expect(items[0]).toMatchObject({ qty: 5.5, konversi: 1, subtotal: Math.round(5.5 * 1401_00) })
+
+    const purchase = db.select().from(purchases).where(eq(purchases.id, result.purchaseId)).get()
+    expect(purchase?.total).toBe(Math.round(5.5 * 1401_00))
+  })
+
   it('records a unit-based purchase and increments stock by qty * konversi', () => {
     const db = seedDb()
     const result = recordPurchase(db, {
@@ -262,15 +282,15 @@ describe('recordPurchase', () => {
     )
   })
 
-  it('throws when qty is not a positive integer', () => {
+  it('throws when qty is zero or negative', () => {
     const db = seedDb()
     expect(() =>
       recordPurchase(db, { supplierId: 1, tanggal: '2026-08-08', catatan: null, items: [baseItem({ qty: 0 })], userId: 1 }),
-    ).toThrow('Qty harus bilangan bulat minimal 1.')
+    ).toThrow('Qty harus lebih dari 0.')
 
     expect(() =>
-      recordPurchase(db, { supplierId: 1, tanggal: '2026-08-08', catatan: null, items: [baseItem({ qty: 1.5 })], userId: 1 }),
-    ).toThrow('Qty harus bilangan bulat minimal 1.')
+      recordPurchase(db, { supplierId: 1, tanggal: '2026-08-08', catatan: null, items: [baseItem({ qty: -2 })], userId: 1 }),
+    ).toThrow('Qty harus lebih dari 0.')
   })
 
   it('throws when hargaBeli is not finite', () => {

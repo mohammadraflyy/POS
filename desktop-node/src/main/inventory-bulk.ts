@@ -5,6 +5,7 @@ import * as schema from './db/schema'
 import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments, units } from './db/schema'
 import { getBaseUnitCode, syncBaseProductUnit, syncUnitCostsFromBase } from './inventory-units'
 import { resolveOrCreateUnit } from './master-satuan'
+import { bulatkanQty, isQtyValid } from './qty'
 
 type Db = BetterSQLite3Database<typeof schema>
 type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
@@ -124,8 +125,8 @@ export function validateBulkRows(db: DbOrTx, rows: BulkSaveRow[]): Record<string
       addError(row.key, 'hargaJual', 'Harga jual tidak boleh negatif.')
     }
 
-    if (!Number.isInteger(row.stok) || row.stok < 0) {
-      addError(row.key, 'stok', 'Stok harus bilangan bulat dan tidak boleh negatif.')
+    if (!isQtyValid(row.stok)) {
+      addError(row.key, 'stok', 'Stok harus berupa angka dan tidak boleh negatif.')
     }
   }
 
@@ -194,6 +195,8 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
   const now = new Date()
 
   for (const row of rows) {
+    // stock may be fractional (5,5 KG) - pin it to 3 decimals before it is compared or stored
+    const stok = bulatkanQty(row.stok)
     let categoryId: number | null = null
     const kategori = row.kategori?.trim()
 
@@ -223,7 +226,7 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
         getBaseUnitCode(db, row.id) !== row.satuan.trim().toUpperCase() ||
         existingProduct.hargaPokok !== row.hargaPokok ||
         existingProduct.hargaJual !== row.hargaJual ||
-        (options.updateStok && existingProduct.stok !== row.stok)
+        (options.updateStok && existingProduct.stok !== stok)
 
       if (!changed) {
         unchanged++
@@ -238,7 +241,7 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           categoryId,
           hargaPokok: row.hargaPokok,
           hargaJual: row.hargaJual,
-          ...(options.updateStok ? { stok: row.stok } : {}),
+          ...(options.updateStok ? { stok } : {}),
         })
         .where(eq(products.id, row.id))
         .run()
@@ -265,14 +268,14 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           .run()
       }
 
-      if (options.updateStok && existingProduct.stok !== row.stok) {
+      if (options.updateStok && existingProduct.stok !== stok) {
         db.insert(stockAdjustments)
           .values({
             productId: row.id,
             userId: options.userId,
             stokSebelum: existingProduct.stok,
-            stokSesudah: row.stok,
-            selisih: row.stok - existingProduct.stok,
+            stokSesudah: stok,
+            selisih: bulatkanQty(stok - existingProduct.stok),
             alasan: 'Import Excel',
             tanggal: now.toISOString().slice(0, 10),
             createdAt: now,
@@ -290,7 +293,7 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           categoryId,
           hargaPokok: row.hargaPokok,
           hargaJual: row.hargaJual,
-          stok: row.stok,
+          stok,
           isActive: true,
           createdAt: now,
           updatedAt: now,
@@ -443,7 +446,7 @@ export function importProducts(db: Db, filePath: string, userId: number | null):
     const kategoriRaw = resolvedColumns.kategori !== undefined ? String(sheetRow[resolvedColumns.kategori] ?? '').trim() : ''
     const hargaPokok = parseImportNumber(sheetRow[resolvedColumns.hargaPokok])
     const hargaJual = parseImportNumber(sheetRow[resolvedColumns.hargaJual])
-    const stok = resolvedColumns.stok !== undefined ? Math.trunc(parseImportNumber(sheetRow[resolvedColumns.stok]) ?? 0) : 0
+    const stok = resolvedColumns.stok !== undefined ? bulatkanQty(parseImportNumber(sheetRow[resolvedColumns.stok]) ?? 0) : 0
 
     if (
       hargaPokok === null ||

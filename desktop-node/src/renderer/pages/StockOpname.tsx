@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { formatQty, parseQty } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -49,7 +50,7 @@ function toDraftRow(p: ProductOpnameRowDTO): DraftRow {
     categoryName: p.categoryName ?? '-',
     satuan: p.satuan,
     stokSistem: p.stok,
-    stokFisik: String(p.stok),
+    stokFisik: formatQty(p.stok),
     alasan: '',
   }
 }
@@ -118,10 +119,11 @@ export function StockOpname() {
       return next
     })
 
-    const stokFisikNum = Number(row.stokFisik)
+    // a counted stock level may be fractional - "5,5" and "5.5" both mean 5,5 KG
+    const stokFisikNum = parseQty(row.stokFisik)
 
-    if (row.stokFisik.trim() === '' || !Number.isInteger(stokFisikNum) || stokFisikNum < 0) {
-      setRowErrors((prev) => ({ ...prev, [row.key]: 'Stok fisik harus bilangan bulat, minimal 0.' }))
+    if (row.stokFisik.trim() === '' || !Number.isFinite(stokFisikNum) || stokFisikNum < 0) {
+      setRowErrors((prev) => ({ ...prev, [row.key]: 'Stok fisik harus berupa angka, minimal 0.' }))
       return
     }
 
@@ -129,7 +131,9 @@ export function StockOpname() {
       .recordAdjustment({ productId: row.productId, stokSesudah: stokFisikNum, alasan: row.alasan || null })
       .then(() => {
         setRows((prev) =>
-          prev.map((r) => (r.key === row.key ? { ...r, stokSistem: stokFisikNum } : r)),
+          prev.map((r) =>
+            r.key === row.key ? { ...r, stokSistem: Math.round(stokFisikNum * 1000) / 1000 } : r,
+          ),
         )
         setSavedKeys((prev) => new Set(prev).add(row.key))
         setTimeout(() => {
@@ -151,7 +155,8 @@ export function StockOpname() {
       return
     }
     const row = newRows[data.indexes[0]]
-    if (row.stokFisik !== String(row.stokSistem)) {
+    // compared as numbers: "5,5" and "5.5" are the same count, only a real change saves
+    if (parseQty(row.stokFisik) !== row.stokSistem) {
       saveRow(row)
     }
   }
@@ -178,7 +183,7 @@ export function StockOpname() {
       key: 'stokSistem',
       name: 'Stok Sistem',
       width: 100,
-      renderCell: ({ row }) => <span className="text-muted-foreground">{row.stokSistem}</span>,
+      renderCell: ({ row }) => <span className="text-muted-foreground">{formatQty(row.stokSistem)}</span>,
     },
     textColumn('stokFisik', 'Stok Fisik', 100),
     {
@@ -186,15 +191,15 @@ export function StockOpname() {
       name: 'Selisih',
       width: 90,
       renderCell: ({ row }) => {
-        const stokFisikNum = Number(row.stokFisik)
+        const stokFisikNum = parseQty(row.stokFisik)
         if (row.stokFisik.trim() === '' || !Number.isFinite(stokFisikNum)) {
           return <span className="text-muted-foreground">-</span>
         }
-        const selisih = stokFisikNum - row.stokSistem
+        const selisih = Math.round((stokFisikNum - row.stokSistem) * 1000) / 1000
         const colorClass = selisih > 0 ? 'text-green-600' : selisih < 0 ? 'text-destructive' : 'text-muted-foreground'
         return (
           <span className={colorClass}>
-            {selisih > 0 ? `+${selisih}` : selisih}
+            {selisih > 0 ? `+${formatQty(selisih)}` : formatQty(selisih)}
             {savedKeys.has(row.key) && <span className="text-xs text-muted-foreground"> · Tersimpan</span>}
           </span>
         )

@@ -18,7 +18,7 @@ import { InputError } from '@/components/input-error'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConfirm } from '@/hooks/use-confirm'
-import { formatRupiah } from '@/lib/utils'
+import { formatQty, formatRupiah, parseQty } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -153,7 +153,9 @@ export function Purchase() {
       const existing = prev.find((i) => i.productId === product.id && i.productUnitId === null)
 
       if (existing) {
-        return prev.map((i) => (i.key === existing.key ? { ...i, qty: String(Number(i.qty || 0) + 1) } : i))
+        return prev.map((i) =>
+          i.key === existing.key ? { ...i, qty: formatQty((parseQty(i.qty) || 0) + 1) } : i,
+        )
       }
 
       return [
@@ -223,7 +225,7 @@ export function Purchase() {
             baseSatuan: item.baseSatuan,
             units: item.units,
             productUnitId: item.productUnitId,
-            qty: String(item.qty),
+            qty: formatQty(item.qty),
             hargaBeli: String(item.hargaBeli),
           })),
         )
@@ -264,7 +266,10 @@ export function Purchase() {
       })
   }
 
-  const grandTotal = items.reduce((sum, i) => sum + Number(i.qty || 0) * Number(i.hargaBeli || 0), 0)
+  const grandTotal = items.reduce(
+    (sum, i) => sum + Math.round((parseQty(i.qty) || 0) * Number(i.hargaBeli || 0)),
+    0,
+  )
   // the down payment can only cover what the instalments have not already settled
   const maksUangMuka = grandTotal - cicilan
   const dibayarNum = dibayar.trim() === '' ? maksUangMuka : Number(dibayar)
@@ -312,11 +317,12 @@ export function Purchase() {
     }
 
     for (const item of items) {
-      const qtyNum = Number(item.qty)
+      // qty may be fractional (5,5 KG), so only zero and negatives are rejected
+      const qtyNum = parseQty(item.qty)
       const hargaNum = Number(item.hargaBeli)
 
-      if (item.qty.trim() === '' || !Number.isFinite(qtyNum) || qtyNum < 1) {
-        setFormError(`Qty untuk "${item.namaItem}" harus diisi minimal 1.`)
+      if (item.qty.trim() === '' || !Number.isFinite(qtyNum) || qtyNum <= 0) {
+        setFormError(`Qty untuk "${item.namaItem}" harus lebih dari 0.`)
         return
       }
 
@@ -351,7 +357,7 @@ export function Purchase() {
       items: items.map((item) => ({
         productId: item.productId,
         productUnitId: item.productUnitId,
-        qty: Number(item.qty),
+        qty: parseQty(item.qty),
         hargaBeli: Number(item.hargaBeli),
       })),
       dibayar: dibayar.trim() === '' ? null : dibayarNum,
@@ -509,8 +515,9 @@ export function Purchase() {
                       </td>
                       <td className="p-2">
                         <Input
-                          type="number"
-                          min={1}
+                          type="text"
+                          inputMode="decimal"
+                          title="Boleh pecahan, misalnya 5,5"
                           value={item.qty}
                           onChange={(e) => updateItem(item.key, 'qty', e.target.value)}
                         />
@@ -523,7 +530,9 @@ export function Purchase() {
                           onChange={(e) => updateItem(item.key, 'hargaBeli', e.target.value)}
                         />
                       </td>
-                      <td className="p-2 text-right">{formatRupiah(Number(item.qty || 0) * Number(item.hargaBeli || 0))}</td>
+                      <td className="p-2 text-right">
+                        {formatRupiah(Math.round((parseQty(item.qty) || 0) * Number(item.hargaBeli || 0)))}
+                      </td>
                       <td className="p-2">
                         <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(item.key)}>
                           <Trash2 className="size-4" />

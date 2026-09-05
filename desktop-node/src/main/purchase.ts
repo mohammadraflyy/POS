@@ -13,6 +13,7 @@ import {
   units,
 } from './db/schema'
 import { getBaseProductUnit, listProductUnits, unitsInside } from './inventory-units'
+import { bulatkanQty, isQtyValid, QTY_DECIMALS } from './qty'
 
 /**
  * Weighted-average cost of one `konversi`-sized unit after receiving `qtyDasarMasuk`
@@ -170,8 +171,9 @@ function assertPurchaseInput(input: Pick<RecordPurchaseInput, 'tanggal' | 'items
   }
 
   for (const item of input.items) {
-    if (!Number.isInteger(item.qty) || item.qty < 1) {
-      throw new Error('Qty harus bilangan bulat minimal 1.')
+    // fractional buys are real (5,5 KG); only zero and negatives are rejected
+    if (!isQtyValid(item.qty) || bulatkanQty(item.qty) <= 0) {
+      throw new Error('Qty harus lebih dari 0.')
     }
 
     if (!Number.isFinite(item.hargaBeli)) {
@@ -213,11 +215,12 @@ function resolvePurchaseItems(tx: Tx, items: PurchaseItemInput[]): ResolvedPurch
       productId: item.productId,
       productUnitId: item.productUnitId,
       resolvedUnitId: unit.id,
-      qty: item.qty,
+      qty: bulatkanQty(item.qty),
       konversi: unit.konversi,
       satuan: unit.satuan,
       hargaBeli: item.hargaBeli,
-      subtotal: item.qty * item.hargaBeli,
+      // qty may be fractional, prices are whole rupiah - the line has to land on one
+      subtotal: Math.round(bulatkanQty(item.qty) * item.hargaBeli),
     }
   })
 }
@@ -270,7 +273,7 @@ function applyPurchaseItems(
   for (const item of resolvedItems) {
     total += item.subtotal
 
-    const qtyDasar = item.qty * item.konversi
+    const qtyDasar = bulatkanQty(item.qty * item.konversi)
     const stokLama = stokBerjalan.get(item.productId) ?? 0
     const hargaPokokLama = hargaPokokBerjalan.get(item.productId) ?? 0
     const hargaPokokBaru = hitungHargaPokokRataRata(stokLama, hargaPokokLama, qtyDasar, item.subtotal)
@@ -294,7 +297,11 @@ function applyPurchaseItems(
       .run()
 
     tx.update(products)
-      .set({ stok: sql`${products.stok} + ${qtyDasar}`, hargaPokok: hargaPokokBaru, updatedAt: now })
+      .set({
+        stok: sql`round(${products.stok} + ${qtyDasar}, ${QTY_DECIMALS})`,
+        hargaPokok: hargaPokokBaru,
+        updatedAt: now,
+      })
       .where(eq(products.id, item.productId))
       .run()
 
@@ -381,7 +388,7 @@ function reversePurchaseItems(tx: Tx, purchaseId: number, userId: number | null,
   for (const item of [...items].reverse()) {
     // the stored konversi, not today's: the line has to give back exactly the base
     // quantity it added, even if the satuan has been reshaped since
-    const qtyDasar = item.qty * item.konversi
+    const qtyDasar = bulatkanQty(item.qty * item.konversi)
     const stokSekarang = stokBerjalan.get(item.productId) ?? 0
     const hargaPokokSekarang = hargaPokokBerjalan.get(item.productId) ?? 0
     const hargaPokokBaru = balikHargaPokokSatuan(stokSekarang, hargaPokokSekarang, 1, qtyDasar, item.subtotal)
@@ -390,7 +397,11 @@ function reversePurchaseItems(tx: Tx, purchaseId: number, userId: number | null,
     hargaPokokBerjalan.set(item.productId, hargaPokokBaru)
 
     tx.update(products)
-      .set({ stok: sql`${products.stok} - ${qtyDasar}`, hargaPokok: hargaPokokBaru, updatedAt: now })
+      .set({
+        stok: sql`round(${products.stok} - ${qtyDasar}, ${QTY_DECIMALS})`,
+        hargaPokok: hargaPokokBaru,
+        updatedAt: now,
+      })
       .where(eq(products.id, item.productId))
       .run()
 

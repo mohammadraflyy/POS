@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
-import { formatRupiah } from '@/lib/utils'
+import { formatRupiah, parseQty } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
@@ -315,7 +315,7 @@ export function Kasir() {
       return
     }
 
-    addProductToCart(product, Number(jumlah) || 1)
+    addProductToCart(product, parseQty(jumlah) || 1)
     setPaletteQuery('')
     setJumlah('1.00')
   }
@@ -940,7 +940,7 @@ export function Kasir() {
         hiddenCount={paletteHiddenCount}
         jumlah={jumlah}
         onSelect={(result: UnitResult) => {
-          addProductToCart(result.product, Number(jumlah) || 1, result.productUnitId)
+          addProductToCart(result.product, parseQty(jumlah) || 1, result.productUnitId)
           setPaletteQuery('')
           setJumlah('1.00')
           setPaletteOpen(false)

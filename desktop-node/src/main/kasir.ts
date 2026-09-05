@@ -2,6 +2,7 @@ import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { products, productUnits, productPriceTiers, units, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
+import { bulatkanQty, QTY_DECIMALS } from './qty'
 
 export interface PriceTier {
   minQty: number
@@ -85,7 +86,7 @@ export function resolveCartItem(
   const priceSource: 'normal' | 'price_tier' | 'manual' =
     hargaOverride != null ? 'manual' : tier ? 'price_tier' : 'normal'
 
-  const qtyDasar = qty * productUnit.conversionFactor
+  const qtyDasar = bulatkanQty(qty * productUnit.conversionFactor)
 
   if (product.stok < qtyDasar) {
     throw new Error(`Stok ${product.namaItem} tidak cukup.`)
@@ -342,7 +343,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         .run()
 
       tx.update(products)
-        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .set({ stok: sql`round(${products.stok} - ${line.qtyDasar}, ${QTY_DECIMALS})` })
         .where(eq(products.id, line.productId))
         .run()
 
@@ -390,7 +391,7 @@ function restoreStockForItems(
 
   for (const item of items) {
     tx.update(products)
-      .set({ stok: sql`${products.stok} + ${item.qty * item.konversi}` })
+      .set({ stok: sql`round(${products.stok} + ${bulatkanQty(item.qty * item.konversi)}, ${QTY_DECIMALS})` })
       .where(eq(products.id, item.productId))
       .run()
 
@@ -400,7 +401,7 @@ function restoreStockForItems(
         productUnitId: item.productUnitId,
         quantity: item.qty,
         conversionFactor: item.konversi,
-        baseQuantity: item.qty * item.konversi,
+        baseQuantity: bulatkanQty(item.qty * item.konversi),
         movementType: 'sale_cancel',
         referenceId: item.saleId,
         createdAt: now,
@@ -552,7 +553,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
         .run()
 
       tx.update(products)
-        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .set({ stok: sql`round(${products.stok} - ${line.qtyDasar}, ${QTY_DECIMALS})` })
         .where(eq(products.id, line.productId))
         .run()
 
@@ -686,7 +687,7 @@ export function addItemsToSale(db: Db, saleId: number, items: CartItemInput[]): 
         .run()
 
       tx.update(products)
-        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .set({ stok: sql`round(${products.stok} - ${line.qtyDasar}, ${QTY_DECIMALS})` })
         .where(eq(products.id, line.productId))
         .run()
 

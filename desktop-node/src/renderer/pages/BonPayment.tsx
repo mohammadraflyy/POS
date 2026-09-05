@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { InputError } from '@/components/input-error'
 import { ReportTable } from '@/components/report-table'
-import { cn, formatRupiah } from '@/lib/utils'
+import { cn, formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -124,7 +124,7 @@ export function BonPayment() {
     <Page>
       <PageHeader
         title={`Pending Payment — ${sale.namaPelanggan ?? `Struk #${sale.id}`}`}
-        description={`${sale.items.map((i) => `${i.namaItem} x${i.qty}`).join(', ')} · ${new Date(
+        description={`${sale.items.map((i) => `${i.namaItem} x${formatQty(i.qty)}`).join(', ')} · ${new Date(
           sale.createdAt,
         ).toLocaleString('id-ID')}`}
         actions={

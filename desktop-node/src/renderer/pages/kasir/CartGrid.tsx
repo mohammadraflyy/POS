@@ -11,7 +11,7 @@ import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { formatRupiah } from '@/lib/utils'
+import { formatQty, formatRupiah, parseQty } from '@/lib/utils'
 import { activeTier, lineGross, lineSubtotal, parseDiskon, unitPrice, type CartLine } from './cart-logic'
 
 /**
@@ -93,10 +93,10 @@ function renderQtyEditCell({ row, onRowChange, onClose }: RenderEditCellProps<Ca
       // uncontrolled: a controlled `value` re-synced from the parsed number
       // on every keystroke wipes out a trailing "." before the fractional
       // digits are typed, so "0.25" degrades into "025"
-      defaultValue={row.qty}
-      title="Boleh diisi pecahan, misalnya 0.25 - diambil persis sesuai satuan yang dipilih"
+      defaultValue={formatQty(row.qty)}
+      title="Boleh diisi pecahan, misalnya 0,25 - diambil persis sesuai satuan yang dipilih"
       className="h-full w-full bg-background px-2 text-center text-sm font-semibold outline-none"
-      onChange={(e) => onRowChange({ ...row, qty: Number(e.target.value) || 0 })}
+      onChange={(e) => onRowChange({ ...row, qty: parseQty(e.target.value) || 0 })}
       onBlur={() => onClose(true, false)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -255,9 +255,9 @@ export function CartGrid({
       renderCell: ({ row }) => (
         <span
           className="text-sm font-semibold"
-          title="Boleh diisi pecahan, misalnya 0.25 - diambil persis sesuai satuan yang dipilih"
+          title="Boleh diisi pecahan, misalnya 0,25 - diambil persis sesuai satuan yang dipilih"
         >
-          {row.qty}
+          {formatQty(row.qty)}
         </span>
       ),
     },

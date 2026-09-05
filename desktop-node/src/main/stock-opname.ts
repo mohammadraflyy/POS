@@ -2,6 +2,7 @@ import { and, eq, inArray, like, or } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { categories, products, productUnits, stockAdjustments, stockMovements, units } from './db/schema'
+import { bulatkanQty, isQtyValid } from './qty'
 
 export interface CategoryOption {
   id: number
@@ -86,10 +87,12 @@ export function recordStockAdjustment(
   db: BetterSQLite3Database<typeof schema>,
   input: RecordStockAdjustmentInput,
 ): RecordStockAdjustmentResult {
-  if (!Number.isInteger(input.stokSesudah) || input.stokSesudah < 0) {
-    throw new Error('Stok fisik harus bilangan bulat, minimal 0.')
+  if (!isQtyValid(input.stokSesudah)) {
+    throw new Error('Stok fisik harus berupa angka, minimal 0.')
   }
 
+  // a counted stock level may be fractional (5,5 KG); keep it at 3 decimals
+  const stokSesudah = bulatkanQty(input.stokSesudah)
   const alasan = input.alasan?.trim() || null
 
   if (alasan !== null && alasan.length > 255) {
@@ -104,7 +107,7 @@ export function recordStockAdjustment(
     }
 
     const stokSebelum = product.stok
-    const selisih = input.stokSesudah - stokSebelum
+    const selisih = bulatkanQty(stokSesudah - stokSebelum)
     const now = new Date()
     const tanggal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
@@ -114,7 +117,7 @@ export function recordStockAdjustment(
         productId: input.productId,
         userId: input.userId,
         stokSebelum,
-        stokSesudah: input.stokSesudah,
+        stokSesudah,
         selisih,
         alasan,
         tanggal,
@@ -124,7 +127,7 @@ export function recordStockAdjustment(
       .returning()
       .get()
 
-    tx.update(products).set({ stok: input.stokSesudah }).where(eq(products.id, input.productId)).run()
+    tx.update(products).set({ stok: stokSesudah }).where(eq(products.id, input.productId)).run()
 
     // adjustments are always counted in base units, so the base row is the unit to log against
     const baseUnit = tx

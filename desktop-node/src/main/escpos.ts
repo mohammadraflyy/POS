@@ -1,4 +1,5 @@
 import type { MetodePembayaran } from './kasir'
+import { QTY_DECIMALS } from './qty'
 
 export type PaperWidth = '58mm' | '80mm'
 
@@ -76,6 +77,11 @@ export function padLine(left: string, right: string, width: number): string {
   return `${left}${' '.repeat(gap)}${right}`
 }
 
+/** qty may be fractional (5,5 KG) and prints in Indonesian notation, like every other number */
+function formatQty(value: number): string {
+  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: QTY_DECIMALS }).format(value)
+}
+
 function formatRupiah(value: number): string {
   const formatted = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value)
   return formatted.replace(String.fromCharCode(160), ' ')
@@ -123,7 +129,9 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
 
   for (const item of sale.items) {
     out.push(...textLine(item.namaItem))
-    const qtyLabel = `${item.qty} ${item.satuan ?? ''} x ${formatRupiah(item.hargaJual)}`.replace(/\s+/g, ' ').trim()
+    const qtyLabel = `${formatQty(item.qty)} ${item.satuan ?? ''} x ${formatRupiah(item.hargaJual)}`
+      .replace(/\s+/g, ' ')
+      .trim()
     subtotalBarang += item.subtotal
 
     if (item.diskon > 0) {

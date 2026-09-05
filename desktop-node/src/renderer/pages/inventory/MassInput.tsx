@@ -11,6 +11,7 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { formatQty, parseQty } from '@/lib/utils'
 import { AppShell } from '../../layouts/AppShell'
 import type { BreadcrumbItem } from '../../types'
 
@@ -124,7 +125,7 @@ export function MassInput() {
             satuan: p.satuan,
             hargaPokok: String(p.hargaPokok),
             hargaJual: String(p.hargaJual),
-            stok: String(p.stok),
+            stok: formatQty(p.stok),
             unitsCount: p.unitsCount,
             priceTiersCount: p.priceTiersCount,
           })),
@@ -235,7 +236,7 @@ export function MassInput() {
           satuan: row.satuan,
           hargaPokok: Number(row.hargaPokok),
           hargaJual: Number(row.hargaJual),
-          stok: Number(row.stok) || 0,
+          stok: parseQty(row.stok) || 0,
         })),
       )
       .then((result) => {

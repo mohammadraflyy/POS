@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ReportTable } from '@/components/report-table'
 import { METODE_LABEL } from '@/lib/metode'
-import { formatRupiah } from '@/lib/utils'
+import { formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -84,7 +84,7 @@ const ITEM_COLUMNS: Column<SaleDetailItem>[] = [
     key: 'qty',
     name: 'Qty',
     width: 100,
-    renderCell: ({ row }) => <span className="w-full text-right">{row.qty}</span>,
+    renderCell: ({ row }) => <span className="w-full text-right">{formatQty(row.qty)}</span>,
   },
   { key: 'satuan', name: 'Satuan', width: 100, renderCell: ({ row }) => row.satuan ?? '-' },
   {
