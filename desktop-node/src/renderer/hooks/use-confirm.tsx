@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -17,6 +17,8 @@ type ConfirmOptions = {
 export function useConfirm() {
   const [options, setOptions] = useState<ConfirmOptions | null>(null)
   const resolveRef = useRef<(value: boolean) => void>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
 
   const confirm = useCallback((opts: ConfirmOptions | string) => {
     setOptions(typeof opts === 'string' ? { description: opts } : opts)
@@ -31,18 +33,38 @@ export function useConfirm() {
     resolveRef.current?.(result)
   }
 
+  /**
+   * The till is driven by PageUp/PageDown elsewhere, so the same keys hop between
+   * the two actions here. With only two buttons either key moves to the other one,
+   * and Enter fires whatever is focused.
+   */
+  function hopAction(event: React.KeyboardEvent) {
+    if (event.key !== 'PageUp' && event.key !== 'PageDown') {
+      return
+    }
+
+    event.preventDefault()
+    const target = document.activeElement === confirmRef.current ? cancelRef : confirmRef
+    target.current?.focus()
+  }
+
   const dialog = (
     <Dialog open={options !== null} onOpenChange={(open) => !open && settle(false)}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm" onKeyDown={hopAction}>
         <DialogHeader>
           <DialogTitle>{options?.title ?? 'Konfirmasi'}</DialogTitle>
           <DialogDescription>{options?.description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => settle(false)}>
+          <Button ref={cancelRef} variant="outline" onClick={() => settle(false)}>
             {options?.cancelLabel ?? 'Batal'}
           </Button>
-          <Button autoFocus variant={options?.destructive ? 'destructive' : 'default'} onClick={() => settle(true)}>
+          <Button
+            ref={confirmRef}
+            autoFocus
+            variant={options?.destructive ? 'destructive' : 'default'}
+            onClick={() => settle(true)}
+          >
             {options?.confirmLabel ?? 'Ya'}
           </Button>
         </DialogFooter>

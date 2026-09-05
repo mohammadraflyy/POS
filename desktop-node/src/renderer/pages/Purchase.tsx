@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Plus, Search, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { ReportTable } from '@/components/report-table'
 import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/input-error'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useConfirm } from '@/hooks/use-confirm'
 import { formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
@@ -60,22 +61,32 @@ interface DraftItem {
 
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Pembelian', href: '/purchase' }]
 
+function todayIso(): string {
+  const now = new Date()
+
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
 export function Purchase() {
   const [supplierList, setSupplierList] = useState<SupplierOption[]>([])
   const [supplierId, setSupplierId] = useState<number | null>(null)
   const [supplierPaletteOpen, setSupplierPaletteOpen] = useState(false)
   const selectedSupplier = supplierList.find((s) => s.id === supplierId)
 
-  const [tanggal, setTanggal] = useState(() => {
-    const now = new Date()
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  })
+  const [tanggal, setTanggal] = useState(todayIso)
   const [catatan, setCatatan] = useState('')
   // empty means "paid in full"; anything lower leaves the remainder as supplier debt (BON)
   const [dibayar, setDibayar] = useState('')
   const [items, setItems] = useState<DraftItem[]>([])
   const [processing, setProcessing] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+
+  // the invoice being corrected, or null while entering a new one
+  const [editingId, setEditingId] = useState<number | null>(null)
+  // instalments already paid against the edited invoice - an edit cannot take them back,
+  // so they cap how low its new total is allowed to go
+  const [cicilan, setCicilan] = useState(0)
+  const formRef = useRef<HTMLFormElement>(null)
 
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
@@ -96,6 +107,8 @@ export function Purchase() {
   const [currentPage, setCurrentPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
+
+  const { confirm, ConfirmDialog } = useConfirm()
 
   function loadSuppliers() {
     window.api.supplier.listSuppliers({ page: 1, pageSize: 100 }).then((result) => {
@@ -180,9 +193,82 @@ export function Purchase() {
     )
   }
 
+  function resetForm() {
+    setItems([])
+    setCatatan('')
+    setDibayar('')
+    setSupplierId(null)
+    setTanggal(todayIso())
+    setEditingId(null)
+    setCicilan(0)
+    setFormError(null)
+  }
+
+  function startEdit(purchaseId: number) {
+    window.api.purchase
+      .getPurchaseDetail(purchaseId)
+      .then((detail) => {
+        setEditingId(detail.id)
+        setCicilan(detail.cicilan)
+        setSupplierId(detail.supplierId)
+        setTanggal(detail.tanggal)
+        setCatatan(detail.catatan ?? '')
+        setDibayar(String(detail.uangMuka))
+        setItems(
+          detail.items.map((item) => ({
+            key: crypto.randomUUID(),
+            productId: item.productId,
+            namaItem: item.namaItem,
+            kodeItem: item.kodeItem,
+            baseSatuan: item.baseSatuan,
+            units: item.units,
+            productUnitId: item.productUnitId,
+            qty: String(item.qty),
+            hargaBeli: String(item.hargaBeli),
+          })),
+        )
+        setFormError(null)
+        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+      .catch((err) => {
+        setFormError(err instanceof Error ? err.message : 'Gagal memuat pembelian')
+      })
+  }
+
+  async function removePurchase(row: PurchaseRow) {
+    const sudahDibayar = row.dibayar > 0
+    const ok = await confirm({
+      title: 'Hapus Pembelian',
+      description: sudahDibayar
+        ? `Hapus pembelian ${row.tanggal} senilai ${formatRupiah(row.total)}? Stok dan harga pokok dikembalikan, dan pembayaran ${formatRupiah(row.dibayar)} atas pembelian ini ikut terhapus.`
+        : `Hapus pembelian ${row.tanggal} senilai ${formatRupiah(row.total)}? Stok dan harga pokok akan dikembalikan.`,
+      confirmLabel: 'Hapus',
+      destructive: true,
+    })
+
+    if (!ok) {
+      return
+    }
+
+    window.api.purchase
+      .deletePurchase(row.id)
+      .then(() => {
+        if (editingId === row.id) {
+          resetForm()
+        }
+
+        loadPurchases(currentPage)
+      })
+      .catch((err) => {
+        setFormError(err instanceof Error ? err.message : 'Gagal menghapus pembelian')
+      })
+  }
+
   const grandTotal = items.reduce((sum, i) => sum + Number(i.qty || 0) * Number(i.hargaBeli || 0), 0)
-  const dibayarNum = dibayar.trim() === '' ? grandTotal : Number(dibayar)
-  const sisaHutang = Math.max(0, grandTotal - (Number.isFinite(dibayarNum) ? dibayarNum : 0))
+  // the down payment can only cover what the instalments have not already settled
+  const maksUangMuka = grandTotal - cicilan
+  const dibayarNum = dibayar.trim() === '' ? maksUangMuka : Number(dibayar)
+  const sisaHutang = Math.max(0, maksUangMuka - (Number.isFinite(dibayarNum) ? dibayarNum : 0))
 
   function submitNewSupplier(e: FormEvent) {
     e.preventDefault()
@@ -245,7 +331,12 @@ export function Purchase() {
       return
     }
 
-    if (dibayarNum > grandTotal) {
+    if (cicilan > grandTotal) {
+      setFormError(`Total pembelian tidak boleh lebih kecil dari cicilan yang sudah dibayar (${formatRupiah(cicilan)}).`)
+      return
+    }
+
+    if (dibayarNum > maksUangMuka) {
       setFormError('Dibayar tidak boleh melebihi total pembelian.')
       return
     }
@@ -253,25 +344,29 @@ export function Purchase() {
     setProcessing(true)
     setFormError(null)
 
-    window.api.purchase
-      .recordPurchase({
-        supplierId,
-        tanggal,
-        catatan: catatan || null,
-        items: items.map((item) => ({
-          productId: item.productId,
-          productUnitId: item.productUnitId,
-          qty: Number(item.qty),
-          hargaBeli: Number(item.hargaBeli),
-        })),
-        dibayar: dibayar.trim() === '' ? null : dibayarNum,
-      })
+    const payload = {
+      supplierId,
+      tanggal,
+      catatan: catatan || null,
+      items: items.map((item) => ({
+        productId: item.productId,
+        productUnitId: item.productUnitId,
+        qty: Number(item.qty),
+        hargaBeli: Number(item.hargaBeli),
+      })),
+      dibayar: dibayar.trim() === '' ? null : dibayarNum,
+    }
+
+    const saved: Promise<unknown> =
+      editingId === null
+        ? window.api.purchase.recordPurchase(payload)
+        : window.api.purchase.updatePurchase(editingId, payload)
+    const pageAfterSave = editingId === null ? 1 : currentPage
+
+    saved
       .then(() => {
-        setItems([])
-        setCatatan('')
-        setDibayar('')
-        setSupplierId(null)
-        loadPurchases(1)
+        resetForm()
+        loadPurchases(pageAfterSave)
       })
       .catch((err) => {
         setFormError(err instanceof Error ? err.message : 'Gagal menyimpan pembelian')
@@ -330,7 +425,18 @@ export function Purchase() {
       <Page>
         <PageHeader title="Pembelian" />
 
-        <form onSubmit={submit} className="space-y-4 rounded-xl border p-4">
+        <form ref={formRef} onSubmit={submit} className="space-y-4 rounded-xl border p-4">
+          {editingId !== null && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed p-3 text-sm">
+              <span>
+                Mengubah pembelian <strong>#{editingId}</strong>
+                {cicilan > 0 && <> &middot; cicilan terbayar {formatRupiah(cicilan)} tidak ikut berubah</>}
+              </span>
+              <Button type="button" variant="outline" size="sm" onClick={resetForm}>
+                Batal Edit
+              </Button>
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="grid gap-1">
               <Label>Supplier</Label>
@@ -434,7 +540,7 @@ export function Purchase() {
 
           <div className="grid gap-3 border-t pt-3 sm:grid-cols-3">
             <div className="grid gap-1">
-              <Label>Dibayar (kosong = lunas)</Label>
+              <Label>{cicilan > 0 ? 'Uang Muka (kosong = lunas)' : 'Dibayar (kosong = lunas)'}</Label>
               <Input type="number" min={0} value={dibayar} onChange={(e) => setDibayar(e.target.value)} />
             </div>
             <div className="grid gap-1">
@@ -448,7 +554,7 @@ export function Purchase() {
           </div>
 
           <Button type="submit" disabled={processing || items.length === 0}>
-            Simpan Pembelian
+            {editingId === null ? 'Simpan Pembelian' : 'Simpan Perubahan'}
           </Button>
         </form>
 
@@ -476,6 +582,21 @@ export function Purchase() {
                 <span className={`w-full text-right ${row.sisa > 0 ? 'text-destructive' : ''}`}>
                   {row.sisa > 0 ? formatRupiah(row.sisa) : '-'}
                 </span>
+              ),
+            },
+            {
+              key: 'aksi',
+              name: 'Aksi',
+              width: 90,
+              renderCell: ({ row }) => (
+                <div className="flex gap-1">
+                  <Button type="button" variant="ghost" size="icon" title="Ubah" onClick={() => startEdit(row.id)}>
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button type="button" variant="ghost" size="icon" title="Hapus" onClick={() => removePurchase(row)}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
               ),
             },
           ]}
@@ -587,6 +708,8 @@ export function Purchase() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {ConfirmDialog}
     </AppShell>
   )
 }

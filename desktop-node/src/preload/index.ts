@@ -149,6 +149,18 @@ const api = {
       items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
       dibayar?: number | null
     }) => invoke('purchase:recordPurchase', input),
+    updatePurchase: (
+      purchaseId: number,
+      input: {
+        supplierId: number | null
+        tanggal: string
+        catatan: string | null
+        items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+        dibayar?: number | null
+      },
+    ) => invoke('purchase:updatePurchase', purchaseId, input),
+    deletePurchase: (purchaseId: number) => invoke('purchase:deletePurchase', purchaseId),
+    getPurchaseDetail: (purchaseId: number) => invoke('purchase:getPurchaseDetail', purchaseId),
     listPurchases: (input: { page: number; pageSize?: number }) => invoke('purchase:listPurchases', input),
     searchProducts: (q: string) => invoke('purchase:searchProducts', q),
     findProductByBarcode: (barcode: string) => invoke('purchase:findProductByBarcode', barcode),

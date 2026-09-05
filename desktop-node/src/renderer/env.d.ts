@@ -373,6 +373,36 @@ declare global {
           items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
           dibayar?: number | null
         }) => Promise<{ purchaseId: number }>
+        updatePurchase: (
+          purchaseId: number,
+          input: {
+            supplierId: number | null
+            tanggal: string
+            catatan: string | null
+            items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+            dibayar?: number | null
+          },
+        ) => Promise<{ total: number }>
+        deletePurchase: (purchaseId: number) => Promise<void>
+        getPurchaseDetail: (purchaseId: number) => Promise<{
+          id: number
+          supplierId: number | null
+          tanggal: string
+          catatan: string | null
+          total: number
+          uangMuka: number
+          cicilan: number
+          items: {
+            productId: number
+            kodeItem: string
+            namaItem: string
+            baseSatuan: string
+            units: { id: number; satuan: string; konversi: number }[]
+            productUnitId: number | null
+            qty: number
+            hargaBeli: number
+          }[]
+        }>
         listPurchases: (input: { page: number; pageSize?: number }) => Promise<{
           data: {
             id: number

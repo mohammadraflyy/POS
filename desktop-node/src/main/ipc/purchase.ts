@@ -3,6 +3,9 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import {
   recordPurchase,
+  updatePurchase,
+  deletePurchase,
+  getPurchaseDetail,
   listPurchases,
   searchProductsForPurchase,
   findProductForPurchaseByBarcode,
@@ -21,39 +24,76 @@ function toCents(rupiah: number): number {
   return Math.round(rupiah * 100)
 }
 
+interface PurchaseFormInput {
+  supplierId: number | null
+  tanggal: string
+  catatan: string | null
+  items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+  dibayar?: number | null
+}
+
+function toPurchaseItems(items: PurchaseFormInput['items']): PurchaseItemInput[] {
+  return items.map((item) => ({
+    productId: item.productId,
+    productUnitId: item.productUnitId,
+    qty: item.qty,
+    hargaBeli: toCents(item.hargaBeli),
+  }))
+}
+
+/** null and undefined both mean "not specified", which records the invoice as settled */
+function toDibayar(dibayar: number | null | undefined): number | undefined {
+  return dibayar === null || dibayar === undefined ? undefined : toCents(dibayar)
+}
+
 export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
-  ipcMain.handle(
-    'purchase:recordPurchase',
-    (
-      _event,
-      input: {
-        supplierId: number | null
-        tanggal: string
-        catatan: string | null
-        items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
-        dibayar?: number | null
-      },
-    ) => {
-      const user = requireUser()
+  ipcMain.handle('purchase:recordPurchase', (_event, input: PurchaseFormInput) => {
+    const user = requireUser()
 
-      const items: PurchaseItemInput[] = input.items.map((item) => ({
-        productId: item.productId,
-        productUnitId: item.productUnitId,
-        qty: item.qty,
-        hargaBeli: toCents(item.hargaBeli),
-      }))
+    return recordPurchase(db, {
+      supplierId: input.supplierId,
+      tanggal: input.tanggal,
+      catatan: input.catatan,
+      items: toPurchaseItems(input.items),
+      userId: user.id,
+      dibayar: toDibayar(input.dibayar),
+    })
+  })
 
-      return recordPurchase(db, {
-        supplierId: input.supplierId,
-        tanggal: input.tanggal,
-        catatan: input.catatan,
-        items,
-        userId: user.id,
-        // null and undefined both mean "not specified", which records the invoice as settled
-        dibayar: input.dibayar === null || input.dibayar === undefined ? undefined : toCents(input.dibayar),
-      })
-    },
-  )
+  ipcMain.handle('purchase:updatePurchase', (_event, purchaseId: number, input: PurchaseFormInput) => {
+    const user = requireUser()
+
+    const result = updatePurchase(db, purchaseId, {
+      supplierId: input.supplierId,
+      tanggal: input.tanggal,
+      catatan: input.catatan,
+      items: toPurchaseItems(input.items),
+      userId: user.id,
+      dibayar: toDibayar(input.dibayar),
+    })
+
+    return { total: toRupiah(result.total) }
+  })
+
+  ipcMain.handle('purchase:deletePurchase', (_event, purchaseId: number) => {
+    requireUser()
+
+    deletePurchase(db, purchaseId)
+  })
+
+  ipcMain.handle('purchase:getPurchaseDetail', (_event, purchaseId: number) => {
+    requireUser()
+
+    const detail = getPurchaseDetail(db, purchaseId)
+
+    return {
+      ...detail,
+      total: toRupiah(detail.total),
+      uangMuka: toRupiah(detail.uangMuka),
+      cicilan: toRupiah(detail.cicilan),
+      items: detail.items.map((item) => ({ ...item, hargaBeli: toRupiah(item.hargaBeli) })),
+    }
+  })
 
   ipcMain.handle('purchase:listPurchases', (_event, input: { page: number; pageSize?: number }) => {
     requireUser()
