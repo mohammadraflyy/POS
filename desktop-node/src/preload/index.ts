@@ -141,6 +141,17 @@ const api = {
     ) => invoke('supplier:updateSupplier', id, input),
     deleteSupplier: (id: number) => invoke('supplier:deleteSupplier', id),
   },
+  customer: {
+    listCustomers: (input: { search?: string; page: number; pageSize?: number }) =>
+      invoke('customer:listCustomers', input),
+    createCustomer: (input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null }) =>
+      invoke('customer:createCustomer', input),
+    updateCustomer: (
+      id: number,
+      input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null },
+    ) => invoke('customer:updateCustomer', id, input),
+    deleteCustomer: (id: number) => invoke('customer:deleteCustomer', id),
+  },
   purchase: {
     recordPurchase: (input: {
       supplierId: number | null

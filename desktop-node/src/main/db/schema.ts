@@ -109,6 +109,15 @@ export const suppliers = sqliteTable('suppliers', {
   ...timestamps(),
 })
 
+export const customers = sqliteTable('customers', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nama: text('nama').notNull(),
+  telepon: text('telepon'),
+  alamat: text('alamat'),
+  keterangan: text('keterangan'),
+  ...timestamps(),
+})
+
 export const purchases = sqliteTable('purchases', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   supplierId: integer('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
@@ -141,6 +150,12 @@ export const purchaseItems = sqliteTable('purchase_items', {
 export const sales = sqliteTable('sales', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  customerId: integer('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+  /**
+   * The customer name as it stood when the sale was rung up. Kept alongside
+   * `customerId` on purpose: a receipt reprint, the history list and rekap all read
+   * this snapshot, so renaming or deleting a master row never rewrites past sales.
+   */
   namaPelanggan: text('nama_pelanggan'),
   /**
    * How the sale was settled. `tunai` is cash in the drawer, `bon` is customer credit,

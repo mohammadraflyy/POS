@@ -2,6 +2,7 @@ import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { products, productUnits, productPriceTiers, units, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
+import { findOrCreateCustomerByName, listCustomerNames } from './customer'
 import { bulatkanQty, QTY_DECIMALS } from './qty'
 
 export interface PriceTier {
@@ -119,21 +120,12 @@ export function resolveCartItem(
 }
 
 /**
- * Every distinct customer name ever used on a sale, most recently used first.
- * There is no customer master table - names typed at the register are the list,
- * so a brand new name shows up here after its first sale.
+ * The customer master, by name, for the register's picker. A name typed at the
+ * till still works: `checkout` files it under a master row, creating one when the
+ * name is new, so the picker lists it from the next sale on.
  */
 export function listCustomers(db: BetterSQLite3Database<typeof schema>): string[] {
-  const rows = db
-    .select({ nama: sales.namaPelanggan })
-    .from(sales)
-    .where(sql`${sales.namaPelanggan} is not null and trim(${sales.namaPelanggan}) <> ''`)
-    .groupBy(sales.namaPelanggan)
-    .orderBy(sql`max(${sales.id}) desc`)
-    .limit(200)
-    .all()
-
-  return rows.map((row) => row.nama as string)
+  return listCustomerNames(db)
 }
 
 export interface CartItemInput {
@@ -304,6 +296,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
       .insert(sales)
       .values({
         userId: input.userId,
+        customerId: findOrCreateCustomerByName(tx, input.namaPelanggan ?? ''),
         namaPelanggan: input.namaPelanggan,
         metodePembayaran: input.metodePembayaran,
         status: 'selesai',
@@ -589,6 +582,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
 
     tx.update(sales)
       .set({
+        customerId: findOrCreateCustomerByName(tx, input.namaPelanggan ?? ''),
         namaPelanggan: input.namaPelanggan,
         metodePembayaran: input.metodePembayaran,
         diskon: diskonNota,

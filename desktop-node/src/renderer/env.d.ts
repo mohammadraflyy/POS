@@ -365,6 +365,32 @@ declare global {
         ) => Promise<void>
         deleteSupplier: (id: number) => Promise<void>
       }
+      customer: {
+        listCustomers: (input: { search?: string; page: number; pageSize?: number }) => Promise<{
+          data: {
+            id: number
+            nama: string
+            telepon: string | null
+            alamat: string | null
+            keterangan: string | null
+            saleCount: number
+          }[]
+          currentPage: number
+          lastPage: number
+          total: number
+        }>
+        createCustomer: (input: {
+          nama: string
+          telepon: string | null
+          alamat: string | null
+          keterangan: string | null
+        }) => Promise<number>
+        updateCustomer: (
+          id: number,
+          input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null },
+        ) => Promise<void>
+        deleteCustomer: (id: number) => Promise<void>
+      }
       purchase: {
         recordPurchase: (input: {
           supplierId: number | null

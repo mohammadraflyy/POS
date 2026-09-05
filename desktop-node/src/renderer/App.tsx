@@ -9,6 +9,7 @@ import { Inventory } from './pages/Inventory'
 import { MassInput } from './pages/inventory/MassInput'
 import { ProductDetail } from './pages/inventory/ProductDetail'
 import { Supplier } from './pages/Supplier'
+import { Pelanggan } from './pages/Pelanggan'
 import { MasterSatuan } from './pages/MasterSatuan'
 import { Users } from './pages/Users'
 import { Purchase } from './pages/Purchase'
@@ -45,6 +46,7 @@ export function App() {
         {/* declared after mass-input so the literal segment always wins over :productId */}
         <Route path="/inventory/:productId" element={<ProductDetail />} />
         <Route path="/supplier" element={<Supplier />} />
+        <Route path="/pelanggan" element={<Pelanggan />} />
         <Route path="/master-satuan" element={<MasterSatuan />} />
         <Route path="/purchase" element={<Purchase />} />
         <Route path="/hutang-supplier" element={<HutangSupplier />} />

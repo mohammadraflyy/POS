@@ -3,6 +3,7 @@ import {
   Building2,
   ClipboardCheck,
   ClipboardList,
+  Contact,
   History,
   LayoutGrid,
   PackagePlus,
@@ -25,6 +26,7 @@ const overviewNavItems: NavItem[] = [{ title: 'Dashboard', href: '/', icon: Layo
 const penjualanNavItems: NavItem[] = [
   { title: 'Penjualan', href: '/kasir', icon: ShoppingCart },
   { title: 'Riwayat Transaksi', href: '/history', icon: History },
+  { title: 'Pelanggan', href: '/pelanggan', icon: Contact },
 ]
 
 const pembelianNavItems: NavItem[] = [

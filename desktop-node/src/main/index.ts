@@ -4,6 +4,7 @@ import { createDb } from './db/migrate'
 import { registerAuthIpc } from './ipc/auth'
 import { registerKasirIpc } from './ipc/kasir'
 import { registerInventoryIpc } from './ipc/inventory'
+import { registerCustomerIpc } from './ipc/customer'
 import { registerSupplierIpc } from './ipc/supplier'
 import { registerPurchaseIpc } from './ipc/purchase'
 import { registerStockOpnameIpc } from './ipc/stock-opname'
@@ -106,6 +107,7 @@ app.whenReady().then(() => {
   registerKasirIpc(db)
   registerInventoryIpc(db)
   registerSupplierIpc(db)
+  registerCustomerIpc(db)
   registerPurchaseIpc(db)
   registerStockOpnameIpc(db)
   registerExpenseIpc(db)

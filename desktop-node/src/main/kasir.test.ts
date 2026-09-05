@@ -3,7 +3,7 @@ import { lineSubtotal, priceForQty, resolveCartItem, type ProductRow, type Produ
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { users, products, productUnits, productPriceTiers, units, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
+import { users, products, productUnits, productPriceTiers, units, customers, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
 import {
   checkout,
   type CheckoutInput,
@@ -1953,7 +1953,7 @@ describe('listCustomers', () => {
     })
   }
 
-  it('returns each name once, most recently used first', () => {
+  it('returns each name once, in alphabetical order', () => {
     const db = seedDb()
     sell(db, 'Bu Siti')
     sell(db, 'UMUM')
@@ -1974,6 +1974,36 @@ describe('listCustomers', () => {
 
   it('returns nothing on a database with no sales', () => {
     expect(listCustomers(seedDb())).toEqual([])
+  })
+
+  it('files the sale under a master customer, creating it on first use', () => {
+    const db = seedDb()
+    sell(db, 'Pak Budi')
+
+    const customer = db.select().from(customers).all()
+    const sale = db.select().from(sales).all()[0]
+
+    expect(customer).toHaveLength(1)
+    expect(customer[0].nama).toBe('Pak Budi')
+    expect(sale.customerId).toBe(customer[0].id)
+    expect(sale.namaPelanggan).toBe('Pak Budi')
+  })
+
+  it('reuses one master row for names that differ only by case', () => {
+    const db = seedDb()
+    sell(db, 'Pak Budi')
+    sell(db, 'pak budi')
+
+    expect(db.select().from(customers).all()).toHaveLength(1)
+    expect(listCustomers(db)).toEqual(['Pak Budi'])
+  })
+
+  it('leaves a sale with no name unlinked instead of inventing a customer', () => {
+    const db = seedDb()
+    sell(db, null)
+
+    expect(db.select().from(customers).all()).toHaveLength(0)
+    expect(db.select().from(sales).all()[0].customerId).toBeNull()
   })
 })
 

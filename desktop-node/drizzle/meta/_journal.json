@@ -127,6 +127,13 @@
       "when": 1787607007629,
       "tag": "0017_chubby_carnage",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1788601665686,
+      "tag": "0018_living_micromacro",
+      "breakpoints": true
     }
   ]
 }

@@ -42,7 +42,7 @@ function partialMigrationsBefore(tag: string) {
 }
 
 describe('createDb', () => {
-  it('creates all 19 business tables', () => {
+  it('creates all 20 business tables', () => {
     const db = createDb(':memory:', migrationsFolder)
 
     const rows = db.all<{ name: string }>(
@@ -55,6 +55,7 @@ describe('createDb', () => {
         'bon_payments',
         'cash_expenses',
         'categories',
+        'customers',
         'product_price_histories',
         'product_price_tiers',
         'product_units',
@@ -382,6 +383,45 @@ describe('createDb', () => {
       { id: 11, parent_unit_id: null },
       { id: 12, parent_unit_id: 11 },
     ])
+  })
+})
+
+describe('migration 0018', () => {
+  it('turns the names used on past sales into customers and links the sales to them', () => {
+    const { partialFolder, dbFile, cleanup } = partialMigrationsBefore('0018_living_micromacro')
+
+    try {
+      const before = createDb(dbFile, partialFolder)
+      const now = Date.now()
+
+      before.run(
+        sql`INSERT INTO sales (id, user_id, nama_pelanggan, metode_pembayaran, status, diskon, total, dibayar, created_at, updated_at)
+            VALUES (1, NULL, 'Bu Siti', 'tunai', 'selesai', 0, 1000, 1000, ${now}, ${now}),
+                   (2, NULL, 'bu siti', 'tunai', 'selesai', 0, 2000, 2000, ${now}, ${now}),
+                   (3, NULL, NULL, 'tunai', 'selesai', 0, 3000, 3000, ${now}, ${now}),
+                   (4, NULL, '   ', 'tunai', 'selesai', 0, 4000, 4000, ${now}, ${now})`,
+      )
+
+      before.$client.close()
+
+      const after = createDb(dbFile, migrationsFolder)
+      const names = after.all<{ nama: string }>(sql`SELECT nama FROM customers ORDER BY nama`)
+      const linked = after.all<{ id: number; customer_id: number | null; nama_pelanggan: string | null }>(
+        sql`SELECT id, customer_id, nama_pelanggan FROM sales ORDER BY id`,
+      )
+      after.$client.close()
+
+      // one row for "Bu Siti"/"bu siti", matching how the register resolves a typed name
+      expect(names).toEqual([{ nama: 'bu siti' }])
+      expect(linked[0].customer_id).not.toBeNull()
+      expect(linked[1].customer_id).toBe(linked[0].customer_id)
+      // the sale keeps the spelling it was rung up with
+      expect(linked[0].nama_pelanggan).toBe('Bu Siti')
+      expect(linked[2].customer_id).toBeNull()
+      expect(linked[3].customer_id).toBeNull()
+    } finally {
+      cleanup()
+    }
   })
 })
 
