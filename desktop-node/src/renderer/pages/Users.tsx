@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/input-error'
 import { Label } from '@/components/ui/label'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useDraftState } from '@/hooks/use-sticky-state'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem, UserRole } from '../types'
 
@@ -37,10 +38,12 @@ export function Users() {
   const [rows, setRows] = useState<UserRow[]>([])
   const [currentUserId, setCurrentUserId] = useState<number | null>(null)
 
-  const [username, setUsername] = useState('')
-  const [name, setName] = useState('')
+  const [username, setUsername, clearUsername] = useDraftState('users.username', '')
+  const [name, setName, clearName] = useDraftState('users.name', '')
+  // never a draft: localStorage is plain text on disk, and a password left there
+  // outlives the form it was typed into
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState<UserRole>('kasir')
+  const [role, setRole, clearRole] = useDraftState<UserRole>('users.role', 'kasir')
   const [processing, setProcessing] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -75,10 +78,11 @@ export function Users() {
     window.api.users
       .create({ username, name, password, role })
       .then(() => {
-        setUsername('')
-        setName('')
+        // the clears drop the stored draft too; password was never stored
+        clearUsername()
+        clearName()
         setPassword('')
-        setRole('kasir')
+        clearRole()
         loadRows()
       })
       .catch((err) => {

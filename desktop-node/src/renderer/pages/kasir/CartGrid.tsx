@@ -12,7 +12,16 @@ import 'react-data-grid/lib/styles.css'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatQty, formatRupiah, parseQty } from '@/lib/utils'
-import { activeTier, lineGross, lineSubtotal, parseDiskon, unitPrice, type CartLine } from './cart-logic'
+import {
+  activeTier,
+  isBelowHargaPokok,
+  lineGross,
+  lineSubtotal,
+  parseDiskon,
+  unitHargaPokok,
+  unitPrice,
+  type CartLine,
+} from './cart-logic'
 
 /**
  * Column order, single-sourced so a keyboard shortcut can aim at a column by name.
@@ -202,10 +211,19 @@ export function CartGrid({
       renderEditCell: renderHargaEditCell,
       renderCell: ({ row }) => {
         const tier = activeTier(row)
+        const rugi = isBelowHargaPokok(row)
 
         return (
-          <span className="text-xs text-muted-foreground">
+          <span className={rugi ? 'text-xs font-semibold text-destructive' : 'text-xs text-muted-foreground'}>
             {formatRupiah(unitPrice(row))}
+            {rugi && (
+              <span
+                className="block text-[10px] text-destructive"
+                title={`Di bawah harga pokok ${formatRupiah(unitHargaPokok(row))} - simpan akan ditolak`}
+              >
+                &lt; pokok {formatRupiah(unitHargaPokok(row))}
+              </span>
+            )}
             {tier && (
               <span className="block text-[10px] text-muted-foreground">
                 tier {tier.minQty}

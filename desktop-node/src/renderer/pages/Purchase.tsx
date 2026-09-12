@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConfirm } from '@/hooks/use-confirm'
 import { formatQty, formatRupiah, parseQty } from '@/lib/utils'
+import { useDraftState } from '@/hooks/use-sticky-state'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -69,20 +70,31 @@ function todayIso(): string {
 
 export function Purchase() {
   const [supplierList, setSupplierList] = useState<SupplierOption[]>([])
-  const [supplierId, setSupplierId] = useState<number | null>(null)
+
+  // the invoice being corrected, or null while entering a new one. Declared above the
+  // fields below because it decides whether they may be written to storage at all: the
+  // edit form reuses these same fields, and storing a loaded invoice would reopen the
+  // next blank purchase pre-filled from someone else's.
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const drafting = editingId === null
+
+  const [supplierId, setSupplierId, clearSupplierId] = useDraftState<number | null>(
+    'purchase.supplierId',
+    null,
+    drafting,
+  )
   const [supplierPaletteOpen, setSupplierPaletteOpen] = useState(false)
   const selectedSupplier = supplierList.find((s) => s.id === supplierId)
 
+  // tanggal stays out of the draft, as in the Kasir draft: a date restored from
+  // yesterday would file today's goods on the wrong day
   const [tanggal, setTanggal] = useState(todayIso)
-  const [catatan, setCatatan] = useState('')
+  const [catatan, setCatatan, clearCatatan] = useDraftState('purchase.catatan', '', drafting)
   // empty means "paid in full"; anything lower leaves the remainder as supplier debt (BON)
-  const [dibayar, setDibayar] = useState('')
-  const [items, setItems] = useState<DraftItem[]>([])
+  const [dibayar, setDibayar, clearDibayar] = useDraftState('purchase.dibayar', '', drafting)
+  const [items, setItems, clearItems] = useDraftState<DraftItem[]>('purchase.items', [], drafting)
   const [processing, setProcessing] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-
-  // the invoice being corrected, or null while entering a new one
-  const [editingId, setEditingId] = useState<number | null>(null)
   // instalments already paid against the edited invoice - an edit cannot take them back,
   // so they cap how low its new total is allowed to go
   const [cicilan, setCicilan] = useState(0)
@@ -109,6 +121,15 @@ export function Purchase() {
   const [total, setTotal] = useState(0)
 
   const { confirm, ConfirmDialog } = useConfirm()
+
+  // A restored draft can name a supplier that has since been deleted. Drop it rather
+  // than leaving the picker blank while the form still holds the id - the same choice
+  // restoreCart makes for products that vanished from the catalogue.
+  useEffect(() => {
+    if (supplierId !== null && supplierList.length > 0 && !supplierList.some((s) => s.id === supplierId)) {
+      setSupplierId(null)
+    }
+  }, [supplierId, supplierList, setSupplierId])
 
   function loadSuppliers() {
     window.api.supplier.listSuppliers({ page: 1, pageSize: 100 }).then((result) => {
@@ -196,10 +217,12 @@ export function Purchase() {
   }
 
   function resetForm() {
-    setItems([])
-    setCatatan('')
-    setDibayar('')
-    setSupplierId(null)
+    // the clears drop the stored draft as well as the field, so a saved purchase does
+    // not come back as a ghost draft on the next visit
+    clearItems()
+    clearCatatan()
+    clearDibayar()
+    clearSupplierId()
     setTanggal(todayIso())
     setEditingId(null)
     setCicilan(0)

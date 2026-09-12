@@ -937,3 +937,138 @@ export function importHargaBertingkat(db: Db, filePath: string): ImportHargaBert
 
   return result
 }
+
+const IMPORT_BARCODE_COLUMN_LABELS: Record<string, string[]> = {
+  kodeItem: ['kode item'],
+  barcode: ['kode barcode', 'barcode'],
+}
+
+const IMPORT_BARCODE_REQUIRED_COLUMNS = ['kodeItem', 'barcode']
+
+function resolveImportBarcodeColumns(sheetRow: unknown[]): Record<string, number> | null {
+  const found: Record<string, number> = {}
+
+  sheetRow.forEach((cell, index) => {
+    const text = String(cell ?? '').trim().toLowerCase()
+    if (!text) {
+      return
+    }
+
+    for (const [field, labels] of Object.entries(IMPORT_BARCODE_COLUMN_LABELS)) {
+      if (!(field in found) && labels.includes(text)) {
+        found[field] = index
+      }
+    }
+  })
+
+  const hasAllRequired = IMPORT_BARCODE_REQUIRED_COLUMNS.every((field) => field in found)
+  return hasAllRequired ? found : null
+}
+
+export interface ImportBarcodeResult {
+  diperbarui: number
+  dilewatiSudahSama: number
+  dilewatiProdukTidakDitemukan: number
+  dilewatiBarcodeDipakai: number
+  dilewatiBarcodeTerlaluPanjang: number
+}
+
+const EMPTY_IMPORT_BARCODE_RESULT: ImportBarcodeResult = {
+  diperbarui: 0,
+  dilewatiSudahSama: 0,
+  dilewatiProdukTidakDitemukan: 0,
+  dilewatiBarcodeDipakai: 0,
+  dilewatiBarcodeTerlaluPanjang: 0,
+}
+
+/**
+ * Reads a barcode-only sheet: `Kode Item` plus `Kode Barcode`, nothing else required.
+ * `importProducts` also carries barcodes, but it insists on nama/satuan/harga columns
+ * and rewrites those fields - this is for the common case of scanning barcodes into an
+ * existing catalog and nothing else.
+ *
+ * Matches existing products by kodeItem only; never creates one. A blank barcode cell
+ * is left alone rather than clearing what the product already has - a partially filled
+ * scan sheet is normal, and wiping the rest would be silent data loss.
+ *
+ * `products.barcode` is unique, so a barcode already on another product is counted and
+ * skipped instead of failing the whole import. The collision lookup runs inside the
+ * transaction, so a barcode claimed by an earlier row of the same file collides too.
+ */
+export function importBarcode(db: Db, filePath: string): ImportBarcodeResult {
+  const workbook = XLSX.readFile(filePath)
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return { ...EMPTY_IMPORT_BARCODE_RESULT }
+  }
+
+  const sheet = workbook.Sheets[sheetName]
+  const sheetRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+  let columns: Record<string, number> | null = null
+  let headerIndex = -1
+
+  for (let i = 0; i < sheetRows.length; i++) {
+    const resolved = resolveImportBarcodeColumns(sheetRows[i])
+    if (resolved) {
+      columns = resolved
+      headerIndex = i
+      break
+    }
+  }
+
+  if (!columns) {
+    return { ...EMPTY_IMPORT_BARCODE_RESULT }
+  }
+
+  const resolvedColumns = columns
+  const dataRows = sheetRows.slice(headerIndex + 1)
+  const result = { ...EMPTY_IMPORT_BARCODE_RESULT }
+  const now = new Date()
+
+  db.transaction((tx) => {
+    for (const sheetRow of dataRows) {
+      const kodeItem = String(sheetRow[resolvedColumns.kodeItem] ?? '').trim()
+      // a barcode cell typed as a number arrives as one; String() is what the
+      // products import already does with this same column
+      const barcode = String(sheetRow[resolvedColumns.barcode] ?? '').trim()
+
+      if (!kodeItem || !barcode) {
+        continue
+      }
+
+      if (barcode.length > 100) {
+        result.dilewatiBarcodeTerlaluPanjang++
+        continue
+      }
+
+      const product = tx
+        .select({ id: products.id, barcode: products.barcode })
+        .from(products)
+        .where(eq(products.kodeItem, kodeItem))
+        .get()
+
+      if (!product) {
+        result.dilewatiProdukTidakDitemukan++
+        continue
+      }
+
+      if (product.barcode === barcode) {
+        result.dilewatiSudahSama++
+        continue
+      }
+
+      if (findBarcodeCollision(tx, barcode, product.id)) {
+        result.dilewatiBarcodeDipakai++
+        continue
+      }
+
+      tx.update(products).set({ barcode, updatedAt: now }).where(eq(products.id, product.id)).run()
+
+      result.diperbarui++
+    }
+  })
+
+  return result
+}

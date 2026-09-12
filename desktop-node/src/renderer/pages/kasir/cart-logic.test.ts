@@ -16,6 +16,8 @@ import {
   toStoredCart,
   unitKonversi,
   unitPrice,
+  unitHargaPokok,
+  isBelowHargaPokok,
   activeTier,
   type CartLine,
   type EditSaleItem,
@@ -29,9 +31,10 @@ const product: Product = {
   namaItem: 'Beras 5kg',
   satuan: 'PCS',
   hargaJual: 65000,
+  hargaPokok: 60000,
   stok: 100,
   baseProductUnitId: 1,
-  productUnits: [{ id: 9, satuan: 'DUS', konversi: 12, hargaJual: 700000 }],
+  productUnits: [{ id: 9, satuan: 'DUS', konversi: 12, hargaJual: 700000, hargaPokok: 720000 }],
   priceTiers: [{ productUnitId: 1, minQty: 5, maxQty: null, hargaJual: 62000 }],
 }
 
@@ -202,7 +205,7 @@ describe('toStoredCart / restoreCart', () => {
       ...product,
       namaItem: 'Beras 5kg Premium',
       hargaJual: 70000,
-      productUnits: [{ id: 9, satuan: 'KARTON', konversi: 12, hargaJual: 750000 }],
+      productUnits: [{ id: 9, satuan: 'KARTON', konversi: 12, hargaJual: 750000, hargaPokok: 720000 }],
     }
 
     const result = restoreCart([{ productId: 1, productUnitId: 9, qty: 2 }], [renamed])
@@ -343,6 +346,47 @@ describe('matchingProducts', () => {
 
   it('returns nothing for a blank query', () => {
     expect(matchingProducts([product], '  ')).toEqual([])
+  })
+})
+
+describe('isBelowHargaPokok', () => {
+  function line(productUnitId: number | null, hargaOverride: number | null, qty = 1): CartLine {
+    return {
+      key: lineKey(1, productUnitId),
+      product,
+      productUnitId,
+      satuan: productUnitId === null ? 'PCS' : 'DUS',
+      qty,
+      hargaOverride,
+    }
+  }
+
+  it('reads the cost of the unit the line sells', () => {
+    expect(unitHargaPokok(line(null, null))).toBe(60000)
+    expect(unitHargaPokok(line(9, null))).toBe(720000)
+  })
+
+  it('flags a manual price under the base unit cost', () => {
+    expect(isBelowHargaPokok(line(null, 59999))).toBe(true)
+  })
+
+  it('accepts a manual price exactly at cost', () => {
+    expect(isBelowHargaPokok(line(null, 60000))).toBe(false)
+  })
+
+  it('checks a derived unit against its own cost, not the base unit cost', () => {
+    // 700.000 clears the base unit's 60.000 but sits under the DUS cost of 720.000
+    expect(isBelowHargaPokok(line(9, 700000))).toBe(true)
+  })
+
+  it('leaves a tier price alone even when it prices under cost', () => {
+    // qty 5 hits the 62.000 tier; no override, so this is the owner's own pricing
+    expect(isBelowHargaPokok(line(null, null, 5))).toBe(false)
+  })
+
+  it('ignores the line discount, matching the main-process guard', () => {
+    const diskonLine: CartLine = { ...line(null, 60000, 1), diskon: 30000 }
+    expect(isBelowHargaPokok(diskonLine)).toBe(false)
   })
 })
 

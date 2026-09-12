@@ -306,6 +306,36 @@ describe('resolveCartItem', () => {
     expect(() => resolveCartItem(product, baseUnit, [], 1, null, -1)).toThrow('Diskon Beras 5kg tidak valid.')
     expect(() => resolveCartItem(product, baseUnit, [], 1, null, 1.5)).toThrow('Diskon Beras 5kg tidak valid.')
   })
+
+  it('rejects a manual price below the unit cost', () => {
+    expect(() => resolveCartItem(product, baseUnit, [], 1, 59999_00)).toThrow(
+      'Harga Beras 5kg di bawah harga pokok satuan PCS.',
+    )
+  })
+
+  it('accepts a manual price exactly at cost', () => {
+    expect(resolveCartItem(product, baseUnit, [], 1, 60000_00)).toMatchObject({
+      hargaJual: 60000_00,
+      priceSource: 'manual',
+    })
+  })
+
+  it('floors a derived unit at its own cost, not the base unit cost', () => {
+    // 700.000 clears the base unit's 60.000 but sits under the DUS cost of 720.000
+    expect(() => resolveCartItem(product, dusUnit, [], 1, 700000_00)).toThrow(
+      'Harga Beras 5kg di bawah harga pokok satuan DUS.',
+    )
+  })
+
+  it('leaves a tier price under cost alone - only a hand-set price is floored', () => {
+    const result = resolveCartItem(product, baseUnit, [{ minQty: 5, maxQty: null, hargaJual: 59000_00 }], 5)
+    expect(result).toMatchObject({ hargaJual: 59000_00, priceSource: 'price_tier' })
+  })
+
+  it('does not count the line discount towards the floor', () => {
+    const result = resolveCartItem(product, baseUnit, [], 1, 60000_00, 30000_00)
+    expect(result).toMatchObject({ hargaJual: 60000_00, diskon: 30000_00 })
+  })
 })
 
 describe('checkout with discounts', () => {
@@ -429,6 +459,45 @@ describe('checkout', () => {
     expect(items[0].priceSource).toBe('price_tier')
     expect(items[0].baseQuantity).toBe(5)
     expect(items[0].baseQuantity).toBe(items[0].qty * items[0].konversi)
+  })
+
+  it('stores a note given at the till, trimmed', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      keterangan: '  pesanan antar sore  ',
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    expect(db.select().from(sales).where(eq(sales.id, result.saleId)).get()?.keterangan).toBe('pesanan antar sore')
+  })
+
+  it('stores no note when none is given, and a blank one as null', () => {
+    const db = seedDb()
+
+    const tanpa = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const kosong = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      keterangan: '   ',
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    expect(db.select().from(sales).where(eq(sales.id, tanpa.saleId)).get()?.keterangan).toBeNull()
+    expect(db.select().from(sales).where(eq(sales.id, kosong.saleId)).get()?.keterangan).toBeNull()
   })
 
   it('settles a qris sale in full, so it leaves no piutang and needs no cash tendered', () => {
@@ -2414,20 +2483,41 @@ describe('updateSale keterangan', () => {
     return { db, saleId }
   }
 
-  it('refuses to save an edit without a reason', () => {
+  it('saves an edit with no reason given, logging the edit itself all the same', () => {
     const { db, saleId } = seedBaseSale()
 
-    expect(() =>
-      updateSale(db, saleId, {
-        metodePembayaran: 'tunai',
-        namaPelanggan: null,
-        dibayar: 6000_00,
-        tanggal: '2026-08-15T09:00',
-        keterangan: '   ',
-        userId: 1,
-        items: [{ productId: 2, productUnitId: null, qty: 2 }],
-      }),
-    ).toThrow('Keterangan wajib diisi saat mengedit transaksi.')
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2026-08-15T09:00',
+      keterangan: '   ',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.keterangan).toBeNull()
+    // the log row is what must never be lost; its reason may be blank
+    const editRows = db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).all()
+    expect(editRows).toHaveLength(1)
+    expect(editRows[0].keterangan).toBe('')
+  })
+
+  it('writes the note onto the sale and copies it into the edit log', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2026-08-15T09:00',
+      keterangan: '  salah input qty  ',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.keterangan).toBe('salah input qty')
+    expect(db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).get()?.keterangan).toBe('salah input qty')
   })
 
   it('writes one log row per save, with the totals on both sides of the change', () => {

@@ -54,6 +54,8 @@ interface SaleDetailData {
   diskon: number
   total: number
   dibayar: number
+  /** free note on the sale itself, distinct from the per-edit reasons in `edits` */
+  keterangan: string | null
   createdAt: string
   kasirName: string | null
   items: SaleDetailItem[]
@@ -265,6 +267,8 @@ export function SaleDetail() {
               <Field label="Metode" value={METODE_LABEL[sale.metodePembayaran]} />
               <Field label="Kasir" value={sale.kasirName ?? '-'} />
             </div>
+
+            {sale.keterangan && <Field label="Keterangan" value={sale.keterangan} />}
 
             <ReportTable
               title="Item"

@@ -14,8 +14,10 @@ import {
   importProducts,
   importSatuan,
   importHargaBertingkat,
+  importBarcode,
   type BulkSaveRow,
   type ImportHargaBertingkatResult,
+  type ImportBarcodeResult,
 } from './inventory-bulk'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
@@ -804,5 +806,201 @@ describe('importHargaBertingkat', () => {
     ])
 
     expect(importHargaBertingkat(db, filePath)).toEqual(emptyTierResult())
+  })
+})
+
+describe('importBarcode', () => {
+  function emptyBarcodeResult(): ImportBarcodeResult {
+    return {
+      diperbarui: 0,
+      dilewatiSudahSama: 0,
+      dilewatiProdukTidakDitemukan: 0,
+      dilewatiBarcodeDipakai: 0,
+      dilewatiBarcodeTerlaluPanjang: 0,
+    }
+  }
+
+  function barcodeOf(db: ReturnType<typeof createDb>, kodeItem: string) {
+    return db.select({ barcode: products.barcode }).from(products).where(eq(products.kodeItem, kodeItem)).get()?.barcode
+  }
+
+  /** a second product with no barcode of its own, as products id 2 */
+  function seedSecondProduct(db: ReturnType<typeof createDb>) {
+    const now = new Date()
+    db.insert(products)
+      .values({
+        id: 2,
+        kodeItem: 'GLA1',
+        barcode: null,
+        namaItem: 'Gula 1kg',
+        categoryId: 1,
+        hargaPokok: 12000_00,
+        hargaJual: 14000_00,
+        stok: 5,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+  }
+
+  it('sets a barcode on a product matched by kodeItem', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBe('8991234500015')
+  })
+
+  it('accepts a plain "Barcode" header too', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Barcode'],
+      ['GLA1', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+  })
+
+  it('reads a barcode typed as a number', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', 8991234500015],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBe('8991234500015')
+  })
+
+  it('replaces a barcode the product already had', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['BRS5', '9998887776665'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+    expect(barcodeOf(db, 'BRS5')).toBe('9998887776665')
+  })
+
+  it('counts a row whose barcode is already the one on file', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['BRS5', '1234567890'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), dilewatiSudahSama: 1 })
+  })
+
+  it('leaves a blank barcode cell alone instead of clearing the product', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['BRS5', ''],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual(emptyBarcodeResult())
+    expect(barcodeOf(db, 'BRS5')).toBe('1234567890')
+  })
+
+  it('counts a kodeItem that is not in the catalog', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['TIDAKADA', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), dilewatiProdukTidakDitemukan: 1 })
+  })
+
+  it('skips a barcode already used by another product rather than failing the import', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '1234567890'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), dilewatiBarcodeDipakai: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBeNull()
+  })
+
+  it('treats a barcode claimed by an earlier row of the same file as taken', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '8991234500015'],
+      ['BRS5', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1, dilewatiBarcodeDipakai: 1 })
+    expect(barcodeOf(db, 'BRS5')).toBe('1234567890')
+  })
+
+  it('skips a barcode longer than 100 characters', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '9'.repeat(101)],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), dilewatiBarcodeTerlaluPanjang: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBeNull()
+  })
+
+  it('finds the header below a title row', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['DATA BARCODE', ''],
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+  })
+
+  it('returns all-zero counts when no header row is found', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Ini', 'Bukan', 'Header'],
+      ['a', 'b', 'c'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual(emptyBarcodeResult())
+  })
+
+  // Mirrors the real "DAFTAR ITEM" export: a title block above the header, and the two
+  // columns that matter sitting at indexes 1 and 5 with empty spacer columns between
+  // them. Roughly half of that file's rows carry no barcode at all.
+  it('reads the legacy DAFTAR ITEM layout, header buried under a title block', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const spacer = ['', '', '', '', '', '', '', '']
+    const filePath = writeTestSheet([
+      spacer,
+      ['', '', '', '', 'DAFTAR ITEM', '', '', ''],
+      ['', '', '', '', 'TOKO SEMBAKO RATNA', '', '', ''],
+      spacer,
+      ['', 'Kode Item', '', '', '', 'Kode Barcode', '', 'Nama Item'],
+      spacer,
+      ['', 'GLA1', '', '', '', '8991002105584', '', 'Gula 1kg'],
+      ['', 'BRS5', '', '', '', '', '', 'Beras 5kg'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBe('8991002105584')
+    // the blank barcode cell left the existing one untouched
+    expect(barcodeOf(db, 'BRS5')).toBe('1234567890')
   })
 })

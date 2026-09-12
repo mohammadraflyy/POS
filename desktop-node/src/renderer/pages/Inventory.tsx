@@ -119,6 +119,8 @@ export function Inventory() {
   const [importSatuanResult, setImportSatuanResult] = useState<string | null>(null)
   const [importingTier, setImportingTier] = useState(false)
   const [importTierResult, setImportTierResult] = useState<string | null>(null)
+  const [importingBarcode, setImportingBarcode] = useState(false)
+  const [importBarcodeResult, setImportBarcodeResult] = useState<string | null>(null)
 
   function runImport() {
     setImporting(true)
@@ -191,6 +193,32 @@ export function Inventory() {
         setImportTierResult(err instanceof Error ? err.message : 'Gagal mengimpor')
       })
       .finally(() => setImportingTier(false))
+  }
+
+  function runImportBarcode() {
+    setImportingBarcode(true)
+    setImportBarcodeResult(null)
+
+    window.api.inventory
+      .importBarcode()
+      .then((result) => {
+        if (result === null) {
+          return
+        }
+
+        setImportBarcodeResult(
+          `${result.diperbarui} barcode diperbarui, ` +
+            `${result.dilewatiSudahSama} sudah sama, ` +
+            `${result.dilewatiProdukTidakDitemukan} dilewati (produk tidak ditemukan), ` +
+            `${result.dilewatiBarcodeDipakai} dilewati (barcode dipakai produk lain), ` +
+            `${result.dilewatiBarcodeTerlaluPanjang} dilewati (barcode lebih dari 100 karakter).`,
+        )
+        loadPage(currentPage)
+      })
+      .catch((err) => {
+        setImportBarcodeResult(err instanceof Error ? err.message : 'Gagal mengimpor')
+      })
+      .finally(() => setImportingBarcode(false))
   }
 
   const { confirm, ConfirmDialog } = useConfirm()
@@ -579,6 +607,11 @@ export function Inventory() {
             {importTierResult}
           </p>
         )}
+        {importBarcodeResult && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {importBarcodeResult}
+          </p>
+        )}
         {errorSummary.length > 0 && (
           <div className="space-y-1 text-sm text-destructive">
             {errorSummary.map((message, i) => (
@@ -631,6 +664,9 @@ export function Inventory() {
             </Button>
             <Button type="button" variant="outline" disabled={importingTier} onClick={runImportHargaBertingkat}>
               {importingTier ? 'Mengimpor...' : 'Import Harga Bertingkat'}
+            </Button>
+            <Button type="button" variant="outline" disabled={importingBarcode} onClick={runImportBarcode}>
+              {importingBarcode ? 'Mengimpor...' : 'Import Barcode'}
             </Button>
             <Button
               type="button"

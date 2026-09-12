@@ -87,6 +87,14 @@ export function resolveCartItem(
   const priceSource: 'normal' | 'price_tier' | 'manual' =
     hargaOverride != null ? 'manual' : tier ? 'price_tier' : 'normal'
 
+  // A price set by hand may not sell the line at a loss. Only the manual price is
+  // checked: master and tier prices are the owner's own decision, and the line's
+  // discount is deliberately left out - a discount is a concession that was given,
+  // not an item that was mispriced.
+  if (hargaOverride != null && hargaOverride < productUnit.hargaPokok) {
+    throw new Error(`Harga ${product.namaItem} di bawah harga pokok satuan ${productUnit.unitCode}.`)
+  }
+
   const qtyDasar = bulatkanQty(qty * productUnit.conversionFactor)
 
   if (product.stok < qtyDasar) {
@@ -186,6 +194,8 @@ export interface CheckoutInput {
   tanggal?: string | null
   /** whole cents off the whole bill, applied after every line's own discount */
   diskon?: number | null
+  /** a free note on the sale; optional, blank is stored as null */
+  keterangan?: string | null
   items: CartItemInput[]
 }
 
@@ -301,6 +311,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         metodePembayaran: input.metodePembayaran,
         status: 'selesai',
         diskon: diskonNota,
+        keterangan: input.keterangan?.trim() || null,
         total: 0,
         dibayar: dibayarAwal,
         createdAt: now,
@@ -437,8 +448,11 @@ export interface UpdateSaleInput {
   tanggal: string
   /** whole cents off the whole bill, applied after every line's own discount */
   diskon?: number | null
-  /** why this sale was edited; required, and kept forever in `sale_edits` */
-  keterangan: string
+  /**
+   * The sale's note. Optional: it is written to `sales.keterangan` and, when it says
+   * anything, copied into the `sale_edits` row as the reason for this edit.
+   */
+  keterangan?: string | null
   /** the account doing the editing, taken from the session by the IPC layer */
   userId: number
   items: CartItemInput[]
@@ -460,10 +474,6 @@ export interface UpdateSaleInput {
 export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { total: number } {
   if (input.items.length < 1) {
     throw new Error('Keranjang tidak boleh kosong.')
-  }
-
-  if (!input.keterangan.trim()) {
-    throw new Error('Keterangan wajib diisi saat mengedit transaksi.')
   }
 
   for (const item of input.items) {
@@ -586,6 +596,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
         namaPelanggan: input.namaPelanggan,
         metodePembayaran: input.metodePembayaran,
         diskon: diskonNota,
+        keterangan: input.keterangan?.trim() || null,
         total,
         dibayar: dibayarBaru,
         createdAt: tanggalBaru,
@@ -600,7 +611,9 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
       .values({
         saleId,
         userId: input.userId,
-        keterangan: input.keterangan.trim(),
+        // the note doubles as the edit's reason; an empty one still logs the edit itself,
+        // which is the part that must never be lost
+        keterangan: input.keterangan?.trim() ?? '',
         totalSebelum,
         totalSesudah: total,
         createdAt: now,

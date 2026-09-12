@@ -47,6 +47,8 @@ interface CheckoutRendererInput {
   tanggal?: string | null
   /** rupiah off the whole bill */
   diskon?: number | null
+  /** free note on the sale; optional from the first ring-up */
+  keterangan?: string | null
   items: { productId: number; productUnitId: number | null; qty: number; diskon?: number | null }[]
 }
 
@@ -115,6 +117,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         satuan: units.code,
         konversi: productUnits.conversionFactor,
         hargaJual: productUnits.hargaJual,
+        hargaPokok: productUnits.hargaPokok,
         isBaseUnit: productUnits.isBaseUnit,
       })
       .from(productUnits)
@@ -133,6 +136,9 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         namaItem: product.namaItem,
         satuan: baseUnit?.satuan ?? '',
         hargaJual: toRupiah(product.hargaJual),
+        // the floor a hand-set price may not go under; the base row mirrors
+        // products.hargaPokok, so either source gives the same number
+        hargaPokok: toRupiah(baseUnit?.hargaPokok ?? product.hargaPokok),
         stok: product.stok,
         // the cart says "base unit" as productUnitId: null, but tiers name real
         // product_units rows, so the renderer needs the base row's id to match them
@@ -147,6 +153,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
             satuan: unit.satuan,
             konversi: unit.konversi,
             hargaJual: toRupiah(unit.hargaJual),
+            hargaPokok: toRupiah(unit.hargaPokok),
           })),
         priceTiers: tierRows
           .filter((tier) => tier.productId === product.id)
@@ -207,6 +214,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       userId: user.id,
       tanggal: input.tanggal ?? null,
       diskon: input.diskon == null ? null : toCents(input.diskon),
+      keterangan: input.keterangan ?? null,
       items: input.items.map((item) => ({
         productId: item.productId,
         productUnitId: item.productUnitId,
@@ -252,6 +260,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       status: sale.status,
       diskon: toRupiah(sale.diskon),
       dibayar: toRupiah(sale.dibayar),
+      keterangan: sale.keterangan,
       createdAt: sale.createdAt.toISOString(),
       items: itemRows.map((item) => ({
         productId: item.productId,
@@ -275,7 +284,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         dibayar: number | null
         tanggal: string
         diskon?: number | null
-        keterangan: string
+        keterangan?: string | null
         items: {
           productId: number
           productUnitId: number | null
@@ -293,7 +302,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         dibayar: input.dibayar === null ? null : toCents(input.dibayar),
         tanggal: input.tanggal,
         diskon: input.diskon == null ? null : toCents(input.diskon),
-        keterangan: input.keterangan,
+        keterangan: input.keterangan ?? null,
         userId: admin.id,
         items: input.items.map((item) => ({
           productId: item.productId,
@@ -515,6 +524,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       diskon: toRupiah(sale.diskon),
       total: toRupiah(sale.total),
       dibayar: toRupiah(sale.dibayar),
+      keterangan: sale.keterangan,
       createdAt: sale.createdAt.toISOString(),
       kasirName: kasir?.name ?? null,
       items: itemRows.map((item) => ({

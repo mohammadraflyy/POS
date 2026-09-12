@@ -43,7 +43,7 @@ export interface PaymentDialogProps {
    * non-selesai status). Ignored outside edit mode - a new sale is always ready.
    */
   editReady: boolean
-  /** only used in edit mode: why this sale is being changed */
+  /** the sale's own note, optional in every mode; in edit mode it doubles as the reason */
   keterangan: string
   setKeterangan: (value: string) => void
 }
@@ -101,10 +101,6 @@ export function PaymentDialog({
 
   function runAction(action: Action) {
     if (action === 'simpan' && editMode && !editReady) {
-      return
-    }
-
-    if (action === 'simpan' && editMode && !keterangan.trim()) {
       return
     }
 
@@ -172,7 +168,13 @@ export function PaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[46rem]">
+      {/*
+        The dialog is capped at the viewport and laid out as header + scrolling body +
+        pinned actions. Without the cap it is centred by translate(-50%), so a form
+        taller than the window spills off *both* edges at once and the Simpan button
+        ends up below the screen with no way to scroll to it.
+      */}
+      <DialogContent className="flex max-h-[92svh] flex-col gap-3 overflow-hidden p-4 sm:max-w-[34rem]">
         <DialogHeader>
           <DialogTitle>Pembayaran</DialogTitle>
         </DialogHeader>
@@ -182,190 +184,200 @@ export function PaymentDialog({
             runAction('simpan')
           }}
           onKeyDown={handleShortcut}
-          className="space-y-5"
+          className="flex min-h-0 flex-1 flex-col gap-3"
         >
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant={metode === 'tunai' ? 'default' : 'outline'}
-              disabled={processing}
-              onClick={() => setMetode('tunai')}
-            >
-              <Banknote className="size-4" />
-              Tunai
-              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+T</kbd>
-            </Button>
-            <Button
-              type="button"
-              variant={metode === 'bon' ? 'default' : 'outline'}
-              disabled={processing}
-              onClick={() => setMetode('bon')}
-            >
-              <HandCoins className="size-4" />
-              Bon
-              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+B</kbd>
-            </Button>
-            {/* both settle the exact amount, so there is no cash field and no change */}
-            <Button
-              type="button"
-              variant={metode === 'qris' ? 'default' : 'outline'}
-              disabled={processing}
-              onClick={() => setMetode('qris')}
-            >
-              <QrCode className="size-4" />
-              QRIS
-              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+Q</kbd>
-            </Button>
-            <Button
-              type="button"
-              variant={metode === 'transfer' ? 'default' : 'outline'}
-              disabled={processing}
-              onClick={() => setMetode('transfer')}
-            >
-              <ArrowLeftRight className="size-4" />
-              Transfer
-              <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+R</kbd>
-            </Button>
-          </div>
+          <div className="-mr-1 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={metode === 'tunai' ? 'default' : 'outline'}
+                disabled={processing}
+                onClick={() => setMetode('tunai')}
+              >
+                <Banknote className="size-4" />
+                Tunai
+                <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+T</kbd>
+              </Button>
+              <Button
+                type="button"
+                variant={metode === 'bon' ? 'default' : 'outline'}
+                disabled={processing}
+                onClick={() => setMetode('bon')}
+              >
+                <HandCoins className="size-4" />
+                Bon
+                <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+B</kbd>
+              </Button>
+              {/* both settle the exact amount, so there is no cash field and no change */}
+              <Button
+                type="button"
+                variant={metode === 'qris' ? 'default' : 'outline'}
+                disabled={processing}
+                onClick={() => setMetode('qris')}
+              >
+                <QrCode className="size-4" />
+                QRIS
+                <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+Q</kbd>
+              </Button>
+              <Button
+                type="button"
+                variant={metode === 'transfer' ? 'default' : 'outline'}
+                disabled={processing}
+                onClick={() => setMetode('transfer')}
+              >
+                <ArrowLeftRight className="size-4" />
+                Transfer
+                <kbd className="ml-1 rounded border border-current/30 px-1 text-[10px] opacity-70">Alt+R</kbd>
+              </Button>
+            </div>
 
-          {/* Read-only: the discount is set on the Penjualan page, where the cart it
+            {/* Read-only: the discount is set on the Penjualan page, where the cart it
               applies to is visible. Shown here so a mistyped discount cannot slip past
               at the one point where the money is actually committed. */}
-          {(diskonItem > 0 || diskonNota > 0) && (
-            <div className="space-y-1 rounded-xl border px-5 py-3 text-sm tabular-nums">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span>Subtotal</span>
-                <span>{formatRupiah(subtotal)}</span>
+            {(diskonItem > 0 || diskonNota > 0) && (
+              <div className="space-y-0.5 rounded-xl border px-4 py-2 text-sm tabular-nums">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span>{formatRupiah(subtotal)}</span>
+                </div>
+                {diskonItem > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Diskon item</span>
+                    <span className="font-semibold text-destructive">-{formatRupiah(diskonItem)}</span>
+                  </div>
+                )}
+                {diskonNota > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Diskon nota</span>
+                    <span className="font-semibold text-destructive">-{formatRupiah(diskonNota)}</span>
+                  </div>
+                )}
               </div>
-              {diskonItem > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Diskon item</span>
-                  <span className="font-semibold text-destructive">-{formatRupiah(diskonItem)}</span>
-                </div>
-              )}
-              {diskonNota > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Diskon nota</span>
-                  <span className="font-semibold text-destructive">-{formatRupiah(diskonNota)}</span>
-                </div>
-              )}
+            )}
+
+            <div className="flex items-center justify-between rounded-xl bg-foreground px-4 py-2.5">
+              <span className="text-sm text-background/60">Total Tagihan</span>
+              <span className="text-3xl font-bold text-background tabular-nums">{formatRupiah(total)}</span>
             </div>
-          )}
 
-          <div className="flex items-center justify-between rounded-xl bg-foreground px-5 py-4">
-            <span className="text-sm text-background/60">Total Tagihan</span>
-            <span className="text-4xl font-bold text-background tabular-nums">{formatRupiah(total)}</span>
-          </div>
+            {(metode === 'tunai' || (editMode && metode === 'bon')) && (
+              <div className="grid gap-2">
+                <Label htmlFor="dibayar">{metode === 'tunai' ? 'Uang Tunai' : 'Sudah Dibayar'}</Label>
+                <Input
+                  id="dibayar"
+                  autoFocus
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={dibayar}
+                  disabled={processing}
+                  onChange={(e) => setDibayar(e.target.value)}
+                  className="h-12 text-right text-xl font-semibold tabular-nums"
+                />
+              </div>
+            )}
 
-          {(metode === 'tunai' || (editMode && metode === 'bon')) && (
-            <div className="grid gap-2">
-              <Label htmlFor="dibayar">{metode === 'tunai' ? 'Uang Tunai' : 'Sudah Dibayar'}</Label>
-              <Input
-                id="dibayar"
-                autoFocus
-                inputMode="numeric"
-                placeholder="0"
-                value={dibayar}
-                disabled={processing}
-                onChange={(e) => setDibayar(e.target.value)}
-                className="h-16 text-right text-2xl font-semibold tabular-nums"
-              />
-            </div>
-          )}
-
-          {/* the name is picked on the kasir page - shown here only so the
+            {/* the name is picked on the kasir page - shown here only so the
               cashier can see (and fix) who the sale is filed under */}
-          <button
-            type="button"
-            disabled={processing}
-            onClick={onEditCustomer}
-            className="flex w-full items-center justify-between rounded-xl border px-5 py-3.5 text-left hover:bg-muted/50 disabled:opacity-50"
-          >
-            <span className="text-sm text-muted-foreground">Pelanggan</span>
-            <span className="flex items-center gap-2 text-lg font-semibold">
-              {namaPelanggan.trim() || <span className="text-destructive">Belum dipilih</span>}
-              <Pencil className="size-3.5 text-muted-foreground" />
-            </span>
-          </button>
+            <button
+              type="button"
+              disabled={processing}
+              onClick={onEditCustomer}
+              className="flex w-full items-center justify-between rounded-xl border px-4 py-2.5 text-left hover:bg-muted/50 disabled:opacity-50"
+            >
+              <span className="text-sm text-muted-foreground">Pelanggan</span>
+              <span className="flex items-center gap-2 font-semibold">
+                {namaPelanggan.trim() || <span className="text-destructive">Belum dipilih</span>}
+                <Pencil className="size-3.5 text-muted-foreground" />
+              </span>
+            </button>
 
-          {/* The time is set on the Penjualan page, not here - one field, one
+            {/* The time is set on the Penjualan page, not here - one field, one
               place. It is still shown at the commit point so a mistyped date
               cannot slip past unnoticed. */}
-          <div className="flex items-center justify-between rounded-xl border px-5 py-3.5">
-            <span className="text-sm text-muted-foreground">Tanggal &amp; Jam</span>
-            <span className="font-medium tabular-nums">{new Date(tanggal).toLocaleString('id-ID')}</span>
-          </div>
-
-          {bonNeedsCustomer && (
-            <p role="alert" className="text-sm text-destructive">
-              Transaksi bon harus atas nama pelanggan, bukan {DEFAULT_PELANGGAN}. Pilih pelanggan dulu.
-            </p>
-          )}
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between rounded-xl bg-green-500/15 px-5 py-3.5 dark:bg-green-500/20">
-              <span className="text-sm font-semibold text-green-700 dark:text-green-400">
-                {metode === 'bon' ? 'Bon' : metode === 'qris' ? 'QRIS' : metode === 'transfer' ? 'Transfer' : 'Dibayar'}
-              </span>
-              <span className="text-2xl font-bold text-green-700 tabular-nums dark:text-green-400">
-                {formatRupiah(totalBayar)}
-              </span>
+            <div className="flex items-center justify-between rounded-xl border px-4 py-2.5">
+              <span className="text-sm text-muted-foreground">Tanggal &amp; Jam</span>
+              <span className="font-medium tabular-nums">{new Date(tanggal).toLocaleString('id-ID')}</span>
             </div>
 
-            <div
-              className={cn(
-                'flex items-center justify-between rounded-xl px-5 py-3.5',
-                isLunas ? 'bg-green-500/15 dark:bg-green-500/20' : 'bg-orange-500/15 dark:bg-orange-500/20',
-              )}
-            >
-              <span
-                className={cn(
-                  'text-sm font-semibold',
-                  isLunas ? 'text-green-700 dark:text-green-400' : 'text-orange-700 dark:text-orange-400',
-                )}
-              >
-                {isLunas ? 'Kembalian' : 'Kekurangan'}
-              </span>
-              <span
-                className={cn(
-                  'text-2xl font-bold tabular-nums',
-                  isLunas ? 'text-green-700 dark:text-green-400' : 'text-orange-700 dark:text-orange-400',
-                )}
-              >
-                {formatRupiah(Math.abs(selisih))}
-              </span>
-            </div>
-          </div>
+            {bonNeedsCustomer && (
+              <p role="alert" className="text-sm text-destructive">
+                Transaksi bon harus atas nama pelanggan, bukan {DEFAULT_PELANGGAN}. Pilih pelanggan dulu.
+              </p>
+            )}
 
-          {editMode && (
-            <div className="grid gap-2">
-              <Label htmlFor="keterangan-edit">Keterangan perubahan</Label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-xl bg-green-500/15 px-4 py-2.5 dark:bg-green-500/20">
+                <span className="text-sm font-semibold text-green-700 dark:text-green-400">
+                  {metode === 'bon'
+                    ? 'Bon'
+                    : metode === 'qris'
+                      ? 'QRIS'
+                      : metode === 'transfer'
+                        ? 'Transfer'
+                        : 'Dibayar'}
+                </span>
+                <span className="text-xl font-bold text-green-700 tabular-nums dark:text-green-400">
+                  {formatRupiah(totalBayar)}
+                </span>
+              </div>
+
+              <div
+                className={cn(
+                  'flex items-center justify-between rounded-xl px-4 py-2.5',
+                  isLunas ? 'bg-green-500/15 dark:bg-green-500/20' : 'bg-orange-500/15 dark:bg-orange-500/20',
+                )}
+              >
+                <span
+                  className={cn(
+                    'text-sm font-semibold',
+                    isLunas ? 'text-green-700 dark:text-green-400' : 'text-orange-700 dark:text-orange-400',
+                  )}
+                >
+                  {isLunas ? 'Kembalian' : 'Kekurangan'}
+                </span>
+                <span
+                  className={cn(
+                    'text-xl font-bold tabular-nums',
+                    isLunas ? 'text-green-700 dark:text-green-400' : 'text-orange-700 dark:text-orange-400',
+                  )}
+                >
+                  {formatRupiah(Math.abs(selisih))}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="keterangan-nota">
+                Keterangan <span className="font-normal text-muted-foreground">(opsional)</span>
+              </Label>
               <textarea
-                id="keterangan-edit"
+                id="keterangan-nota"
                 value={keterangan}
                 disabled={processing}
                 onChange={(e) => setKeterangan(e.target.value)}
-                placeholder="Contoh: salah input qty, pelanggan tukar barang"
+                placeholder={
+                  editMode
+                    ? 'Contoh: salah input qty, pelanggan tukar barang'
+                    : 'Contoh: pesanan antar, titipan Bu Rina'
+                }
                 rows={2}
-                className="w-full rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="w-full resize-none rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
-              <p className="text-xs text-muted-foreground">
-                Wajib diisi. Tersimpan permanen di riwayat transaksi.
-              </p>
             </div>
-          )}
 
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+          </div>
 
+          {/* outside the scroll area: the two actions stay reachable however short the window is */}
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="submit"
-                disabled={processing || bonNeedsCustomer || (editMode && (!editReady || !keterangan.trim()))}
+                disabled={processing || bonNeedsCustomer || (editMode && !editReady)}
                 className={cn(
                   selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
                 )}

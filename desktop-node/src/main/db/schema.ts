@@ -172,6 +172,13 @@ export const sales = sqliteTable('sales', {
   diskon: integer('diskon').notNull().default(0),
   total: integer('total').notNull().default(0),
   dibayar: integer('dibayar').notNull().default(0),
+  /**
+   * A free note the cashier may attach to the sale, from the very first ring-up onwards.
+   * Optional, and overwritten whenever the sale is edited - it describes the sale as it
+   * stands now ("pesanan antar", "titipan Bu Rina"), not the history of its edits, which
+   * is what {@link saleEdits} is for.
+   */
+  keterangan: text('keterangan'),
   ...timestamps(),
 })
 
@@ -212,6 +219,12 @@ export const saleEdits = sqliteTable('sale_edits', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   saleId: integer('sale_id').notNull().references(() => sales.id, { onDelete: 'cascade' }),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  /**
+   * Why the sale was edited. No longer demanded of the cashier, so this is an empty
+   * string when none was given - the column stays NOT NULL because relaxing it in SQLite
+   * means rebuilding the table, and a rebuild is how foreign keys quietly lose their
+   * ON DELETE actions. Read it as "reason, if the cashier bothered".
+   */
   keterangan: text('keterangan').notNull(),
   /** whole cents, as `sales.total` is */
   totalSebelum: integer('total_sebelum').notNull(),

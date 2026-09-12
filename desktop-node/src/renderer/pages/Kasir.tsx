@@ -25,12 +25,14 @@ import {
   cartFromSale,
   changeUnit,
   expandUnitResults,
+  isBelowHargaPokok,
   lineGross,
   lineSubtotal,
   matchingProducts,
   parseDiskon,
   restoreCart,
   toStoredCart,
+  unitHargaPokok,
   type CartLine,
   type EditSaleItem,
   type Product,
@@ -51,6 +53,8 @@ interface KasirDraft {
   jumlah: string
   /** kept as typed ("5000" or "10%") so the cashier sees back what they entered */
   diskonNota: string
+  /** free note on the sale, typed before it is ever saved */
+  keterangan: string
 }
 
 const EMPTY_DRAFT: KasirDraft = {
@@ -60,6 +64,7 @@ const EMPTY_DRAFT: KasirDraft = {
   dibayar: '',
   jumlah: '1.00',
   diskonNota: '',
+  keterangan: '',
 }
 
 /** current local time in the `YYYY-MM-DDTHH:mm` shape a datetime-local input wants */
@@ -100,6 +105,7 @@ function readStoredDraft(): KasirDraft {
       dibayar: typeof parsed.dibayar === 'string' ? parsed.dibayar : '',
       jumlah: typeof parsed.jumlah === 'string' ? parsed.jumlah : EMPTY_DRAFT.jumlah,
       diskonNota: typeof parsed.diskonNota === 'string' ? parsed.diskonNota : '',
+      keterangan: typeof parsed.keterangan === 'string' ? parsed.keterangan : '',
     }
   } catch {
     return EMPTY_DRAFT
@@ -125,7 +131,7 @@ export function Kasir() {
   const [diskonNota, setDiskonNota] = useState(initialDraft.diskonNota)
   // edit mode only, and deliberately never persisted to the draft - a reason belongs to
   // the one save it explains
-  const [keteranganEdit, setKeteranganEdit] = useState('')
+  const [keterangan, setKeterangan] = useState(initialDraft.keterangan)
   const [tanggal, setTanggal] = useState(nowForInput())
   // Set once the cashier types a time of their own, so the staleness refresh
   // below stops overwriting it. Without this the field cannot really be edited:
@@ -194,6 +200,7 @@ export function Kasir() {
         // comes back as the nominal that was charged, not as the "10%" that produced it -
         // the percentage is not stored, and re-deriving it would change the sale's total
         setDiskonNota(sale.diskon > 0 ? String(sale.diskon) : '')
+        setKeterangan(sale.keterangan ?? '')
         setTanggal(
           `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}T${pad(created.getHours())}:${pad(created.getMinutes())}`,
         )
@@ -222,10 +229,18 @@ export function Kasir() {
       return
     }
 
-    const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah, diskonNota }
+    const draft: KasirDraft = {
+      cart: toStoredCart(cart),
+      metode,
+      namaPelanggan,
+      dibayar,
+      jumlah,
+      diskonNota,
+      keterangan,
+    }
 
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
-  }, [cart, metode, namaPelanggan, dibayar, jumlah, diskonNota, editSaleId])
+  }, [cart, metode, namaPelanggan, dibayar, jumlah, diskonNota, keterangan, editSaleId])
 
   function refreshProducts() {
     window.api.kasir
@@ -504,6 +519,8 @@ export function Kasir() {
     setDibayar('')
     // a discount belongs to the sale that earned it, never to the next customer
     setDiskonNota('')
+    // likewise the note - it described that sale, not the next one
+    setKeterangan('')
     setTanggal(nowForInput())
     // the next sale starts on the clock again, not on the last one's time
     setTanggalDirty(false)
@@ -530,6 +547,7 @@ export function Kasir() {
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
         tanggal,
         diskon: diskonNotaValue,
+        keterangan: keterangan.trim() || null,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
@@ -580,6 +598,18 @@ export function Kasir() {
       return
     }
 
+    // updateSale rejects a hand-set price below cost anyway; catching it here names the
+    // line instead of failing the whole save on a message the cashier has to decode
+    const rugi = cart.find(isBelowHargaPokok)
+
+    if (rugi) {
+      setCheckoutError(
+        `Harga ${rugi.product.namaItem} (${rugi.satuan}) di bawah harga pokok ${formatRupiah(unitHargaPokok(rugi))}.`,
+      )
+
+      return
+    }
+
     setProcessing(true)
     setCheckoutError(null)
 
@@ -595,7 +625,7 @@ export function Kasir() {
         dibayar: metode === 'qris' || metode === 'transfer' ? null : Number(dibayar || 0),
         tanggal,
         diskon: diskonNotaValue,
-        keterangan: keteranganEdit,
+        keterangan: keterangan.trim() || null,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
@@ -919,8 +949,8 @@ export function Kasir() {
         onSubmit={editSaleId === null ? handleCheckout : handleSaveEdit}
         editMode={editSaleId !== null}
         editReady={editReady}
-        keterangan={keteranganEdit}
-        setKeterangan={setKeteranganEdit}
+        keterangan={keterangan}
+        setKeterangan={setKeterangan}
       />
 
       <CustomerPicker

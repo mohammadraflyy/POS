@@ -28,9 +28,10 @@ declare global {
             namaItem: string
             satuan: string
             hargaJual: number
+            hargaPokok: number
             stok: number
             baseProductUnitId: number
-            productUnits: { id: number; satuan: string; konversi: number; hargaJual: number }[]
+            productUnits: { id: number; satuan: string; konversi: number; hargaJual: number; hargaPokok: number }[]
             priceTiers: { productUnitId: number; minQty: number; maxQty: number | null; hargaJual: number }[]
           }[]
         >
@@ -52,6 +53,7 @@ declare global {
           dibayar: number | null
           tanggal?: string | null
           diskon?: number | null
+          keterangan?: string | null
           items: { productId: number; productUnitId: number | null; qty: number; diskon?: number | null }[]
         }) => Promise<{
           saleId: number
@@ -80,6 +82,7 @@ declare global {
           status: 'selesai' | 'dibatalkan'
           diskon: number
           dibayar: number
+          keterangan: string | null
           createdAt: string
           items: {
             productId: number
@@ -97,7 +100,7 @@ declare global {
           dibayar: number | null
           tanggal: string
           diskon?: number | null
-          keterangan: string
+          keterangan?: string | null
           items: {
             productId: number
             productUnitId: number | null
@@ -147,6 +150,7 @@ declare global {
           diskon: number
           total: number
           dibayar: number
+          keterangan: string | null
           createdAt: string
           kasirName: string | null
           items: {
@@ -337,6 +341,13 @@ declare global {
           tierDitambahkan: number
           dilewatiProdukTidakDitemukan: number
           dilewatiSatuanTidakDitemukan: number
+        } | null>
+        importBarcode: () => Promise<{
+          diperbarui: number
+          dilewatiSudahSama: number
+          dilewatiProdukTidakDitemukan: number
+          dilewatiBarcodeDipakai: number
+          dilewatiBarcodeTerlaluPanjang: number
         } | null>
       }
       supplier: {

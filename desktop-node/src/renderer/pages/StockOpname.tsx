@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
-import { useStickyState } from '@/hooks/use-sticky-state'
+import { useDraftState, useStickyState } from '@/hooks/use-sticky-state'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { formatQty, parseQty } from '@/lib/utils'
@@ -43,6 +43,17 @@ interface DraftRow {
   stokSistem: number
   stokFisik: string
   alasan: string
+}
+
+/** one product's typed count, kept between visits until the row is saved */
+interface CountDraft {
+  stokFisik: string
+  alasan: string
+}
+
+/** true once the row says something the seeded default did not */
+function isCounted(row: DraftRow): boolean {
+  return row.stokFisik !== formatQty(row.stokSistem) || row.alasan.trim() !== ''
 }
 
 function toDraftRow(p: ProductOpnameRowDTO): DraftRow {
@@ -85,6 +96,16 @@ export function StockOpname() {
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
+  /**
+   * Counts already typed, keyed by productId, surviving a restart - a stocktake takes an
+   * hour, and losing it means walking the shelves again.
+   *
+   * Only counts somebody actually entered go in here. `stokFisik` starts out equal to the
+   * system stock, so storing every row would restore yesterday's system figure today and
+   * pass it off as a count that was made. `stokSistem` is never stored either; it is
+   * always read fresh, because a stale one becomes a wrong shrinkage figure.
+   */
+  const [counts, setCounts] = useDraftState<Record<string, CountDraft>>('opname.counts', {})
 
   useEffect(() => {
     window.api.stockOpname.listCategories().then(setCategories)
@@ -95,6 +116,32 @@ export function StockOpname() {
     runSearch(search, selectedCategoryIds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /**
+   * Mirrors what is on screen into the stored counts: an entered count is written, and a
+   * row that is back to matching the system stock - which is what a successful save leaves
+   * behind - drops out again. Only products currently listed are touched, so counts made
+   * under another category filter survive.
+   */
+  useEffect(() => {
+    if (rows.length === 0) {
+      return
+    }
+
+    setCounts((prev) => {
+      const next = { ...prev }
+
+      for (const row of rows) {
+        if (isCounted(row)) {
+          next[String(row.productId)] = { stokFisik: row.stokFisik, alasan: row.alasan }
+        } else {
+          delete next[String(row.productId)]
+        }
+      }
+
+      return next
+    })
+  }, [rows, setCounts])
 
   function runSearch(q: string, categoryIds: number[]) {
     setRowErrors({})
@@ -107,7 +154,15 @@ export function StockOpname() {
 
     setHasSearched(true)
     window.api.stockOpname.searchProducts({ q, categoryIds }).then((results) => {
-      setRows(results.map(toDraftRow))
+      // fresh rows from the database, with any count already typed laid back on top
+      setRows(
+        results.map((p) => {
+          const row = toDraftRow(p)
+          const typed = counts[String(p.id)]
+
+          return typed ? { ...row, stokFisik: typed.stokFisik, alasan: typed.alasan } : row
+        }),
+      )
     })
   }
 

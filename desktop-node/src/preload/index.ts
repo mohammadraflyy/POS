@@ -129,6 +129,7 @@ const api = {
     importProducts: () => invoke('inventory:importProducts'),
     importSatuan: () => invoke('inventory:importSatuan'),
     importHargaBertingkat: () => invoke('inventory:importHargaBertingkat'),
+    importBarcode: () => invoke('inventory:importBarcode'),
   },
   supplier: {
     listSuppliers: (input: { search?: string; page: number; pageSize?: number }) =>

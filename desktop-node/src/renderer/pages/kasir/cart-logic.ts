@@ -3,6 +3,8 @@ export interface ProductUnitOption {
   satuan: string
   konversi: number
   hargaJual: number
+  /** this unit's own cost - the floor a hand-set price may not go under */
+  hargaPokok: number
 }
 
 export interface PriceTier {
@@ -21,6 +23,8 @@ export interface Product {
   namaItem: string
   satuan: string
   hargaJual: number
+  /** the base unit's cost, mirrored from the base product_units row */
+  hargaPokok: number
   stok: number
   /** the base unit's product_units.id - a cart line's null productUnitId resolves to this */
   baseProductUnitId: number
@@ -98,6 +102,25 @@ export function unitPrice(line: CartLine): number {
       : (line.product.productUnits.find((u) => u.id === line.productUnitId)?.hargaJual ?? line.product.hargaJual)
 
   return priceForQty(tiersForLine(line), normalPrice, line.qty)
+}
+
+/** the cost of the unit this line sells - what a hand-set price is floored at */
+export function unitHargaPokok(line: CartLine): number {
+  if (line.productUnitId === null) {
+    return line.product.hargaPokok
+  }
+
+  return line.product.productUnits.find((u) => u.id === line.productUnitId)?.hargaPokok ?? line.product.hargaPokok
+}
+
+/**
+ * A hand-set price that sells this line at a loss - main/kasir.ts rejects it on save,
+ * so this is the till's own warning before the cashier gets that far. Mirrors that
+ * guard exactly: only `hargaOverride` is checked, never the discount, and never a
+ * master or tier price the owner set on purpose.
+ */
+export function isBelowHargaPokok(line: CartLine): boolean {
+  return line.hargaOverride != null && line.hargaOverride < unitHargaPokok(line)
 }
 
 /** what the line is worth before its own discount */
