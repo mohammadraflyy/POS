@@ -28,9 +28,10 @@ declare global {
             namaItem: string
             satuan: string
             hargaJual: number
+            hargaPokok: number
             stok: number
             baseProductUnitId: number
-            productUnits: { id: number; satuan: string; konversi: number; hargaJual: number }[]
+            productUnits: { id: number; satuan: string; konversi: number; hargaJual: number; hargaPokok: number }[]
             priceTiers: { productUnitId: number; minQty: number; maxQty: number | null; hargaJual: number }[]
           }[]
         >
@@ -51,16 +52,26 @@ declare global {
           namaPelanggan: string | null
           dibayar: number | null
           tanggal?: string | null
-          items: { productId: number; productUnitId: number | null; qty: number }[]
+          diskon?: number | null
+          keterangan?: string | null
+          items: { productId: number; productUnitId: number | null; qty: number; diskon?: number | null }[]
         }) => Promise<{
           saleId: number
+          diskon: number
           total: number
           dibayar: number
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           namaPelanggan: string | null
           createdAt: string
           kasirName: string | null
-          items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; subtotal: number }[]
+          items: {
+            namaItem: string
+            qty: number
+            satuan: string | null
+            hargaJual: number
+            diskon: number
+            subtotal: number
+          }[]
         }>
         cancelSale: (saleId: number) => Promise<void>
         deleteSale: (saleId: number) => Promise<void>
@@ -69,13 +80,16 @@ declare global {
           namaPelanggan: string | null
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           status: 'selesai' | 'dibatalkan'
+          diskon: number
           dibayar: number
+          keterangan: string | null
           createdAt: string
           items: {
             productId: number
             productUnitId: number | null
             qty: number
             hargaJual: number
+            diskon: number
             priceSource: 'normal' | 'price_tier' | 'manual'
           }[]
         }>
@@ -85,7 +99,15 @@ declare global {
           namaPelanggan: string | null
           dibayar: number | null
           tanggal: string
-          items: { productId: number; productUnitId: number | null; qty: number; hargaJual?: number | null }[]
+          diskon?: number | null
+          keterangan?: string | null
+          items: {
+            productId: number
+            productUnitId: number | null
+            qty: number
+            hargaJual?: number | null
+            diskon?: number | null
+          }[]
         }) => Promise<{ total: number }>
         getStoreSettings: () => Promise<{
           namaToko: string
@@ -125,8 +147,10 @@ declare global {
           namaPelanggan: string | null
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           status: 'selesai' | 'dibatalkan'
+          diskon: number
           total: number
           dibayar: number
+          keterangan: string | null
           createdAt: string
           kasirName: string | null
           items: {
@@ -137,10 +161,19 @@ declare global {
             satuan: string | null
             namaItem: string
             hargaJual: number
+            diskon: number
             subtotal: number
             priceSource: 'normal' | 'price_tier' | 'manual'
           }[]
           bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
+          edits: {
+            id: number
+            keterangan: string
+            kasirName: string | null
+            totalSebelum: number
+            totalSesudah: number
+            createdAt: string
+          }[]
         }>
         recordBonPayment: (input: { saleId: number; jumlah: number; keterangan: string | null }) => Promise<void>
         addItemsToSale: (input: {
@@ -303,6 +336,19 @@ declare global {
           dilewatiSatuanTidakCocok: number
           dilewatiRantaiTidakValid: number
         } | null>
+        importHargaBertingkat: () => Promise<{
+          satuanDiperbarui: number
+          tierDitambahkan: number
+          dilewatiProdukTidakDitemukan: number
+          dilewatiSatuanTidakDitemukan: number
+        } | null>
+        importBarcode: () => Promise<{
+          diperbarui: number
+          dilewatiSudahSama: number
+          dilewatiProdukTidakDitemukan: number
+          dilewatiBarcodeDipakai: number
+          dilewatiBarcodeTerlaluPanjang: number
+        } | null>
       }
       supplier: {
         listSuppliers: (input: { search?: string; page: number; pageSize?: number }) => Promise<{
@@ -330,6 +376,32 @@ declare global {
         ) => Promise<void>
         deleteSupplier: (id: number) => Promise<void>
       }
+      customer: {
+        listCustomers: (input: { search?: string; page: number; pageSize?: number }) => Promise<{
+          data: {
+            id: number
+            nama: string
+            telepon: string | null
+            alamat: string | null
+            keterangan: string | null
+            saleCount: number
+          }[]
+          currentPage: number
+          lastPage: number
+          total: number
+        }>
+        createCustomer: (input: {
+          nama: string
+          telepon: string | null
+          alamat: string | null
+          keterangan: string | null
+        }) => Promise<number>
+        updateCustomer: (
+          id: number,
+          input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null },
+        ) => Promise<void>
+        deleteCustomer: (id: number) => Promise<void>
+      }
       purchase: {
         recordPurchase: (input: {
           supplierId: number | null
@@ -338,6 +410,36 @@ declare global {
           items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
           dibayar?: number | null
         }) => Promise<{ purchaseId: number }>
+        updatePurchase: (
+          purchaseId: number,
+          input: {
+            supplierId: number | null
+            tanggal: string
+            catatan: string | null
+            items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+            dibayar?: number | null
+          },
+        ) => Promise<{ total: number }>
+        deletePurchase: (purchaseId: number) => Promise<void>
+        getPurchaseDetail: (purchaseId: number) => Promise<{
+          id: number
+          supplierId: number | null
+          tanggal: string
+          catatan: string | null
+          total: number
+          uangMuka: number
+          cicilan: number
+          items: {
+            productId: number
+            kodeItem: string
+            namaItem: string
+            baseSatuan: string
+            units: { id: number; satuan: string; konversi: number }[]
+            productUnitId: number | null
+            qty: number
+            hargaBeli: number
+          }[]
+        }>
         listPurchases: (input: { page: number; pageSize?: number }) => Promise<{
           data: {
             id: number

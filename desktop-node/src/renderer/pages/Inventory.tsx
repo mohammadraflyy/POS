@@ -15,6 +15,8 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { useStickyState } from '@/hooks/use-sticky-state'
+import { formatQty } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -72,7 +74,8 @@ export function Inventory() {
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
-  const [search, setSearch] = useState('')
+  // sticky so returning from the mass-input/detail editors keeps the filter
+  const [search, setSearch] = useStickyState('inventory.search', '')
   const [scanMiss, setScanMiss] = useState<string | null>(null)
   // Bumped at the start of every submitSearch call so a slower, earlier lookup
   // can tell it's been superseded and skip applying its (stale) result.
@@ -104,7 +107,7 @@ export function Inventory() {
   const [currentPage, setCurrentPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
-  const [pageSize, setPageSize] = useState('25')
+  const [pageSize, setPageSize] = useStickyState('inventory.pageSize', '25')
 
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteQuery, setPaletteQuery] = useState('')
@@ -114,6 +117,10 @@ export function Inventory() {
   const [importResult, setImportResult] = useState<string | null>(null)
   const [importingSatuan, setImportingSatuan] = useState(false)
   const [importSatuanResult, setImportSatuanResult] = useState<string | null>(null)
+  const [importingTier, setImportingTier] = useState(false)
+  const [importTierResult, setImportTierResult] = useState<string | null>(null)
+  const [importingBarcode, setImportingBarcode] = useState(false)
+  const [importBarcodeResult, setImportBarcodeResult] = useState<string | null>(null)
 
   function runImport() {
     setImporting(true)
@@ -160,6 +167,58 @@ export function Inventory() {
         setImportSatuanResult(err instanceof Error ? err.message : 'Gagal mengimpor')
       })
       .finally(() => setImportingSatuan(false))
+  }
+
+  function runImportHargaBertingkat() {
+    setImportingTier(true)
+    setImportTierResult(null)
+
+    window.api.inventory
+      .importHargaBertingkat()
+      .then((result) => {
+        if (result === null) {
+          return
+        }
+
+        setImportTierResult(
+          `${result.satuanDiperbarui} satuan diperbarui (${result.tierDitambahkan} tingkatan harga), ` +
+            `${result.dilewatiProdukTidakDitemukan} dilewati (produk tidak ditemukan), ` +
+            `${result.dilewatiSatuanTidakDitemukan} dilewati (satuan tidak ditemukan).`,
+        )
+        // priceTiersCount comes from the server, so the list has to be refetched
+        // for the new tiers to show up at all
+        loadPage(currentPage)
+      })
+      .catch((err) => {
+        setImportTierResult(err instanceof Error ? err.message : 'Gagal mengimpor')
+      })
+      .finally(() => setImportingTier(false))
+  }
+
+  function runImportBarcode() {
+    setImportingBarcode(true)
+    setImportBarcodeResult(null)
+
+    window.api.inventory
+      .importBarcode()
+      .then((result) => {
+        if (result === null) {
+          return
+        }
+
+        setImportBarcodeResult(
+          `${result.diperbarui} barcode diperbarui, ` +
+            `${result.dilewatiSudahSama} sudah sama, ` +
+            `${result.dilewatiProdukTidakDitemukan} dilewati (produk tidak ditemukan), ` +
+            `${result.dilewatiBarcodeDipakai} dilewati (barcode dipakai produk lain), ` +
+            `${result.dilewatiBarcodeTerlaluPanjang} dilewati (barcode lebih dari 100 karakter).`,
+        )
+        loadPage(currentPage)
+      })
+      .catch((err) => {
+        setImportBarcodeResult(err instanceof Error ? err.message : 'Gagal mengimpor')
+      })
+      .finally(() => setImportingBarcode(false))
   }
 
   const { confirm, ConfirmDialog } = useConfirm()
@@ -460,7 +519,7 @@ export function Inventory() {
       key: 'stok',
       name: 'Stok',
       width: 90,
-      renderCell: ({ row }) => <span className="text-muted-foreground">{row.stok}</span>,
+      renderCell: ({ row }) => <span className="text-muted-foreground">{formatQty(row.stok)}</span>,
     },
     {
       key: 'isActive',
@@ -543,6 +602,16 @@ export function Inventory() {
             {importSatuanResult}
           </p>
         )}
+        {importTierResult && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {importTierResult}
+          </p>
+        )}
+        {importBarcodeResult && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {importBarcodeResult}
+          </p>
+        )}
         {errorSummary.length > 0 && (
           <div className="space-y-1 text-sm text-destructive">
             {errorSummary.map((message, i) => (
@@ -592,6 +661,12 @@ export function Inventory() {
             </Button>
             <Button type="button" variant="outline" disabled={importingSatuan} onClick={runImportSatuan}>
               {importingSatuan ? 'Mengimpor...' : 'Import Satuan'}
+            </Button>
+            <Button type="button" variant="outline" disabled={importingTier} onClick={runImportHargaBertingkat}>
+              {importingTier ? 'Mengimpor...' : 'Import Harga Bertingkat'}
+            </Button>
+            <Button type="button" variant="outline" disabled={importingBarcode} onClick={runImportBarcode}>
+              {importingBarcode ? 'Mengimpor...' : 'Import Barcode'}
             </Button>
             <Button
               type="button"

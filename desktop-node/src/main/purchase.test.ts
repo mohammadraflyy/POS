@@ -16,6 +16,10 @@ import {
 } from './db/schema'
 import {
   recordPurchase,
+  updatePurchase,
+  deletePurchase,
+  getPurchaseDetail,
+  balikHargaPokokSatuan,
   listPurchases,
   searchProductsForPurchase,
   findProductForPurchaseByBarcode,
@@ -173,6 +177,26 @@ describe('recordPurchase', () => {
     })
   })
 
+  it('records a fractional purchase, keeping the decimals in stock and rounding the subtotal', () => {
+    const db = seedDb()
+    const result = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 5.5, hargaBeli: 1401_00 })],
+      userId: 1,
+    })
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(15.5) // 10 existing + 5,5 purchased
+
+    const items = db.select().from(purchaseItems).where(eq(purchaseItems.purchaseId, result.purchaseId)).all()
+    expect(items[0]).toMatchObject({ qty: 5.5, konversi: 1, subtotal: Math.round(5.5 * 1401_00) })
+
+    const purchase = db.select().from(purchases).where(eq(purchases.id, result.purchaseId)).get()
+    expect(purchase?.total).toBe(Math.round(5.5 * 1401_00))
+  })
+
   it('records a unit-based purchase and increments stock by qty * konversi', () => {
     const db = seedDb()
     const result = recordPurchase(db, {
@@ -258,15 +282,15 @@ describe('recordPurchase', () => {
     )
   })
 
-  it('throws when qty is not a positive integer', () => {
+  it('throws when qty is zero or negative', () => {
     const db = seedDb()
     expect(() =>
       recordPurchase(db, { supplierId: 1, tanggal: '2026-08-08', catatan: null, items: [baseItem({ qty: 0 })], userId: 1 }),
-    ).toThrow('Qty harus bilangan bulat minimal 1.')
+    ).toThrow('Qty harus lebih dari 0.')
 
     expect(() =>
-      recordPurchase(db, { supplierId: 1, tanggal: '2026-08-08', catatan: null, items: [baseItem({ qty: 1.5 })], userId: 1 }),
-    ).toThrow('Qty harus bilangan bulat minimal 1.')
+      recordPurchase(db, { supplierId: 1, tanggal: '2026-08-08', catatan: null, items: [baseItem({ qty: -2 })], userId: 1 }),
+    ).toThrow('Qty harus lebih dari 0.')
   })
 
   it('throws when hargaBeli is not finite', () => {
@@ -852,5 +876,282 @@ describe('findProductForPurchaseByBarcode', () => {
     const db = seedDb()
 
     expect(findProductForPurchaseByBarcode(db, '')).toBeNull()
+  })
+})
+
+describe('balikHargaPokokSatuan', () => {
+  it('is the exact inverse of hitungHargaPokokSatuan when nothing moved in between', () => {
+    const hargaPokokBaru = hitungHargaPokokSatuan(10, 1500_00, 1, 10, 14000_00)
+
+    expect(balikHargaPokokSatuan(20, hargaPokokBaru, 1, 10, 14000_00)).toBe(1500_00)
+  })
+
+  it('keeps the current average when the reversal empties the shelf', () => {
+    expect(balikHargaPokokSatuan(10, 1450_00, 1, 10, 14000_00)).toBe(1450_00)
+  })
+
+  it('never returns a negative cost', () => {
+    // the goods were bought for far more than the remaining stock is carrying
+    expect(balikHargaPokokSatuan(20, 100_00, 1, 10, 14000_00)).toBe(0)
+  })
+})
+
+describe('deletePurchase', () => {
+  it('takes the goods and their value back out and removes the invoice', () => {
+    const db = seedDb()
+    const { purchaseId } = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1400_00 })],
+      userId: 1,
+    })
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()).toMatchObject({ stok: 20, hargaPokok: 1450_00 })
+
+    deletePurchase(db, purchaseId)
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()).toMatchObject({ stok: 10, hargaPokok: 1500_00 })
+    expect(db.select().from(purchases).where(eq(purchases.id, purchaseId)).get()).toBeUndefined()
+    expect(db.select().from(purchaseItems).where(eq(purchaseItems.purchaseId, purchaseId)).all()).toHaveLength(0)
+  })
+
+  it('gives the unit cost back to every satuan the purchase moved', () => {
+    const db = seedDb()
+    const { purchaseId } = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ productUnitId: 1, qty: 2, hargaBeli: 15000_00 })],
+      userId: 1,
+    })
+
+    deletePurchase(db, purchaseId)
+
+    // the renteng row and the base row it is built from are both back where they started,
+    // give or take the cent the forward and reverse roundings cannot recover between them
+    const renteng = db.select().from(productUnits).where(eq(productUnits.id, 1)).get()!
+    expect(Math.abs(renteng.hargaPokok - 18000_00)).toBeLessThanOrEqual(1)
+    expect(db.select().from(productUnits).where(eq(productUnits.id, 101)).get()?.hargaPokok).toBe(1500_00)
+  })
+
+  it('logs the reversal in the stock ledger so it still sums to products.stok', () => {
+    const db = seedDb()
+    const { purchaseId } = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1400_00 })],
+      userId: 1,
+    })
+
+    deletePurchase(db, purchaseId)
+
+    const movements = db.select().from(stockMovements).where(eq(stockMovements.referenceId, purchaseId)).all()
+    expect(movements).toHaveLength(2)
+    expect(movements.reduce((sum, movement) => sum + movement.baseQuantity, 0)).toBe(0)
+    expect(movements[1]).toMatchObject({ movementType: 'stock_adjustment', quantity: -10, baseQuantity: -10 })
+  })
+
+  it('takes the supplier instalments down with the invoice', () => {
+    const db = seedDb()
+    const { purchaseId } = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1400_00 })],
+      userId: 1,
+      dibayar: 0,
+    })
+
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 4000_00, tanggal: '2026-08-09', keterangan: null, userId: 1 })
+    deletePurchase(db, purchaseId)
+
+    expect(db.select().from(purchasePayments).where(eq(purchasePayments.purchaseId, purchaseId)).all()).toHaveLength(0)
+    expect(listSupplierDebts(db, 1)).toHaveLength(0)
+  })
+
+  it('refuses a purchase that does not exist', () => {
+    const db = seedDb()
+
+    expect(() => deletePurchase(db, 99)).toThrow('Pembelian tidak ditemukan.')
+  })
+})
+
+describe('updatePurchase', () => {
+  function buy(db: ReturnType<typeof seedDb>, over: { qty?: number; hargaBeli?: number; dibayar?: number } = {}) {
+    const { qty = 10, hargaBeli = 1400_00, dibayar } = over
+
+    return recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty, hargaBeli })],
+      userId: 1,
+      dibayar,
+    }).purchaseId
+  }
+
+  it('replaces the lines and counts the goods only once', () => {
+    const db = seedDb()
+    const purchaseId = buy(db)
+
+    const result = updatePurchase(db, purchaseId, {
+      supplierId: 1,
+      tanggal: '2026-08-09',
+      catatan: 'salah qty',
+      items: [baseItem({ qty: 4, hargaBeli: 1400_00 })],
+      userId: 1,
+    })
+
+    expect(result.total).toBe(5600_00)
+
+    // 10 seeded + the 4 actually bought, not 4 on top of the wrong 10
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(14)
+    expect(product?.hargaPokok).toBe(hitungHargaPokokRataRata(10, 1500_00, 4, 5600_00))
+
+    const items = db.select().from(purchaseItems).where(eq(purchaseItems.purchaseId, purchaseId)).all()
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ qty: 4, subtotal: 5600_00 })
+
+    expect(db.select().from(purchases).where(eq(purchases.id, purchaseId)).get()).toMatchObject({
+      tanggal: '2026-08-09',
+      catatan: 'salah qty',
+      total: 5600_00,
+    })
+  })
+
+  it('can raise a qty on the same product it already bought', () => {
+    const db = seedDb()
+    const purchaseId = buy(db, { qty: 10 })
+
+    updatePurchase(db, purchaseId, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 25, hargaBeli: 1400_00 })],
+      userId: 1,
+    })
+
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(35)
+  })
+
+  it('keeps instalments already paid and folds them into dibayar', () => {
+    const db = seedDb()
+    const purchaseId = buy(db, { dibayar: 0 })
+
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 4000_00, tanggal: '2026-08-09', keterangan: null, userId: 1 })
+
+    updatePurchase(db, purchaseId, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1500_00 })],
+      userId: 1,
+      dibayar: 1000_00,
+    })
+
+    expect(db.select().from(purchasePayments).where(eq(purchasePayments.purchaseId, purchaseId)).all()).toHaveLength(1)
+    expect(db.select().from(purchases).where(eq(purchases.id, purchaseId)).get()).toMatchObject({
+      total: 15000_00,
+      dibayar: 5000_00,
+    })
+  })
+
+  it('refuses a new total below what has already been paid in instalments', () => {
+    const db = seedDb()
+    const purchaseId = buy(db, { dibayar: 0 })
+
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 10000_00, tanggal: '2026-08-09', keterangan: null, userId: 1 })
+
+    expect(() =>
+      updatePurchase(db, purchaseId, {
+        supplierId: 1,
+        tanggal: '2026-08-08',
+        catatan: null,
+        items: [baseItem({ qty: 1, hargaBeli: 1400_00 })],
+        userId: 1,
+      }),
+    ).toThrow('Total pembelian tidak boleh lebih kecil dari cicilan yang sudah dibayar.')
+
+    // the failed edit rolled back whole: stock and lines are untouched
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(20)
+    expect(db.select().from(purchaseItems).where(eq(purchaseItems.purchaseId, purchaseId)).all()).toHaveLength(1)
+  })
+
+  it('refuses an empty item list', () => {
+    const db = seedDb()
+    const purchaseId = buy(db)
+
+    expect(() =>
+      updatePurchase(db, purchaseId, { supplierId: 1, tanggal: '2026-08-08', catatan: null, items: [], userId: 1 }),
+    ).toThrow('Item pembelian tidak boleh kosong.')
+  })
+
+  it('refuses a purchase that does not exist', () => {
+    const db = seedDb()
+
+    expect(() =>
+      updatePurchase(db, 99, {
+        supplierId: 1,
+        tanggal: '2026-08-08',
+        catatan: null,
+        items: [baseItem()],
+        userId: 1,
+      }),
+    ).toThrow('Pembelian tidak ditemukan.')
+  })
+})
+
+describe('getPurchaseDetail', () => {
+  it('returns the invoice in the shape the entry form refills itself from', () => {
+    const db = seedDb()
+    const { purchaseId } = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: 'kiriman pagi',
+      items: [baseItem({ qty: 10, hargaBeli: 1400_00 }), baseItem({ productUnitId: 1, qty: 2, hargaBeli: 15000_00 })],
+      userId: 1,
+      dibayar: 4000_00,
+    })
+
+    const detail = getPurchaseDetail(db, purchaseId)
+
+    expect(detail).toMatchObject({
+      id: purchaseId,
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: 'kiriman pagi',
+      total: 44000_00,
+      uangMuka: 4000_00,
+      cicilan: 0,
+    })
+    expect(detail.items).toHaveLength(2)
+    expect(detail.items[0]).toMatchObject({ productId: 1, productUnitId: null, qty: 10, hargaBeli: 1400_00, baseSatuan: 'PCS' })
+    expect(detail.items[1]).toMatchObject({ productUnitId: 1, qty: 2, hargaBeli: 15000_00 })
+    expect(detail.items[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12 }])
+  })
+
+  it('splits dibayar into the down payment and the instalments since', () => {
+    const db = seedDb()
+    const { purchaseId } = recordPurchase(db, {
+      supplierId: 1,
+      tanggal: '2026-08-08',
+      catatan: null,
+      items: [baseItem({ qty: 10, hargaBeli: 1400_00 })],
+      userId: 1,
+      dibayar: 4000_00,
+    })
+
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 5000_00, tanggal: '2026-08-09', keterangan: null, userId: 1 })
+
+    expect(getPurchaseDetail(db, purchaseId)).toMatchObject({ uangMuka: 4000_00, cicilan: 5000_00 })
+  })
+
+  it('refuses a purchase that does not exist', () => {
+    const db = seedDb()
+
+    expect(() => getPurchaseDetail(db, 99)).toThrow('Pembelian tidak ditemukan.')
   })
 })

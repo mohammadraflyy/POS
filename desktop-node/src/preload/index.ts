@@ -44,6 +44,7 @@ const api = {
       namaPelanggan: string | null
       dibayar: number | null
       tanggal: string
+      keterangan: string
       items: { productId: number; productUnitId: number | null; qty: number; hargaJual?: number | null }[]
     }) => invoke('kasir:updateSale', input),
     getStoreSettings: () => invoke('kasir:getStoreSettings'),
@@ -127,6 +128,8 @@ const api = {
     ) => invoke('inventory:bulkSaveProducts', rows),
     importProducts: () => invoke('inventory:importProducts'),
     importSatuan: () => invoke('inventory:importSatuan'),
+    importHargaBertingkat: () => invoke('inventory:importHargaBertingkat'),
+    importBarcode: () => invoke('inventory:importBarcode'),
   },
   supplier: {
     listSuppliers: (input: { search?: string; page: number; pageSize?: number }) =>
@@ -139,6 +142,17 @@ const api = {
     ) => invoke('supplier:updateSupplier', id, input),
     deleteSupplier: (id: number) => invoke('supplier:deleteSupplier', id),
   },
+  customer: {
+    listCustomers: (input: { search?: string; page: number; pageSize?: number }) =>
+      invoke('customer:listCustomers', input),
+    createCustomer: (input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null }) =>
+      invoke('customer:createCustomer', input),
+    updateCustomer: (
+      id: number,
+      input: { nama: string; telepon: string | null; alamat: string | null; keterangan: string | null },
+    ) => invoke('customer:updateCustomer', id, input),
+    deleteCustomer: (id: number) => invoke('customer:deleteCustomer', id),
+  },
   purchase: {
     recordPurchase: (input: {
       supplierId: number | null
@@ -147,6 +161,18 @@ const api = {
       items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
       dibayar?: number | null
     }) => invoke('purchase:recordPurchase', input),
+    updatePurchase: (
+      purchaseId: number,
+      input: {
+        supplierId: number | null
+        tanggal: string
+        catatan: string | null
+        items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+        dibayar?: number | null
+      },
+    ) => invoke('purchase:updatePurchase', purchaseId, input),
+    deletePurchase: (purchaseId: number) => invoke('purchase:deletePurchase', purchaseId),
+    getPurchaseDetail: (purchaseId: number) => invoke('purchase:getPurchaseDetail', purchaseId),
     listPurchases: (input: { page: number; pageSize?: number }) => invoke('purchase:listPurchases', input),
     searchProducts: (q: string) => invoke('purchase:searchProducts', q),
     findProductByBarcode: (barcode: string) => invoke('purchase:findProductByBarcode', barcode),

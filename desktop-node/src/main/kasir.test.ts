@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { priceForQty, resolveCartItem, type ProductRow, type ProductUnitRow } from './kasir'
+import { lineSubtotal, priceForQty, resolveCartItem, type ProductRow, type ProductUnitRow } from './kasir'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { users, products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, stockMovements, storeSettings } from './db/schema'
+import { users, products, productUnits, productPriceTiers, units, customers, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
 import {
   checkout,
   type CheckoutInput,
@@ -245,6 +245,7 @@ describe('resolveCartItem', () => {
       qty: 5,
       qtyDasar: 5,
       priceSource: 'price_tier',
+      diskon: 0,
     })
   })
 
@@ -271,6 +272,7 @@ describe('resolveCartItem', () => {
       qty: 2,
       qtyDasar: 24,
       priceSource: 'normal',
+      diskon: 0,
     })
   })
 
@@ -280,6 +282,163 @@ describe('resolveCartItem', () => {
 
   it('throws when a product-unit purchase would exceed base-unit stock', () => {
     expect(() => resolveCartItem(product, dusUnit, [], 3)).toThrow('Stok Beras 5kg tidak cukup.')
+  })
+
+  it('carries a line discount through and leaves the price it was given away from alone', () => {
+    const result = resolveCartItem(product, baseUnit, [], 2, null, 5000_00)
+    expect(result).toMatchObject({ hargaJual: 65000_00, diskon: 5000_00, priceSource: 'normal' })
+    expect(lineSubtotal(result)).toBe(125000_00)
+  })
+
+  it('measures the discount against the tier price when a tier applies', () => {
+    // 5 x 62000 = 310000; a 10000 discount leaves 300000, not 315000
+    const result = resolveCartItem(product, baseUnit, [{ minQty: 5, maxQty: null, hargaJual: 62000_00 }], 5, null, 10000_00)
+    expect(lineSubtotal(result)).toBe(300000_00)
+  })
+
+  it('rejects a discount bigger than the line', () => {
+    expect(() => resolveCartItem(product, baseUnit, [], 1, null, 65001_00)).toThrow(
+      'Diskon Beras 5kg melebihi harga barisnya.',
+    )
+  })
+
+  it('rejects a negative or fractional-cent discount', () => {
+    expect(() => resolveCartItem(product, baseUnit, [], 1, null, -1)).toThrow('Diskon Beras 5kg tidak valid.')
+    expect(() => resolveCartItem(product, baseUnit, [], 1, null, 1.5)).toThrow('Diskon Beras 5kg tidak valid.')
+  })
+
+  it('rejects a manual price below the unit cost', () => {
+    expect(() => resolveCartItem(product, baseUnit, [], 1, 59999_00)).toThrow(
+      'Harga Beras 5kg di bawah harga pokok satuan PCS.',
+    )
+  })
+
+  it('accepts a manual price exactly at cost', () => {
+    expect(resolveCartItem(product, baseUnit, [], 1, 60000_00)).toMatchObject({
+      hargaJual: 60000_00,
+      priceSource: 'manual',
+    })
+  })
+
+  it('floors a derived unit at its own cost, not the base unit cost', () => {
+    // 700.000 clears the base unit's 60.000 but sits under the DUS cost of 720.000
+    expect(() => resolveCartItem(product, dusUnit, [], 1, 700000_00)).toThrow(
+      'Harga Beras 5kg di bawah harga pokok satuan DUS.',
+    )
+  })
+
+  it('leaves a tier price under cost alone - only a hand-set price is floored', () => {
+    const result = resolveCartItem(product, baseUnit, [{ minQty: 5, maxQty: null, hargaJual: 59000_00 }], 5)
+    expect(result).toMatchObject({ hargaJual: 59000_00, priceSource: 'price_tier' })
+  })
+
+  it('does not count the line discount towards the floor', () => {
+    const result = resolveCartItem(product, baseUnit, [], 1, 60000_00, 30000_00)
+    expect(result).toMatchObject({ hargaJual: 60000_00, diskon: 30000_00 })
+  })
+})
+
+describe('checkout with discounts', () => {
+  it('takes a line discount off that line and off the sale total', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 60000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1, diskon: 5000_00 }],
+    })
+
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items[0].diskon).toBe(5000_00)
+    // the price charged is untouched - only the subtotal moves
+    expect(items[0].hargaJual).toBe(65000_00)
+    expect(items[0].subtotal).toBe(60000_00)
+    expect(result.total).toBe(60000_00)
+  })
+
+  it('takes a bill-wide discount off the total and records it on the sale', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 55000_00,
+      userId: 1,
+      diskon: 10000_00,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.diskon).toBe(10000_00)
+    expect(sale?.total).toBe(55000_00)
+    // the line keeps its own full subtotal - the bill-wide discount lives on the sale
+    const items = db.select().from(saleItems).where(eq(saleItems.saleId, result.saleId)).all()
+    expect(items[0].subtotal).toBe(65000_00)
+  })
+
+  it('stacks a line discount and a bill-wide discount', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 58000_00,
+      userId: 1,
+      diskon: 2000_00,
+      items: [{ productId: 1, productUnitId: null, qty: 1, diskon: 5000_00 }],
+    })
+
+    expect(result.total).toBe(58000_00)
+  })
+
+  it('refuses a bill-wide discount larger than the bill', () => {
+    const db = seedDb()
+
+    expect(() =>
+      checkout(db, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 0,
+        userId: 1,
+        diskon: 65001_00,
+        items: [{ productId: 1, productUnitId: null, qty: 1 }],
+      }),
+    ).toThrow('Diskon nota melebihi total belanja.')
+  })
+
+  it('measures the bill-wide discount after the line discounts, not before', () => {
+    const db = seedDb()
+
+    // line drops to 60000, so 60000 of bill-wide discount is exactly allowed and 60001 is not
+    expect(() =>
+      checkout(db, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        dibayar: 0,
+        userId: 1,
+        diskon: 60001_00,
+        items: [{ productId: 1, productUnitId: null, qty: 1, diskon: 5000_00 }],
+      }),
+    ).toThrow('Diskon nota melebihi total belanja.')
+  })
+
+  it('lets a bon carry a discount without confusing what is still owed', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Sri',
+      dibayar: null,
+      userId: 1,
+      diskon: 5000_00,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.total).toBe(60000_00)
+    expect(sale?.dibayar).toBe(0)
   })
 })
 
@@ -300,6 +459,45 @@ describe('checkout', () => {
     expect(items[0].priceSource).toBe('price_tier')
     expect(items[0].baseQuantity).toBe(5)
     expect(items[0].baseQuantity).toBe(items[0].qty * items[0].konversi)
+  })
+
+  it('stores a note given at the till, trimmed', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      keterangan: '  pesanan antar sore  ',
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    expect(db.select().from(sales).where(eq(sales.id, result.saleId)).get()?.keterangan).toBe('pesanan antar sore')
+  })
+
+  it('stores no note when none is given, and a blank one as null', () => {
+    const db = seedDb()
+
+    const tanpa = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const kosong = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      keterangan: '   ',
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    expect(db.select().from(sales).where(eq(sales.id, tanpa.saleId)).get()?.keterangan).toBeNull()
+    expect(db.select().from(sales).where(eq(sales.id, kosong.saleId)).get()?.keterangan).toBeNull()
   })
 
   it('settles a qris sale in full, so it leaves no piutang and needs no cash tendered', () => {
@@ -988,7 +1186,7 @@ describe('deleteSale', () => {
     expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeUndefined()
   })
 
-  it('throws when the sale has bon payments recorded', () => {
+  it('deletes a paid bon along with its payments and gives the stock back', () => {
     const { db, saleId } = seedDbWithOneSale()
     const now = new Date()
 
@@ -996,8 +1194,11 @@ describe('deleteSale', () => {
       .values({ saleId, jumlah: 10000_00, tanggal: '2026-08-06', createdAt: now, updatedAt: now })
       .run()
 
-    expect(() => deleteSale(db, saleId)).toThrow('Tidak bisa menghapus, bon sudah ada pembayaran.')
-    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeDefined()
+    deleteSale(db, saleId)
+
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()).toBeUndefined()
+    expect(db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).all()).toHaveLength(0)
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(5)
   })
 
   it('throws when the sale does not exist', () => {
@@ -1821,7 +2022,7 @@ describe('listCustomers', () => {
     })
   }
 
-  it('returns each name once, most recently used first', () => {
+  it('returns each name once, in alphabetical order', () => {
     const db = seedDb()
     sell(db, 'Bu Siti')
     sell(db, 'UMUM')
@@ -1842,6 +2043,36 @@ describe('listCustomers', () => {
 
   it('returns nothing on a database with no sales', () => {
     expect(listCustomers(seedDb())).toEqual([])
+  })
+
+  it('files the sale under a master customer, creating it on first use', () => {
+    const db = seedDb()
+    sell(db, 'Pak Budi')
+
+    const customer = db.select().from(customers).all()
+    const sale = db.select().from(sales).all()[0]
+
+    expect(customer).toHaveLength(1)
+    expect(customer[0].nama).toBe('Pak Budi')
+    expect(sale.customerId).toBe(customer[0].id)
+    expect(sale.namaPelanggan).toBe('Pak Budi')
+  })
+
+  it('reuses one master row for names that differ only by case', () => {
+    const db = seedDb()
+    sell(db, 'Pak Budi')
+    sell(db, 'pak budi')
+
+    expect(db.select().from(customers).all()).toHaveLength(1)
+    expect(listCustomers(db)).toEqual(['Pak Budi'])
+  })
+
+  it('leaves a sale with no name unlinked instead of inventing a customer', () => {
+    const db = seedDb()
+    sell(db, null)
+
+    expect(db.select().from(customers).all()).toHaveLength(0)
+    expect(db.select().from(sales).all()[0].customerId).toBeNull()
   })
 })
 
@@ -1868,6 +2099,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 6000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2 }],
     })
 
@@ -1882,6 +2115,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 3000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 1 }],
     })
 
@@ -1906,6 +2141,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 620000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 1, productUnitId: null, qty: 8 }],
     })
 
@@ -1928,6 +2165,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 999999_00,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 1, productUnitId: null, qty: 11 }],
       }),
     ).toThrow('Stok Beras 5kg tidak cukup.')
@@ -1946,6 +2185,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 6000_00,
       tanggal: '2026-07-04T14:05',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2 }],
     })
 
@@ -1962,6 +2203,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 6000_00,
         tanggal: '2099-01-01T00:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
@@ -1975,6 +2218,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 5000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2, hargaJual: 2500_00 }],
     })
 
@@ -1997,6 +2242,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 9000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 3 }],
     })
 
@@ -2011,6 +2258,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 71000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [
         { productId: 2, productUnitId: null, qty: 2 },
         { productId: 1, productUnitId: null, qty: 1 },
@@ -2030,6 +2279,8 @@ describe('updateSale', () => {
         namaPelanggan: '  ',
         dibayar: 0,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Nama pelanggan wajib diisi untuk transaksi bon.')
@@ -2044,6 +2295,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 1000_00,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Uang bayar kurang dari total belanja.')
@@ -2066,6 +2319,8 @@ describe('updateSale', () => {
         namaPelanggan: 'Budi',
         dibayar: 1000_00,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Dibayar tidak boleh kurang dari pembayaran yang sudah tercatat.')
@@ -2087,6 +2342,8 @@ describe('updateSale', () => {
       namaPelanggan: 'Budi',
       dibayar: 4000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 3 }],
     })
 
@@ -2112,6 +2369,8 @@ describe('updateSale', () => {
       namaPelanggan: 'Budi',
       dibayar: 6000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2 }],
     })
 
@@ -2127,6 +2386,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 100_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 2 }],
     })
 
@@ -2146,6 +2407,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 6000_00,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 2 }],
       }),
     ).toThrow('Transaksi yang dibatalkan tidak bisa diubah.')
@@ -2162,6 +2425,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 0,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [],
       }),
     ).toThrow('Keranjang tidak boleh kosong.')
@@ -2176,6 +2441,8 @@ describe('updateSale', () => {
         namaPelanggan: null,
         dibayar: 0,
         tanggal: '2026-08-15T09:00',
+        keterangan: 'edit test',
+        userId: 1,
         items: [{ productId: 2, productUnitId: null, qty: 1 }],
       }),
     ).toThrow('Transaksi tidak ditemukan.')
@@ -2189,6 +2456,8 @@ describe('updateSale', () => {
       namaPelanggan: null,
       dibayar: 15000_00,
       tanggal: '2026-08-15T09:00',
+      keterangan: 'edit test',
+      userId: 1,
       items: [{ productId: 2, productUnitId: null, qty: 5 }],
     })
 
@@ -2197,5 +2466,118 @@ describe('updateSale', () => {
     const stok = db.select().from(products).where(eq(products.id, 2)).get()?.stok
 
     expect(stok).toBe(100 + netMoved)
+  })
+})
+
+describe('updateSale keterangan', () => {
+  function seedBaseSale() {
+    const db = seedDb()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    return { db, saleId }
+  }
+
+  it('saves an edit with no reason given, logging the edit itself all the same', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2026-08-15T09:00',
+      keterangan: '   ',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.keterangan).toBeNull()
+    // the log row is what must never be lost; its reason may be blank
+    const editRows = db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).all()
+    expect(editRows).toHaveLength(1)
+    expect(editRows[0].keterangan).toBe('')
+  })
+
+  it('writes the note onto the sale and copies it into the edit log', () => {
+    const { db, saleId } = seedBaseSale()
+
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2026-08-15T09:00',
+      keterangan: '  salah input qty  ',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    expect(db.select().from(sales).where(eq(sales.id, saleId)).get()?.keterangan).toBe('salah input qty')
+    expect(db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).get()?.keterangan).toBe('salah input qty')
+  })
+
+  it('writes one log row per save, with the totals on both sides of the change', () => {
+    const { db, saleId } = seedBaseSale()
+    const totalSebelum = db.select().from(sales).where(eq(sales.id, saleId)).get()!.total
+
+    const hasil = updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 9000_00,
+      tanggal: '2026-08-15T09:00',
+      keterangan: 'salah input qty',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 3 }],
+    })
+
+    const logs = db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).all()
+
+    expect(logs).toHaveLength(1)
+    expect(logs[0].keterangan).toBe('salah input qty')
+    expect(logs[0].userId).toBe(1)
+    expect(logs[0].totalSebelum).toBe(totalSebelum)
+    expect(logs[0].totalSesudah).toBe(hasil.total)
+  })
+
+  it('keeps the reason from the first edit when a second edit is saved', () => {
+    const { db, saleId } = seedBaseSale()
+    const base = {
+      metodePembayaran: 'tunai' as const,
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2026-08-15T09:00',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    }
+
+    updateSale(db, saleId, { ...base, keterangan: 'alasan pertama' })
+    updateSale(db, saleId, { ...base, keterangan: 'alasan kedua' })
+
+    const logs = db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).orderBy(saleEdits.id).all()
+
+    expect(logs.map((row) => row.keterangan)).toEqual(['alasan pertama', 'alasan kedua'])
+  })
+
+  it('writes no log row when the rewrite itself fails', () => {
+    const { db, saleId } = seedBaseSale()
+
+    expect(() =>
+      updateSale(db, saleId, {
+        metodePembayaran: 'tunai',
+        namaPelanggan: null,
+        // deliberately below the line total, which updateSale rejects inside the transaction
+        dibayar: 1,
+        tanggal: '2026-08-15T09:00',
+        keterangan: 'ini tidak boleh tercatat',
+        userId: 1,
+        items: [{ productId: 2, productUnitId: null, qty: 2 }],
+      }),
+    ).toThrow()
+
+    expect(db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).all()).toHaveLength(0)
   })
 })

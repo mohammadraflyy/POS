@@ -11,6 +11,8 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { useDraftState } from '@/hooks/use-sticky-state'
+import { formatQty, parseQty } from '@/lib/utils'
 import { AppShell } from '../../layouts/AppShell'
 import type { BreadcrumbItem } from '../../types'
 
@@ -61,7 +63,11 @@ export function MassInput() {
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
 
-  const [rows, setRows] = useState<DraftRow[]>([emptyRow()])
+  // Only the new-product form is drafted. Arriving with `ids` means the grid is about to
+  // be filled from the database, and storing those rows would reopen the next blank form
+  // holding another product's data.
+  const drafting = !searchParams.get('ids')
+  const [rows, setRows, clearRows] = useDraftState<DraftRow[]>('mass-input.rows', [emptyRow()], drafting)
   const [rowErrors, setRowErrors] = useState<Record<string, Record<string, string>>>({})
   const [formError, setFormError] = useState<string | undefined>()
   const [processing, setProcessing] = useState(false)
@@ -91,9 +97,11 @@ export function MassInput() {
     const barcodeParam = searchParams.get('barcode')
 
     if (!idsParam) {
-      // arriving from a scan that matched nothing - start with the barcode already filled
+      // arriving from a scan that matched nothing - start with the barcode already filled.
+      // Prepended rather than replacing: a restored draft may hold products typed earlier
+      // that nobody asked to throw away.
       if (barcodeParam) {
-        setRows([{ ...emptyRow(), barcode: barcodeParam }])
+        setRows((prev) => [{ ...emptyRow(), barcode: barcodeParam }, ...prev])
       }
 
       setLoaded(true)
@@ -124,7 +132,7 @@ export function MassInput() {
             satuan: p.satuan,
             hargaPokok: String(p.hargaPokok),
             hargaJual: String(p.hargaJual),
-            stok: String(p.stok),
+            stok: formatQty(p.stok),
             unitsCount: p.unitsCount,
             priceTiersCount: p.priceTiersCount,
           })),
@@ -235,11 +243,14 @@ export function MassInput() {
           satuan: row.satuan,
           hargaPokok: Number(row.hargaPokok),
           hargaJual: Number(row.hargaJual),
-          stok: Number(row.stok) || 0,
+          stok: parseQty(row.stok) || 0,
         })),
       )
       .then((result) => {
         if (result.success) {
+          // drop the stored draft, or the products just created come back as a ghost
+          // draft the next time the form is opened
+          clearRows()
           navigate('/inventory')
           return
         }

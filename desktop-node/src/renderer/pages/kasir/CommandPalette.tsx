@@ -6,8 +6,8 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { formatRupiah } from '@/lib/utils'
-import { lineKey, type Product, type UnitResult } from './cart-logic'
+import { formatQty, formatRupiah } from '@/lib/utils'
+import { type UnitResult } from './cart-logic'
 
 export interface CommandPaletteProps {
   open: boolean
@@ -15,7 +15,8 @@ export interface CommandPaletteProps {
   query: string
   onQueryChange: (query: string) => void
   results: UnitResult[]
-  products: Product[]
+  /** matching products the row cap left out, so the list never lies by omission */
+  hiddenCount: number
   jumlah: string
   onSelect: (result: UnitResult) => void
   onCloseAutoFocus: (event: Event) => void
@@ -27,7 +28,7 @@ export function CommandPalette({
   query,
   onQueryChange,
   results,
-  products,
+  hiddenCount,
   jumlah,
   onSelect,
   onCloseAutoFocus,
@@ -57,26 +58,9 @@ export function CommandPalette({
             return
           }
 
-          if (e.key !== 'Enter') {
-            return
-          }
-
-          const code = query.trim()
-          const product = products.find((p) => p.barcode === code)
-
-          if (!product) {
-            return
-          }
-
-          e.preventDefault()
-          // a scanned barcode always means the base unit
-          onSelect({
-            key: lineKey(product.id, null),
-            product,
-            productUnitId: null,
-            satuan: product.satuan,
-            hargaJual: product.hargaJual,
-          })
+          // Enter is left to the list: a scanned barcode lands here as a query
+          // matching one product's rows, and picking which satuan it is sold in
+          // is the whole point of showing them.
         }}
         placeholder="Cari nama / kode produk..."
       />
@@ -97,12 +81,27 @@ export function CommandPalette({
                   <span className="text-muted-foreground"> &middot; {result.product.kodeItem}</span>
                 </span>
                 <span className="flex items-center gap-2 text-xs">
-                  {formatRupiah(result.hargaJual)} / {result.satuan}
-                  {result.product.stok <= 0 && <span className="text-destructive">Habis</span>}
+                  {/* stock is what decides whether this row can be sold at all, so it sits
+                      next to the price rather than behind a hover or a second screen */}
+                  {result.product.stok <= 0 ? (
+                    <span className="text-destructive">Habis</span>
+                  ) : (
+                    <span className="tabular-nums text-muted-foreground">
+                      Stok {formatQty(result.stok)} {result.satuan}
+                    </span>
+                  )}
+                  <span>
+                    {formatRupiah(result.hargaJual)} / {result.satuan}
+                  </span>
                 </span>
               </CommandItem>
             ))}
           </CommandGroup>
+        )}
+        {hiddenCount > 0 && (
+          <p className="px-3 py-2 text-center text-xs text-muted-foreground">
+            {hiddenCount} produk lain cocok tapi belum ditampilkan. Ketik lebih spesifik.
+          </p>
         )}
       </CommandList>
       <div className="flex items-center gap-3 border-t px-3 py-2 text-xs text-muted-foreground">

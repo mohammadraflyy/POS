@@ -1,7 +1,9 @@
 import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { products, productUnits, productPriceTiers, units, sales, saleItems, bonPayments, stockMovements, storeSettings } from './db/schema'
+import { products, productUnits, productPriceTiers, units, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
+import { findOrCreateCustomerByName, listCustomerNames } from './customer'
+import { bulatkanQty, QTY_DECIMALS } from './qty'
 
 export interface PriceTier {
   minQty: number
@@ -54,6 +56,18 @@ export interface ResolvedItem {
   qty: number
   qtyDasar: number
   priceSource: 'normal' | 'price_tier' | 'manual'
+  /** whole cents taken off this line by hand, already checked against the line's gross */
+  diskon: number
+}
+
+/** what a line is worth before any discount - qty may be fractional, prices are integer cents */
+export function lineGross(qty: number, hargaJual: number): number {
+  return Math.round(qty * hargaJual)
+}
+
+/** what a line actually contributes to the bill: its gross less its own manual discount */
+export function lineSubtotal(item: { qty: number; hargaJual: number; diskon: number }): number {
+  return lineGross(item.qty, item.hargaJual) - item.diskon
 }
 
 export function resolveCartItem(
@@ -63,6 +77,8 @@ export function resolveCartItem(
   qty: number,
   /** whole cents; set only when a sale is being corrected by hand */
   hargaOverride?: number | null,
+  /** whole cents off this line; may zero the line but never take it below zero */
+  diskon?: number | null,
 ): ResolvedItem {
   const normalPrice = productUnit.hargaJual
   const tier = findTierForQty(priceTiers, qty)
@@ -71,10 +87,28 @@ export function resolveCartItem(
   const priceSource: 'normal' | 'price_tier' | 'manual' =
     hargaOverride != null ? 'manual' : tier ? 'price_tier' : 'normal'
 
-  const qtyDasar = qty * productUnit.conversionFactor
+  // A price set by hand may not sell the line at a loss. Only the manual price is
+  // checked: master and tier prices are the owner's own decision, and the line's
+  // discount is deliberately left out - a discount is a concession that was given,
+  // not an item that was mispriced.
+  if (hargaOverride != null && hargaOverride < productUnit.hargaPokok) {
+    throw new Error(`Harga ${product.namaItem} di bawah harga pokok satuan ${productUnit.unitCode}.`)
+  }
+
+  const qtyDasar = bulatkanQty(qty * productUnit.conversionFactor)
 
   if (product.stok < qtyDasar) {
     throw new Error(`Stok ${product.namaItem} tidak cukup.`)
+  }
+
+  const diskonBaris = diskon ?? 0
+
+  if (!Number.isInteger(diskonBaris) || diskonBaris < 0) {
+    throw new Error(`Diskon ${product.namaItem} tidak valid.`)
+  }
+
+  if (diskonBaris > lineGross(qty, hargaJual)) {
+    throw new Error(`Diskon ${product.namaItem} melebihi harga barisnya.`)
   }
 
   return {
@@ -89,25 +123,17 @@ export function resolveCartItem(
     qty,
     qtyDasar,
     priceSource,
+    diskon: diskonBaris,
   }
 }
 
 /**
- * Every distinct customer name ever used on a sale, most recently used first.
- * There is no customer master table - names typed at the register are the list,
- * so a brand new name shows up here after its first sale.
+ * The customer master, by name, for the register's picker. A name typed at the
+ * till still works: `checkout` files it under a master row, creating one when the
+ * name is new, so the picker lists it from the next sale on.
  */
 export function listCustomers(db: BetterSQLite3Database<typeof schema>): string[] {
-  const rows = db
-    .select({ nama: sales.namaPelanggan })
-    .from(sales)
-    .where(sql`${sales.namaPelanggan} is not null and trim(${sales.namaPelanggan}) <> ''`)
-    .groupBy(sales.namaPelanggan)
-    .orderBy(sql`max(${sales.id}) desc`)
-    .limit(200)
-    .all()
-
-  return rows.map((row) => row.nama as string)
+  return listCustomerNames(db)
 }
 
 export interface CartItemInput {
@@ -116,6 +142,23 @@ export interface CartItemInput {
   qty: number
   /** whole cents; overrides master and tier pricing for this line alone */
   hargaJual?: number | null
+  /** whole cents off this line alone, on top of any bill-wide discount */
+  diskon?: number | null
+}
+
+/**
+ * Checks a bill-wide discount against what the lines came to. Rejecting rather than
+ * clamping is deliberate: a discount larger than the bill means the cashier and the
+ * till disagree about what is being sold, and silently charging zero hides that.
+ */
+function assertDiskonNota(diskon: number, subtotal: number): void {
+  if (!Number.isInteger(diskon) || diskon < 0) {
+    throw new Error('Diskon nota tidak valid.')
+  }
+
+  if (diskon > subtotal) {
+    throw new Error('Diskon nota melebihi total belanja.')
+  }
 }
 
 /** settled in full at checkout, but the money never lands in the drawer */
@@ -149,6 +192,10 @@ export interface CheckoutInput {
   userId: number
   /** local `YYYY-MM-DDTHH:mm`; omit to stamp the sale with the current time */
   tanggal?: string | null
+  /** whole cents off the whole bill, applied after every line's own discount */
+  diskon?: number | null
+  /** a free note on the sale; optional, blank is stored as null */
+  keterangan?: string | null
   items: CartItemInput[]
 }
 
@@ -216,7 +263,7 @@ function resolveItems(db: Pick<Db, 'select'>, items: CartItemInput[]): ResolvedI
       .filter((row) => row.productUnitId === unit.id)
       .map((row) => ({ minQty: row.minQty, maxQty: row.maxQty, hargaJual: row.hargaJual }))
 
-    const resolved = resolveCartItem(product, unit, tiers, item.qty, item.hargaJual)
+    const resolved = resolveCartItem(product, unit, tiers, item.qty, item.hargaJual, item.diskon)
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
     const totalQtyDasar = previousQtyDasar + resolved.qtyDasar
 
@@ -247,6 +294,8 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   }
 
   const resolvedItems = resolveItems(db, input.items)
+  const diskonNota = input.diskon ?? 0
+  assertDiskonNota(diskonNota, resolvedItems.reduce((sum, line) => sum + lineSubtotal(line), 0))
 
   const now = input.tanggal ? parseTanggalTransaksi(input.tanggal) : new Date()
 
@@ -257,9 +306,12 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
       .insert(sales)
       .values({
         userId: input.userId,
+        customerId: findOrCreateCustomerByName(tx, input.namaPelanggan ?? ''),
         namaPelanggan: input.namaPelanggan,
         metodePembayaran: input.metodePembayaran,
         status: 'selesai',
+        diskon: diskonNota,
+        keterangan: input.keterangan?.trim() || null,
         total: 0,
         dibayar: dibayarAwal,
         createdAt: now,
@@ -272,7 +324,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
 
     for (const line of resolvedItems) {
       // qty may be fractional (e.g. 0.25 kg) - hargaJual is stored in integer cents
-      const subtotal = Math.round(line.qty * line.hargaJual)
+      const subtotal = lineSubtotal(line)
       total += subtotal
 
       tx.insert(saleItems)
@@ -287,6 +339,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
           hargaJual: line.hargaJual,
           hargaPokok: line.hargaPokok,
           priceSource: line.priceSource,
+          diskon: line.diskon,
           subtotal,
           createdAt: now,
           updatedAt: now,
@@ -294,7 +347,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         .run()
 
       tx.update(products)
-        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .set({ stok: sql`round(${products.stok} - ${line.qtyDasar}, ${QTY_DECIMALS})` })
         .where(eq(products.id, line.productId))
         .run()
 
@@ -311,6 +364,8 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         })
         .run()
     }
+
+    total -= diskonNota
 
     // qris and transfer settle the exact amount at checkout - nothing owed, no change given
     const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
@@ -340,7 +395,7 @@ function restoreStockForItems(
 
   for (const item of items) {
     tx.update(products)
-      .set({ stok: sql`${products.stok} + ${item.qty * item.konversi}` })
+      .set({ stok: sql`round(${products.stok} + ${bulatkanQty(item.qty * item.konversi)}, ${QTY_DECIMALS})` })
       .where(eq(products.id, item.productId))
       .run()
 
@@ -350,7 +405,7 @@ function restoreStockForItems(
         productUnitId: item.productUnitId,
         quantity: item.qty,
         conversionFactor: item.konversi,
-        baseQuantity: item.qty * item.konversi,
+        baseQuantity: bulatkanQty(item.qty * item.konversi),
         movementType: 'sale_cancel',
         referenceId: item.saleId,
         createdAt: now,
@@ -391,6 +446,15 @@ export interface UpdateSaleInput {
   dibayar: number | null
   /** local `YYYY-MM-DDTHH:mm` */
   tanggal: string
+  /** whole cents off the whole bill, applied after every line's own discount */
+  diskon?: number | null
+  /**
+   * The sale's note. Optional: it is written to `sales.keterangan` and, when it says
+   * anything, copied into the `sale_edits` row as the reason for this edit.
+   */
+  keterangan?: string | null
+  /** the account doing the editing, taken from the session by the IPC layer */
+  userId: number
   items: CartItemInput[]
 }
 
@@ -444,6 +508,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
 
   return db.transaction((tx) => {
     const oldItems = tx.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+    const totalSebelum = sale.total
 
     restoreStockForItems(
       tx,
@@ -459,6 +524,8 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
     tx.delete(saleItems).where(eq(saleItems.saleId, saleId)).run()
 
     const resolvedItems = resolveItems(tx, input.items)
+    const diskonNota = input.diskon ?? 0
+    assertDiskonNota(diskonNota, resolvedItems.reduce((sum, line) => sum + lineSubtotal(line), 0))
 
     const hargaPokokLama = new Map(oldItems.map((item) => [`${item.productId}:${item.productUnitId}`, item.hargaPokok]))
 
@@ -466,7 +533,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
     let total = 0
 
     for (const line of resolvedItems) {
-      const subtotal = Math.round(line.qty * line.hargaJual)
+      const subtotal = lineSubtotal(line)
       total += subtotal
 
       tx.insert(saleItems)
@@ -481,6 +548,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
           hargaJual: line.hargaJual,
           hargaPokok: hargaPokokLama.get(`${line.productId}:${line.productUnitId}`) ?? line.hargaPokok,
           priceSource: line.priceSource,
+          diskon: line.diskon,
           subtotal,
           createdAt: tanggalBaru,
           updatedAt: now,
@@ -488,7 +556,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
         .run()
 
       tx.update(products)
-        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .set({ stok: sql`round(${products.stok} - ${line.qtyDasar}, ${QTY_DECIMALS})` })
         .where(eq(products.id, line.productId))
         .run()
 
@@ -506,6 +574,8 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
         .run()
     }
 
+    total -= diskonNota
+
     const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
     // for bon, dibayar is allowed to sit above the sum of recorded bon_payments - deliberate,
     // so an admin can correct money that was taken but never entered. Consequence: recordBonPayment
@@ -522,14 +592,33 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
 
     tx.update(sales)
       .set({
+        customerId: findOrCreateCustomerByName(tx, input.namaPelanggan ?? ''),
         namaPelanggan: input.namaPelanggan,
         metodePembayaran: input.metodePembayaran,
+        diskon: diskonNota,
+        keterangan: input.keterangan?.trim() || null,
         total,
         dibayar: dibayarBaru,
         createdAt: tanggalBaru,
         updatedAt: now,
       })
       .where(eq(sales.id, saleId))
+      .run()
+
+    // Inside the same transaction as the rewrite on purpose: a log describing a change
+    // that never happened would be worse than no log.
+    tx.insert(saleEdits)
+      .values({
+        saleId,
+        userId: input.userId,
+        // the note doubles as the edit's reason; an empty one still logs the edit itself,
+        // which is the part that must never be lost
+        keterangan: input.keterangan?.trim() ?? '',
+        totalSebelum,
+        totalSesudah: total,
+        createdAt: now,
+        updatedAt: now,
+      })
       .run()
 
     return { total }
@@ -582,7 +671,7 @@ export function addItemsToSale(db: Db, saleId: number, items: CartItemInput[]): 
     let tambahan = 0
 
     for (const line of resolvedItems) {
-      const subtotal = Math.round(line.qty * line.hargaJual)
+      const subtotal = lineSubtotal(line)
       tambahan += subtotal
 
       tx.insert(saleItems)
@@ -597,6 +686,7 @@ export function addItemsToSale(db: Db, saleId: number, items: CartItemInput[]): 
           hargaJual: line.hargaJual,
           hargaPokok: line.hargaPokok,
           priceSource: line.priceSource,
+          diskon: line.diskon,
           subtotal,
           createdAt: now,
           updatedAt: now,
@@ -604,7 +694,7 @@ export function addItemsToSale(db: Db, saleId: number, items: CartItemInput[]): 
         .run()
 
       tx.update(products)
-        .set({ stok: sql`${products.stok} - ${line.qtyDasar}` })
+        .set({ stok: sql`round(${products.stok} - ${line.qtyDasar}, ${QTY_DECIMALS})` })
         .where(eq(products.id, line.productId))
         .run()
 
@@ -637,12 +727,6 @@ export function deleteSale(db: Db, saleId: number): void {
     throw new Error('Transaksi tidak ditemukan.')
   }
 
-  const hasBonPayment = db.select().from(bonPayments).where(eq(bonPayments.saleId, saleId)).get()
-
-  if (hasBonPayment) {
-    throw new Error('Tidak bisa menghapus, bon sudah ada pembayaran.')
-  }
-
   const items = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
 
   db.transaction((tx) => {
@@ -651,6 +735,10 @@ export function deleteSale(db: Db, saleId: number): void {
       restoreStockForItems(tx, items)
     }
 
+    // A paid bon goes too, instalments and all: `bon_payments` cascades off `sales`, so
+    // the money drops out of the cash book by itself and the sale leaves nothing behind.
+    // Deliberately unguarded - `cancelSale` still refuses, because a cancelled sale keeps
+    // its row and would strand payments against a bill nobody owes.
     tx.delete(sales).where(eq(sales.id, saleId)).run()
   })
 }

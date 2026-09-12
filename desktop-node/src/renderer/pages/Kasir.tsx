@@ -9,23 +9,30 @@ import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useElementWidth } from '@/hooks/use-element-width'
-import { formatRupiah } from '@/lib/utils'
+import { formatRupiah, parseQty } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
-import { CartGrid } from './kasir/CartGrid'
+import { CartGrid, QTY_COLUMN_IDX } from './kasir/CartGrid'
 import { PaymentDialog } from './kasir/PaymentDialog'
 import { CommandPalette } from './kasir/CommandPalette'
 import { CustomerPicker, DEFAULT_PELANGGAN } from './kasir/CustomerPicker'
+import { resolveShortcut, type KasirShortcut } from './kasir/shortcuts'
 import {
   addLine,
+  applyDiskon,
   applyHarga,
   applyQty,
   cartFromSale,
   changeUnit,
   expandUnitResults,
+  isBelowHargaPokok,
+  lineGross,
+  lineSubtotal,
+  matchingProducts,
+  parseDiskon,
   restoreCart,
   toStoredCart,
-  unitPrice,
+  unitHargaPokok,
   type CartLine,
   type EditSaleItem,
   type Product,
@@ -44,6 +51,10 @@ interface KasirDraft {
   namaPelanggan: string
   dibayar: string
   jumlah: string
+  /** kept as typed ("5000" or "10%") so the cashier sees back what they entered */
+  diskonNota: string
+  /** free note on the sale, typed before it is ever saved */
+  keterangan: string
 }
 
 const EMPTY_DRAFT: KasirDraft = {
@@ -52,6 +63,8 @@ const EMPTY_DRAFT: KasirDraft = {
   namaPelanggan: DEFAULT_PELANGGAN,
   dibayar: '',
   jumlah: '1.00',
+  diskonNota: '',
+  keterangan: '',
 }
 
 /** current local time in the `YYYY-MM-DDTHH:mm` shape a datetime-local input wants */
@@ -91,6 +104,8 @@ function readStoredDraft(): KasirDraft {
       namaPelanggan: typeof parsed.namaPelanggan === 'string' ? parsed.namaPelanggan : DEFAULT_PELANGGAN,
       dibayar: typeof parsed.dibayar === 'string' ? parsed.dibayar : '',
       jumlah: typeof parsed.jumlah === 'string' ? parsed.jumlah : EMPTY_DRAFT.jumlah,
+      diskonNota: typeof parsed.diskonNota === 'string' ? parsed.diskonNota : '',
+      keterangan: typeof parsed.keterangan === 'string' ? parsed.keterangan : '',
     }
   } catch {
     return EMPTY_DRAFT
@@ -113,6 +128,10 @@ export function Kasir() {
   const [metode, setMetode] = useState<'tunai' | 'bon' | 'qris' | 'transfer'>(initialDraft.metode)
   const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
   const [dibayar, setDibayar] = useState(initialDraft.dibayar)
+  const [diskonNota, setDiskonNota] = useState(initialDraft.diskonNota)
+  // edit mode only, and deliberately never persisted to the draft - a reason belongs to
+  // the one save it explains
+  const [keterangan, setKeterangan] = useState(initialDraft.keterangan)
   const [tanggal, setTanggal] = useState(nowForInput())
   // Set once the cashier types a time of their own, so the staleness refresh
   // below stops overwriting it. Without this the field cannot really be edited:
@@ -137,6 +156,7 @@ export function Kasir() {
   const [cartWidthRef, cartGridWidth] = useElementWidth<HTMLDivElement>()
   const cartGridRef = useRef<DataGridHandle>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const jumlahInputRef = useRef<HTMLInputElement>(null)
   // the cart can only be rebuilt once the catalog is loaded, so it waits here
   // while the rest of the draft is restored straight into state above
   const pendingRestoreRef = useRef<StoredCartLine[]>(initialDraft.cart)
@@ -177,6 +197,10 @@ export function Kasir() {
         setMetode(sale.metodePembayaran)
         setNamaPelanggan(sale.namaPelanggan ?? DEFAULT_PELANGGAN)
         setDibayar(String(sale.dibayar))
+        // comes back as the nominal that was charged, not as the "10%" that produced it -
+        // the percentage is not stored, and re-deriving it would change the sale's total
+        setDiskonNota(sale.diskon > 0 ? String(sale.diskon) : '')
+        setKeterangan(sale.keterangan ?? '')
         setTanggal(
           `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}T${pad(created.getHours())}:${pad(created.getMinutes())}`,
         )
@@ -205,10 +229,18 @@ export function Kasir() {
       return
     }
 
-    const draft: KasirDraft = { cart: toStoredCart(cart), metode, namaPelanggan, dibayar, jumlah }
+    const draft: KasirDraft = {
+      cart: toStoredCart(cart),
+      metode,
+      namaPelanggan,
+      dibayar,
+      jumlah,
+      diskonNota,
+      keterangan,
+    }
 
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
-  }, [cart, metode, namaPelanggan, dibayar, jumlah, editSaleId])
+  }, [cart, metode, namaPelanggan, dibayar, jumlah, diskonNota, keterangan, editSaleId])
 
   function refreshProducts() {
     window.api.kasir
@@ -249,7 +281,14 @@ export function Kasir() {
       .catch(() => setError('Gagal memuat data.'))
   }
 
-  const total = useMemo(() => cart.reduce((sum, line) => sum + line.qty * unitPrice(line), 0), [cart])
+  // what the goods cost before anything was given away
+  const subtotalKotor = useMemo(() => cart.reduce((sum, line) => sum + lineGross(line), 0), [cart])
+  // what the lines come to once their own discounts are off - this is what a bill-wide
+  // discount is measured against, both here and in main/kasir.ts
+  const subtotalBarang = useMemo(() => cart.reduce((sum, line) => sum + lineSubtotal(line), 0), [cart])
+  const diskonItem = subtotalKotor - subtotalBarang
+  const diskonNotaValue = useMemo(() => parseDiskon(diskonNota, subtotalBarang), [diskonNota, subtotalBarang])
+  const total = subtotalBarang - diskonNotaValue
   const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart])
 
   // the walk-in name is always offered, even on a fresh database where no sale
@@ -262,8 +301,38 @@ export function Kasir() {
 
   const paletteResults = useMemo(() => expandUnitResults(products, paletteQuery, 50), [products, paletteQuery])
 
+  // The 50 caps rows, and every product brings one row per satuan, so a broad
+  // query runs out of room long before it runs out of products. Cutting the rest
+  // silently is what made items look like they had vanished from the catalog.
+  const paletteHiddenCount = useMemo(() => {
+    const shown = new Set(paletteResults.map((result) => result.product.id))
+
+    return matchingProducts(products, paletteQuery).length - shown.size
+  }, [products, paletteQuery, paletteResults])
+
   function addProductToCart(product: Product, qty = 1, productUnitId: number | null = null) {
     setCart((prev) => addLine(prev, product, qty, productUnitId))
+  }
+
+  /**
+   * What a scanned barcode does. A product sold in one satuan has nothing to
+   * choose, so it goes straight into the cart; one with derived satuan opens the
+   * palette on that barcode instead, where every satuan is already a row - the
+   * cashier picks DUS or PCS rather than always getting the base unit.
+   */
+  function scanToCart(product: Product, code: string) {
+    setScanError('')
+
+    if (product.productUnits.length > 0) {
+      setPaletteQuery(code)
+      setPaletteOpen(true)
+
+      return
+    }
+
+    addProductToCart(product, parseQty(jumlah) || 1)
+    setPaletteQuery('')
+    setJumlah('1.00')
   }
 
   function changeLineUnit(line: CartLine, productUnitId: number | null) {
@@ -284,30 +353,48 @@ export function Kasir() {
       return el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
     }
 
+    function applyShortcut(shortcut: KasirShortcut) {
+      switch (shortcut.type) {
+        case 'editTopQty':
+          blurActiveElement()
+          cartGridRef.current?.setActivePosition({ idx: QTY_COLUMN_IDX, rowIdx: 0 }, { enableEditor: true })
+          break
+        case 'focusJumlah':
+          jumlahInputRef.current?.focus()
+          jumlahInputRef.current?.select()
+          break
+        case 'focusCari':
+          searchInputRef.current?.focus()
+          searchInputRef.current?.select()
+          break
+        case 'clearCart':
+          clearCart()
+          break
+        case 'openCustomer':
+          setCustomerOpen(true)
+          break
+        case 'openBayar':
+          setPaymentOpen(true)
+          break
+      }
+    }
+
     function handleKeydown(e: globalThis.KeyboardEvent) {
+      const shortcut = resolveShortcut(e, {
+        cartCount: cart.length,
+        anyDialogOpen: paymentOpen || paletteOpen || customerOpen,
+        editableFocused: isEditableFocused(),
+        bayarEnabled: editSaleId === null || editReady,
+      })
+
+      if (shortcut) {
+        e.preventDefault()
+        applyShortcut(shortcut)
+
+        return
+      }
+
       if (isEditableFocused()) {
-        return
-      }
-
-      if (e.key === '/' && scanBuffer.current === '') {
-        e.preventDefault()
-        searchInputRef.current?.focus()
-        searchInputRef.current?.select()
-
-        return
-      }
-
-      if (e.altKey && e.key.toLowerCase() === 'k' && !paymentOpen) {
-        e.preventDefault()
-        clearCart()
-
-        return
-      }
-
-      if (e.altKey && e.key.toLowerCase() === 'p') {
-        e.preventDefault()
-        setCustomerOpen(true)
-
         return
       }
 
@@ -324,20 +411,7 @@ export function Kasir() {
         scanBuffer.current = ''
 
         if (code.length < 4) {
-          // Not a fast scan burst - treat a lone Enter as the "Bayar"
-          // shortcut so checkout can be fully keyboard driven. Only when
-          // nothing else is focused, so it doesn't double-fire alongside a
-          // button's own native Enter-activates click.
-          if (
-            cart.length > 0 &&
-            !paymentOpen &&
-            (editSaleId === null || editReady) &&
-            (document.activeElement === document.body || document.activeElement === null)
-          ) {
-            e.preventDefault()
-            setPaymentOpen(true)
-          }
-
+          // not a scan burst, and Enter no longer pays - End does
           return
         }
 
@@ -347,8 +421,7 @@ export function Kasir() {
         if (!product) {
           setScanError(`Barcode "${code}" tidak ditemukan.`)
         } else {
-          setScanError('')
-          addProductToCart(product)
+          scanToCart(product, code)
         }
 
         return
@@ -363,7 +436,8 @@ export function Kasir() {
 
     return () => window.removeEventListener('keydown', handleKeydown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, cart.length, paymentOpen])
+    // jumlah is read by scanToCart, so a stale closure would scan the wrong qty
+  }, [products, cart.length, paymentOpen, paletteOpen, customerOpen, editSaleId, editReady, jumlah])
 
   function applyResolvedQty(key: string, rawQty: number) {
     setCart((prev) => applyQty(prev, key, rawQty))
@@ -399,18 +473,31 @@ export function Kasir() {
       return
     }
 
+    if (column.key === 'diskon') {
+      // the edit cell already resolved any "%", but it is re-run through the same parser
+      // so clamping to the line's gross happens in exactly one place
+      setCart((prev) => applyDiskon(prev, editedRow.key, String(editedRow.diskon ?? 0)))
+
+      return
+    }
+
     applyResolvedQty(editedRow.key, editedRow.qty)
   }
 
-  // A cell being selected (not yet in edit mode) still counts as "nothing
-  // to type" - Enter there should behave like the global lone-Enter
-  // shortcut and jump to Bayar, not start editing the cell.
+  // Alt+K still has to be caught here: while a grid cell is active the grid swallows the
+  // keydown before it reaches the window listener. Enter is deliberately left alone now,
+  // so it falls through to the grid's own "start editing this cell".
   function handleCartCellKeyDown(args: CellKeyDownArgs<CartLine>, event: CellKeyboardEvent) {
     if (args.mode !== 'ACTIVE') {
       return
     }
 
-    if (event.key === 'Enter' && cart.length > 0 && !paymentOpen && (editSaleId === null || editReady)) {
+    if (
+      event.key === 'End' &&
+      cart.length > 0 &&
+      !(paymentOpen || paletteOpen || customerOpen) &&
+      (editSaleId === null || editReady)
+    ) {
       event.preventGridDefault()
       event.preventDefault()
       setPaymentOpen(true)
@@ -430,15 +517,25 @@ export function Kasir() {
     setCart([])
     setNamaPelanggan(DEFAULT_PELANGGAN)
     setDibayar('')
+    // a discount belongs to the sale that earned it, never to the next customer
+    setDiskonNota('')
+    // likewise the note - it described that sale, not the next one
+    setKeterangan('')
     setTanggal(nowForInput())
     // the next sale starts on the clock again, not on the last one's time
     setTanggalDirty(false)
   }
 
-  async function handleCheckout(shouldPrint: boolean) {
+  async function handleCheckout() {
     setProcessing(true)
     setCheckoutError(null)
     setMessage(null)
+
+    // Captured before resetAfterCheckout wipes them - the confirmation below still has to
+    // be able to say what the change was.
+    const totalTersimpan = total
+    const kembalian = metode === 'tunai' ? Number(dibayar || 0) - total : 0
+    const metodeTersimpan = metode
 
     try {
       const sale = await window.api.kasir.checkout({
@@ -449,29 +546,46 @@ export function Kasir() {
         namaPelanggan: metode === 'bon' ? namaPelanggan.trim() || null : namaPelanggan.trim() || DEFAULT_PELANGGAN,
         dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
         tanggal,
+        diskon: diskonNotaValue,
+        keterangan: keterangan.trim() || null,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
           qty: line.qty,
+          diskon: line.diskon ?? 0,
         })),
       })
-
-      if (shouldPrint) {
-        // The sale is already committed. Printing reaches hardware and can stall,
-        // so it runs in the background rather than holding the till hostage - a
-        // failure surfaces as an error naming the sale, which can be reprinted
-        // from Riwayat.
-        window.api.kasir.printReceipt(sale.saleId).catch((err) => {
-          const reason = err instanceof Error ? err.message : 'kesalahan tidak diketahui'
-          setError(`Transaksi #${sale.saleId} tersimpan, tetapi struk gagal dicetak: ${reason}. Cetak ulang dari Riwayat.`)
-        })
-      }
 
       setMessage('Transaksi disimpan.')
       setCheckoutError(null)
       resetAfterCheckout()
       refreshProducts()
       refreshCustomers()
+
+      const cetak = await confirm({
+        title: `Cetak struk #${sale.saleId}?`,
+        description:
+          metodeTersimpan === 'tunai'
+            ? `Kembalian ${formatRupiah(Math.max(kembalian, 0))}.`
+            : `Total ${formatRupiah(totalTersimpan)}.`,
+        confirmLabel: 'Cetak',
+        cancelLabel: 'Lewati',
+      })
+
+      if (cetak) {
+        // The sale is already committed. Printing reaches hardware and can stall, so it runs
+        // in the background rather than holding the till hostage - a failure surfaces as an
+        // error naming the sale, which can be reprinted from Riwayat.
+        window.api.kasir
+          .printReceipt(sale.saleId)
+          .then(() => setMessage(`Struk #${sale.saleId} dicetak.`))
+          .catch((err) => {
+            const reason = err instanceof Error ? err.message : 'kesalahan tidak diketahui'
+            setError(
+              `Transaksi #${sale.saleId} tersimpan, tetapi struk gagal dicetak: ${reason}. Cetak ulang dari Riwayat.`,
+            )
+          })
+      }
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : 'Gagal checkout')
     } finally {
@@ -481,6 +595,18 @@ export function Kasir() {
 
   async function handleSaveEdit() {
     if (editSaleId === null) {
+      return
+    }
+
+    // updateSale rejects a hand-set price below cost anyway; catching it here names the
+    // line instead of failing the whole save on a message the cashier has to decode
+    const rugi = cart.find(isBelowHargaPokok)
+
+    if (rugi) {
+      setCheckoutError(
+        `Harga ${rugi.product.namaItem} (${rugi.satuan}) di bawah harga pokok ${formatRupiah(unitHargaPokok(rugi))}.`,
+      )
+
       return
     }
 
@@ -498,11 +624,14 @@ export function Kasir() {
         // on every single save. Only qris and transfer settle themselves.
         dibayar: metode === 'qris' || metode === 'transfer' ? null : Number(dibayar || 0),
         tanggal,
+        diskon: diskonNotaValue,
+        keterangan: keterangan.trim() || null,
         items: cart.map((line) => ({
           productId: line.product.id,
           productUnitId: line.productUnitId,
           qty: line.qty,
           hargaJual: line.hargaOverride ?? null,
+          diskon: line.diskon ?? 0,
         })),
       })
 
@@ -533,6 +662,7 @@ export function Kasir() {
               </label>
               <Input
                 id="kasir-jumlah"
+                ref={jumlahInputRef}
                 type="text"
                 inputMode="decimal"
                 value={jumlah}
@@ -561,7 +691,7 @@ export function Kasir() {
 
                   // Empty box: step back out to the sale rather than opening a
                   // palette with nothing to show. Focus goes nowhere, so the
-                  // next Enter reaches Bayar.
+                  // next End reaches Bayar.
                   if (code === '') {
                     blurActiveElement()
 
@@ -574,10 +704,7 @@ export function Kasir() {
                   const scanned = products.find((p) => p.barcode === code)
 
                   if (scanned) {
-                    addProductToCart(scanned, Number(jumlah) || 1)
-                    setPaletteQuery('')
-                    setJumlah('1.00')
-                    setScanError('')
+                    scanToCart(scanned, code)
                     blurActiveElement()
 
                     return
@@ -662,6 +789,54 @@ export function Kasir() {
             <div className="rounded-xl border p-5">
               <span className="text-sm text-muted-foreground">Total</span>
               <p className="mt-1 text-3xl font-bold tabular-nums">{formatRupiah(total)}</p>
+
+              {/* only shown once something has actually been given away - an untouched
+                  sale keeps the single big number it had before */}
+              {(diskonItem > 0 || diskonNotaValue > 0) && (
+                <div className="mt-2 space-y-0.5 text-xs tabular-nums text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>{formatRupiah(subtotalKotor)}</span>
+                  </div>
+                  {diskonItem > 0 && (
+                    <div className="flex justify-between">
+                      <span>Diskon item</span>
+                      <span className="text-destructive">-{formatRupiah(diskonItem)}</span>
+                    </div>
+                  )}
+                  {diskonNotaValue > 0 && (
+                    <div className="flex justify-between">
+                      <span>Diskon nota</span>
+                      <span className="text-destructive">-{formatRupiah(diskonNotaValue)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Lives here rather than in the payment dialog so the big Total above is
+                  always the number the customer will be asked for. */}
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <label htmlFor="diskon-nota" className="text-xs text-muted-foreground">
+                  Diskon nota
+                </label>
+                <Input
+                  id="diskon-nota"
+                  type="text"
+                  value={diskonNota}
+                  disabled={processing}
+                  onChange={(e) => setDiskonNota(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      // hand focus back to nobody so the next End reaches Bayar
+                      e.preventDefault()
+                      blurActiveElement()
+                    }
+                  }}
+                  placeholder="0 atau 10%"
+                  title="Isi nominal rupiah (5000) atau persen (10%) - dihitung dari subtotal setelah diskon item"
+                  className="h-8 w-28 text-right tabular-nums"
+                />
+              </div>
               <Button
                 type="button"
                 size="lg"
@@ -725,16 +900,28 @@ export function Kasir() {
               Cari Produk
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="rounded border bg-muted px-1.5 py-0.5">Enter</kbd>
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">End</kbd>
               Bayar
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">PgUp</kbd>
+              Isi Jumlah
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">PgDn</kbd>
+              Cari Produk
             </span>
             <span className="flex items-center gap-1">
               <kbd className="rounded border bg-muted px-1.5 py-0.5">Alt+K</kbd>
               Kosongkan
             </span>
             <span className="flex items-center gap-1">
+              <kbd className="rounded border bg-muted px-1.5 py-0.5">F3</kbd>
+              Ubah Qty Baris Teratas
+            </span>
+            <span className="flex items-center gap-1">
               <kbd className="rounded border bg-muted px-1.5 py-0.5">F2</kbd>
-              Edit Qty / Satuan
+              Edit Qty / Satuan / Diskon
             </span>
           </div>
         </div>
@@ -744,6 +931,9 @@ export function Kasir() {
         open={paymentOpen}
         onOpenChange={setPaymentOpen}
         total={total}
+        subtotal={subtotalKotor}
+        diskonItem={diskonItem}
+        diskonNota={diskonNotaValue}
         metode={metode}
         setMetode={setMetode}
         namaPelanggan={namaPelanggan}
@@ -756,9 +946,11 @@ export function Kasir() {
         tanggal={tanggal}
         processing={processing}
         error={checkoutError}
-        onSubmit={editSaleId === null ? handleCheckout : () => handleSaveEdit()}
+        onSubmit={editSaleId === null ? handleCheckout : handleSaveEdit}
         editMode={editSaleId !== null}
         editReady={editReady}
+        keterangan={keterangan}
+        setKeterangan={setKeterangan}
       />
 
       <CustomerPicker
@@ -775,18 +967,18 @@ export function Kasir() {
         query={paletteQuery}
         onQueryChange={setPaletteQuery}
         results={paletteResults}
-        products={products}
+        hiddenCount={paletteHiddenCount}
         jumlah={jumlah}
         onSelect={(result: UnitResult) => {
-          addProductToCart(result.product, Number(jumlah) || 1, result.productUnitId)
+          addProductToCart(result.product, parseQty(jumlah) || 1, result.productUnitId)
           setPaletteQuery('')
           setJumlah('1.00')
           setPaletteOpen(false)
         }}
         onCloseAutoFocus={(e) => {
-          // Deliberately focus nothing. Returning focus to the search box made
-          // Enter reopen this palette instead of paying: while that box is
-          // focused its own Enter handler owns the key, and the Bayar shortcut
+          // Deliberately focus nothing. Returning focus to the search box would make
+          // Enter reopen this palette instead of letting End reach Bayar: while that
+          // box is focused its own Enter handler owns the key, and the Bayar shortcut
           // only fires when nothing is focused. Leaving focus on the body also
           // hands the global barcode scanner back its keystrokes.
           e.preventDefault()

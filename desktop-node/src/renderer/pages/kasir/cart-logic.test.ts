@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import {
   addLine,
+  applyDiskon,
   applyHarga,
   applyQty,
   cartFromSale,
   changeUnit,
   expandUnitResults,
+  lineGross,
   lineKey,
+  lineSubtotal,
+  matchingProducts,
+  parseDiskon,
   restoreCart,
   toStoredCart,
   unitKonversi,
   unitPrice,
+  unitHargaPokok,
+  isBelowHargaPokok,
   activeTier,
   type CartLine,
   type EditSaleItem,
@@ -24,9 +31,10 @@ const product: Product = {
   namaItem: 'Beras 5kg',
   satuan: 'PCS',
   hargaJual: 65000,
+  hargaPokok: 60000,
   stok: 100,
   baseProductUnitId: 1,
-  productUnits: [{ id: 9, satuan: 'DUS', konversi: 12, hargaJual: 700000 }],
+  productUnits: [{ id: 9, satuan: 'DUS', konversi: 12, hargaJual: 700000, hargaPokok: 720000 }],
   priceTiers: [{ productUnitId: 1, minQty: 5, maxQty: null, hargaJual: 62000 }],
 }
 
@@ -183,10 +191,10 @@ describe('addLine', () => {
 })
 
 describe('toStoredCart / restoreCart', () => {
-  it('round-trips a cart through the stored shape', () => {
+  it('round-trips a cart through the stored shape, discounts included', () => {
     const cart: CartLine[] = [
-      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 0.25 },
-      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2 },
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 0.25, diskon: 0 },
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 2, diskon: 50000 },
     ]
 
     expect(restoreCart(toStoredCart(cart), [product])).toEqual(cart)
@@ -197,12 +205,14 @@ describe('toStoredCart / restoreCart', () => {
       ...product,
       namaItem: 'Beras 5kg Premium',
       hargaJual: 70000,
-      productUnits: [{ id: 9, satuan: 'KARTON', konversi: 12, hargaJual: 750000 }],
+      productUnits: [{ id: 9, satuan: 'KARTON', konversi: 12, hargaJual: 750000, hargaPokok: 720000 }],
     }
 
     const result = restoreCart([{ productId: 1, productUnitId: 9, qty: 2 }], [renamed])
 
-    expect(result).toEqual([{ key: lineKey(1, 9), product: renamed, productUnitId: 9, satuan: 'KARTON', qty: 2 }])
+    expect(result).toEqual([
+      { key: lineKey(1, 9), product: renamed, productUnitId: 9, satuan: 'KARTON', qty: 2, diskon: 0 },
+    ])
   })
 
   it('drops lines whose product, satuan or qty is no longer valid', () => {
@@ -219,7 +229,7 @@ describe('toStoredCart / restoreCart', () => {
     )
 
     expect(result).toEqual([
-      { key: lineKey(1, null), product: withoutUnits, productUnitId: null, satuan: 'PCS', qty: 3 },
+      { key: lineKey(1, null), product: withoutUnits, productUnitId: null, satuan: 'PCS', qty: 3, diskon: 0 },
     ])
   })
 })
@@ -268,8 +278,9 @@ describe('expandUnitResults', () => {
     const results = expandUnitResults([product], 'beras', 50)
 
     expect(results).toEqual([
-      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', hargaJual: 65000 },
-      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', hargaJual: 700000 },
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', hargaJual: 65000, stok: 100 },
+      // 100 PCS at 12 to the DUS reads as 8.33 DUS, not as the product's raw base stock
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', hargaJual: 700000, stok: 8.333 },
     ])
   })
 
@@ -297,6 +308,85 @@ describe('expandUnitResults', () => {
     const noBarcode: Product = { ...product, barcode: null }
 
     expect(expandUnitResults([noBarcode], 'beras', 50)).toHaveLength(2)
+  })
+
+  // The row cap used to cut the catalog in plain order, so a cashier searching a
+  // short string only ever saw products near the front of the alphabet.
+  it('spends its row budget on the best matches, not on whatever comes first', () => {
+    const filler: Product[] = Array.from({ length: 40 }, (_, i) => ({
+      ...product,
+      id: 100 + i,
+      kodeItem: `AAA${i}`,
+      barcode: null,
+      namaItem: `Aneka Beras Campur ${i}`,
+      productUnits: [],
+    }))
+    const wanted: Product = { ...product, id: 7, namaItem: 'Beras', barcode: null, productUnits: [] }
+
+    const results = expandUnitResults([...filler, wanted], 'beras', 10)
+
+    expect(results[0].product.id).toBe(7)
+  })
+})
+
+describe('matchingProducts', () => {
+  const exact: Product = { ...product, id: 2, namaItem: 'Zeta', kodeItem: 'ZET', barcode: null }
+  const prefix: Product = { ...product, id: 3, namaItem: 'Zeta Manis', kodeItem: 'ZTM', barcode: null }
+  const contains: Product = { ...product, id: 4, namaItem: 'Apel Zeta', kodeItem: 'APZ', barcode: null }
+
+  it('ranks an exact field above a prefix, and a prefix above a substring', () => {
+    expect(matchingProducts([contains, prefix, exact], 'zeta').map((p) => p.id)).toEqual([2, 3, 4])
+  })
+
+  it('breaks ties on name so equal matches keep a stable order', () => {
+    const b: Product = { ...contains, id: 5, namaItem: 'Bakwan Zeta' }
+
+    expect(matchingProducts([b, contains], 'zeta').map((p) => p.id)).toEqual([4, 5])
+  })
+
+  it('returns nothing for a blank query', () => {
+    expect(matchingProducts([product], '  ')).toEqual([])
+  })
+})
+
+describe('isBelowHargaPokok', () => {
+  function line(productUnitId: number | null, hargaOverride: number | null, qty = 1): CartLine {
+    return {
+      key: lineKey(1, productUnitId),
+      product,
+      productUnitId,
+      satuan: productUnitId === null ? 'PCS' : 'DUS',
+      qty,
+      hargaOverride,
+    }
+  }
+
+  it('reads the cost of the unit the line sells', () => {
+    expect(unitHargaPokok(line(null, null))).toBe(60000)
+    expect(unitHargaPokok(line(9, null))).toBe(720000)
+  })
+
+  it('flags a manual price under the base unit cost', () => {
+    expect(isBelowHargaPokok(line(null, 59999))).toBe(true)
+  })
+
+  it('accepts a manual price exactly at cost', () => {
+    expect(isBelowHargaPokok(line(null, 60000))).toBe(false)
+  })
+
+  it('checks a derived unit against its own cost, not the base unit cost', () => {
+    // 700.000 clears the base unit's 60.000 but sits under the DUS cost of 720.000
+    expect(isBelowHargaPokok(line(9, 700000))).toBe(true)
+  })
+
+  it('leaves a tier price alone even when it prices under cost', () => {
+    // qty 5 hits the 62.000 tier; no override, so this is the owner's own pricing
+    expect(isBelowHargaPokok(line(null, null, 5))).toBe(false)
+  })
+
+  it('ignores the line discount, matching the main-process guard', () => {
+    const diskonLine: CartLine = { ...line(null, 60000, 1), diskon: 30000 }
+    expect(isBelowHargaPokok(diskonLine)).toBe(false)
   })
 })
 
@@ -375,6 +465,76 @@ describe('applyHarga', () => {
   })
 })
 
+describe('parseDiskon', () => {
+  it('reads a plain number as whole rupiah', () => {
+    expect(parseDiskon('5000', 65000)).toBe(5000)
+  })
+
+  it('resolves a percentage against the base it is given', () => {
+    expect(parseDiskon('10%', 65000)).toBe(6500)
+    expect(parseDiskon('12.5%', 80000)).toBe(10000)
+  })
+
+  it('never gives away more than the line is worth', () => {
+    expect(parseDiskon('999999', 65000)).toBe(65000)
+    expect(parseDiskon('150%', 65000)).toBe(65000)
+  })
+
+  it('reads an empty box, junk and negatives as no discount', () => {
+    expect(parseDiskon('', 65000)).toBe(0)
+    expect(parseDiskon('   ', 65000)).toBe(0)
+    expect(parseDiskon('abc', 65000)).toBe(0)
+    expect(parseDiskon('-500', 65000)).toBe(500)
+  })
+
+  it('cannot manufacture a discount on an empty line', () => {
+    expect(parseDiskon('10%', 0)).toBe(0)
+    expect(parseDiskon('5000', 0)).toBe(0)
+  })
+})
+
+describe('lineSubtotal', () => {
+  const line: CartLine = { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2 }
+
+  it('is the gross when nothing was discounted', () => {
+    expect(lineGross(line)).toBe(130000)
+    expect(lineSubtotal(line)).toBe(130000)
+  })
+
+  it('takes the discount off the gross', () => {
+    expect(lineSubtotal({ ...line, diskon: 30000 })).toBe(100000)
+  })
+
+  it('floors at zero rather than paying the customer', () => {
+    expect(lineSubtotal({ ...line, diskon: 999999 })).toBe(0)
+  })
+
+  it('discounts the tier price, not the master price, when a tier applies', () => {
+    // 6 x 62000 tier price = 372000, less 2000
+    const tiered: CartLine = { ...line, qty: 6 }
+    expect(lineGross(tiered)).toBe(372000)
+    expect(lineSubtotal({ ...tiered, diskon: 2000 })).toBe(370000)
+  })
+})
+
+describe('applyDiskon', () => {
+  const cart: CartLine[] = [
+    { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2 },
+    { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1 },
+  ]
+
+  it('sets a percentage against the line it lands on, not the whole cart', () => {
+    const result = applyDiskon(cart, lineKey(1, null), '10%')
+
+    expect(result[0].diskon).toBe(13000)
+    expect(result[1].diskon).toBeUndefined()
+  })
+
+  it('clamps to the line it lands on', () => {
+    expect(applyDiskon(cart, lineKey(1, null), '999999')[0].diskon).toBe(130000)
+  })
+})
+
 describe('cartFromSale', () => {
   it('maps the stored base product_units id back to the cart null base unit', () => {
     const items: EditSaleItem[] = [
@@ -382,7 +542,7 @@ describe('cartFromSale', () => {
     ]
 
     expect(cartFromSale(items, [product]).cart).toEqual([
-      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2, hargaOverride: null },
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2, hargaOverride: null, diskon: 0 },
     ])
     expect(cartFromSale(items, [product]).dropped).toBe(0)
   })
@@ -393,7 +553,7 @@ describe('cartFromSale', () => {
     ]
 
     expect(cartFromSale(items, [product]).cart).toEqual([
-      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1, hargaOverride: null },
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1, hargaOverride: null, diskon: 0 },
     ])
   })
 

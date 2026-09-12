@@ -9,6 +9,7 @@ import { InputError } from '@/components/input-error'
 import { Label } from '@/components/ui/label'
 import { ReportTable } from '@/components/report-table'
 import { formatRupiah } from '@/lib/utils'
+import { useDraftState } from '@/hooks/use-sticky-state'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -38,9 +39,12 @@ function firstOfMonth(): string {
 
 export function Pengeluaran() {
   const [tanggal, setTanggal] = useState(today)
-  const [kategori, setKategori] = useState('')
-  const [jumlah, setJumlah] = useState('')
-  const [keterangan, setKeterangan] = useState('')
+  // Kept across a restart so a half-typed expense survives the app being closed.
+  // `tanggal` deliberately stays out of it, following the Kasir draft: a date restored
+  // from yesterday would file today's expense on the wrong day.
+  const [kategori, setKategori, clearKategori] = useDraftState('pengeluaran.kategori', '')
+  const [jumlah, setJumlah, clearJumlah] = useDraftState('pengeluaran.jumlah', '')
+  const [keterangan, setKeterangan, clearKeterangan] = useDraftState('pengeluaran.keterangan', '')
   const [processing, setProcessing] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -96,9 +100,10 @@ export function Pengeluaran() {
     window.api.expense
       .recordExpense({ tanggal, kategori, jumlah: jumlahNum, keterangan: keterangan || null })
       .then(() => {
-        setKategori('')
-        setJumlah('')
-        setKeterangan('')
+        // clears the stored draft too, or the saved expense returns as a ghost draft
+        clearKategori()
+        clearJumlah()
+        clearKeterangan()
         loadExpenses(1)
       })
       .catch((err) => setFormError(err instanceof Error ? err.message : 'Gagal menyimpan pengeluaran'))

@@ -20,7 +20,15 @@ import {
   getBaseProductUnit,
   type ProductUnitRow,
 } from '../inventory-units'
-import { getProductsByIds, bulkSaveProducts, importProducts, importSatuan, type BulkSaveRow } from '../inventory-bulk'
+import {
+  getProductsByIds,
+  bulkSaveProducts,
+  importProducts,
+  importSatuan,
+  importHargaBertingkat,
+  importBarcode,
+  type BulkSaveRow,
+} from '../inventory-bulk'
 import { listUnits, createUnit, updateUnit, deactivateUnit } from '../master-satuan'
 import { requireAdmin, requireUser } from './auth'
 
@@ -341,6 +349,46 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     return importSatuan(db, result.filePaths[0])
+  })
+
+  ipcMain.handle('inventory:importHargaBertingkat', async () => {
+    requireAdmin()
+
+    const window = getMainWindow()
+    if (!window) {
+      throw new Error('Jendela aplikasi tidak ditemukan.')
+    }
+
+    const result = await dialog.showOpenDialog(window, {
+      filters: [{ name: 'Spreadsheet', extensions: ['xlsx', 'xls', 'csv'] }],
+      properties: ['openFile'],
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+
+    return importHargaBertingkat(db, result.filePaths[0])
+  })
+
+  ipcMain.handle('inventory:importBarcode', async () => {
+    requireAdmin()
+
+    const window = getMainWindow()
+    if (!window) {
+      throw new Error('Jendela aplikasi tidak ditemukan.')
+    }
+
+    const result = await dialog.showOpenDialog(window, {
+      filters: [{ name: 'Spreadsheet', extensions: ['xlsx', 'xls', 'csv'] }],
+      properties: ['openFile'],
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+
+    return importBarcode(db, result.filePaths[0])
   })
 
   ipcMain.handle('master-satuan:list', () => {

@@ -8,7 +8,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { METODE_LABEL } from '@/lib/metode'
-import { formatRupiah } from '@/lib/utils'
+import { formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -223,7 +223,12 @@ export function Rekap() {
   const stockValueColumns: Column<StockValueRow>[] = [
     { key: 'kodeItem', name: 'Kode', width: 100 },
     { key: 'namaItem', name: 'Produk' },
-    { key: 'stok', name: 'Stok', width: 90 },
+    {
+      key: 'stok',
+      name: 'Stok',
+      width: 90,
+      renderCell: ({ row }) => <span className="w-full text-right">{formatQty(row.stok)}</span>,
+    },
     { key: 'satuan', name: 'Satuan', width: 90 },
     {
       key: 'hargaPokok',

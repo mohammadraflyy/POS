@@ -1,20 +1,25 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import type { Column, RowsChangeData } from 'react-data-grid'
 import { DataGrid, renderTextEditor } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
 import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { useAppearance } from '@/hooks/use-appearance'
+import { useDraftState, useStickyState } from '@/hooks/use-sticky-state'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { formatQty, parseQty } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -40,6 +45,17 @@ interface DraftRow {
   alasan: string
 }
 
+/** one product's typed count, kept between visits until the row is saved */
+interface CountDraft {
+  stokFisik: string
+  alasan: string
+}
+
+/** true once the row says something the seeded default did not */
+function isCounted(row: DraftRow): boolean {
+  return row.stokFisik !== formatQty(row.stokSistem) || row.alasan.trim() !== ''
+}
+
 function toDraftRow(p: ProductOpnameRowDTO): DraftRow {
   return {
     key: `product-${p.id}`,
@@ -49,7 +65,7 @@ function toDraftRow(p: ProductOpnameRowDTO): DraftRow {
     categoryName: p.categoryName ?? '-',
     satuan: p.satuan,
     stokSistem: p.stok,
-    stokFisik: String(p.stok),
+    stokFisik: formatQty(p.stok),
     alasan: '',
   }
 }
@@ -71,17 +87,61 @@ export function StockOpname() {
     [widthRef, heightRef],
   )
 
-  const [search, setSearch] = useState('')
+  // sticky so leaving the page and coming back keeps the filter
+  const [search, setSearch] = useStickyState('opname.search', '')
   const [categories, setCategories] = useState<{ id: number; nama: string }[]>([])
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([])
+  const [selectedCategoryIds, setSelectedCategoryIds] = useStickyState<number[]>('opname.categoryIds', [])
   const [rows, setRows] = useState<DraftRow[]>([])
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
+  /**
+   * Counts already typed, keyed by productId, surviving a restart - a stocktake takes an
+   * hour, and losing it means walking the shelves again.
+   *
+   * Only counts somebody actually entered go in here. `stokFisik` starts out equal to the
+   * system stock, so storing every row would restore yesterday's system figure today and
+   * pass it off as a count that was made. `stokSistem` is never stored either; it is
+   * always read fresh, because a stale one becomes a wrong shrinkage figure.
+   */
+  const [counts, setCounts] = useDraftState<Record<string, CountDraft>>('opname.counts', {})
 
   useEffect(() => {
     window.api.stockOpname.listCategories().then(setCategories)
   }, [])
+
+  // a filter restored from a previous visit has to refetch its rows
+  useEffect(() => {
+    runSearch(search, selectedCategoryIds)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /**
+   * Mirrors what is on screen into the stored counts: an entered count is written, and a
+   * row that is back to matching the system stock - which is what a successful save leaves
+   * behind - drops out again. Only products currently listed are touched, so counts made
+   * under another category filter survive.
+   */
+  useEffect(() => {
+    if (rows.length === 0) {
+      return
+    }
+
+    setCounts((prev) => {
+      const next = { ...prev }
+
+      for (const row of rows) {
+        if (isCounted(row)) {
+          next[String(row.productId)] = { stokFisik: row.stokFisik, alasan: row.alasan }
+        } else {
+          delete next[String(row.productId)]
+        }
+      }
+
+      return next
+    })
+  }, [rows, setCounts])
 
   function runSearch(q: string, categoryIds: number[]) {
     setRowErrors({})
@@ -94,7 +154,15 @@ export function StockOpname() {
 
     setHasSearched(true)
     window.api.stockOpname.searchProducts({ q, categoryIds }).then((results) => {
-      setRows(results.map(toDraftRow))
+      // fresh rows from the database, with any count already typed laid back on top
+      setRows(
+        results.map((p) => {
+          const row = toDraftRow(p)
+          const typed = counts[String(p.id)]
+
+          return typed ? { ...row, stokFisik: typed.stokFisik, alasan: typed.alasan } : row
+        }),
+      )
     })
   }
 
@@ -111,6 +179,21 @@ export function StockOpname() {
     runSearch(search, next)
   }
 
+  function clearCategories() {
+    setSelectedCategoryIds([])
+    setCategoryPickerOpen(false)
+    runSearch(search, [])
+  }
+
+  // named while there is room for names, counted once the button would overflow
+  const selectedNames = categories.filter((c) => selectedCategoryIds.includes(c.id)).map((c) => c.nama)
+  const selectedCategoryLabel =
+    selectedNames.length === 0
+      ? 'Semua Kategori'
+      : selectedNames.length <= 2
+        ? selectedNames.join(', ')
+        : `${selectedNames.length} kategori`
+
   function saveRow(row: DraftRow) {
     setRowErrors((prev) => {
       const next = { ...prev }
@@ -118,10 +201,11 @@ export function StockOpname() {
       return next
     })
 
-    const stokFisikNum = Number(row.stokFisik)
+    // a counted stock level may be fractional - "5,5" and "5.5" both mean 5,5 KG
+    const stokFisikNum = parseQty(row.stokFisik)
 
-    if (row.stokFisik.trim() === '' || !Number.isInteger(stokFisikNum) || stokFisikNum < 0) {
-      setRowErrors((prev) => ({ ...prev, [row.key]: 'Stok fisik harus bilangan bulat, minimal 0.' }))
+    if (row.stokFisik.trim() === '' || !Number.isFinite(stokFisikNum) || stokFisikNum < 0) {
+      setRowErrors((prev) => ({ ...prev, [row.key]: 'Stok fisik harus berupa angka, minimal 0.' }))
       return
     }
 
@@ -129,7 +213,9 @@ export function StockOpname() {
       .recordAdjustment({ productId: row.productId, stokSesudah: stokFisikNum, alasan: row.alasan || null })
       .then(() => {
         setRows((prev) =>
-          prev.map((r) => (r.key === row.key ? { ...r, stokSistem: stokFisikNum } : r)),
+          prev.map((r) =>
+            r.key === row.key ? { ...r, stokSistem: Math.round(stokFisikNum * 1000) / 1000 } : r,
+          ),
         )
         setSavedKeys((prev) => new Set(prev).add(row.key))
         setTimeout(() => {
@@ -151,7 +237,8 @@ export function StockOpname() {
       return
     }
     const row = newRows[data.indexes[0]]
-    if (row.stokFisik !== String(row.stokSistem)) {
+    // compared as numbers: "5,5" and "5.5" are the same count, only a real change saves
+    if (parseQty(row.stokFisik) !== row.stokSistem) {
       saveRow(row)
     }
   }
@@ -178,7 +265,7 @@ export function StockOpname() {
       key: 'stokSistem',
       name: 'Stok Sistem',
       width: 100,
-      renderCell: ({ row }) => <span className="text-muted-foreground">{row.stokSistem}</span>,
+      renderCell: ({ row }) => <span className="text-muted-foreground">{formatQty(row.stokSistem)}</span>,
     },
     textColumn('stokFisik', 'Stok Fisik', 100),
     {
@@ -186,15 +273,15 @@ export function StockOpname() {
       name: 'Selisih',
       width: 90,
       renderCell: ({ row }) => {
-        const stokFisikNum = Number(row.stokFisik)
+        const stokFisikNum = parseQty(row.stokFisik)
         if (row.stokFisik.trim() === '' || !Number.isFinite(stokFisikNum)) {
           return <span className="text-muted-foreground">-</span>
         }
-        const selisih = stokFisikNum - row.stokSistem
+        const selisih = Math.round((stokFisikNum - row.stokSistem) * 1000) / 1000
         const colorClass = selisih > 0 ? 'text-green-600' : selisih < 0 ? 'text-destructive' : 'text-muted-foreground'
         return (
           <span className={colorClass}>
-            {selisih > 0 ? `+${selisih}` : selisih}
+            {selisih > 0 ? `+${formatQty(selisih)}` : formatQty(selisih)}
             {savedKeys.has(row.key) && <span className="text-xs text-muted-foreground"> · Tersimpan</span>}
           </span>
         )
@@ -226,27 +313,10 @@ export function StockOpname() {
             </Button>
           </form>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline">
-                Kategori {selectedCategoryIds.length > 0 && `(${selectedCategoryIds.length})`}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {categories.map((c) => (
-                <DropdownMenuCheckboxItem
-                  key={c.id}
-                  checked={selectedCategoryIds.includes(c.id)}
-                  onSelect={(e) => {
-                    e.preventDefault()
-                    toggleCategory(c.id)
-                  }}
-                >
-                  {c.nama}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button type="button" variant="outline" onClick={() => setCategoryPickerOpen(true)}>
+            {selectedCategoryLabel}
+            <ChevronsUpDown className="size-4 opacity-50" />
+          </Button>
         </div>
 
         {errorSummary.length > 0 && (
@@ -285,6 +355,49 @@ export function StockOpname() {
           </div>
         )}
       </Page>
+
+      <CommandDialog
+        open={categoryPickerOpen}
+        onOpenChange={setCategoryPickerOpen}
+        title="Kategori"
+        description="Pilih satu atau beberapa kategori"
+      >
+        <CommandInput placeholder="Cari kategori..." />
+        <CommandList>
+          <CommandEmpty>Kategori tidak ditemukan.</CommandEmpty>
+          {selectedCategoryIds.length > 0 && (
+            <CommandGroup>
+              <CommandItem value="__semua__" onSelect={clearCategories}>
+                <Check className="size-4 opacity-0" />
+                Semua kategori
+              </CommandItem>
+            </CommandGroup>
+          )}
+          <CommandGroup heading="Kategori">
+            {categories.map((c) => (
+              // stays open on select: picking categories is a multiple choice
+              <CommandItem key={c.id} value={c.nama} onSelect={() => toggleCategory(c.id)}>
+                <Check className={selectedCategoryIds.includes(c.id) ? 'size-4' : 'size-4 opacity-0'} />
+                {c.nama}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </CommandList>
+        <div className="flex items-center gap-3 border-t px-3 py-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <kbd className="rounded border bg-muted px-1.5 py-0.5">&uarr;&darr;</kbd>
+            pilih
+          </span>
+          <span className="flex items-center gap-1">
+            <kbd className="rounded border bg-muted px-1.5 py-0.5">&crarr;</kbd>
+            centang
+          </span>
+          <span className="flex items-center gap-1">
+            <kbd className="rounded border bg-muted px-1.5 py-0.5">esc</kbd>
+            tutup
+          </span>
+        </div>
+      </CommandDialog>
     </AppShell>
   )
 }

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { InputError } from '@/components/input-error'
 import { Label } from '@/components/ui/label'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useDraftState } from '@/hooks/use-sticky-state'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -29,9 +30,9 @@ const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Master Satuan', href: '/master-
 export function MasterSatuan() {
   const [rows, setRows] = useState<SatuanRow[]>([])
 
-  const [code, setCode] = useState('')
-  const [name, setName] = useState('')
-  const [symbol, setSymbol] = useState('')
+  const [code, setCode, clearCode] = useDraftState('master-satuan.code', '')
+  const [name, setName, clearName] = useDraftState('master-satuan.name', '')
+  const [symbol, setSymbol, clearSymbol] = useDraftState('master-satuan.symbol', '')
   const [processing, setProcessing] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -65,9 +66,10 @@ export function MasterSatuan() {
     window.api.masterSatuan
       .create({ code, name, symbol })
       .then(() => {
-        setCode('')
-        setName('')
-        setSymbol('')
+        // clears the stored draft too, or the saved satuan returns as a ghost draft
+        clearCode()
+        clearName()
+        clearSymbol()
         loadRows()
       })
       .catch((err) => {

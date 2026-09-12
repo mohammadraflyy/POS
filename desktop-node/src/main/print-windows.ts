@@ -1,158 +1,131 @@
-import { execFile } from 'node:child_process'
-import { writeFileSync, unlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { promisify } from 'node:util'
-import { randomUUID } from 'node:crypto'
+import koffi from 'koffi'
 
-const execFileAsync = promisify(execFile)
+/**
+ * Raw ESC/POS output straight to the Windows spooler.
+ *
+ * This used to spawn `powershell.exe` once per receipt to P/Invoke the same functions.
+ * Caching the compiled helper DLL removed the C# compile, but PowerShell's own process
+ * startup still cost ~300-600 ms on every single struk - that was the whole of the
+ * "print lemot" complaint. Calling winspool.drv in-process removes the process entirely.
+ */
+const winspool = koffi.load('winspool.drv')
 
-// Bump this when the C# below changes - the compiled DLL is cached by name, and a
-// stale one would be reused silently.
-const HELPER_VERSION = 'v1'
-const DLL_PATH = join(tmpdir(), `pos-rawprint-${HELPER_VERSION}.dll`)
-const SCRIPT_PATH = join(tmpdir(), `pos-rawprint-${HELPER_VERSION}.ps1`)
+const DOC_INFO_1 = koffi.struct('DOC_INFO_1', {
+  pDocName: 'str',
+  pOutputFile: 'str',
+  pDatatype: 'str',
+})
 
-// Standard Microsoft-documented "RawPrinterHelper" technique (KB322091):
-// P/Invoke winspool.drv directly so the byte buffer reaches the printer
-// as-is, datatype "RAW" - no driver-side re-rendering, which is exactly
-// what made Electron's webContents.print({silent:true}) unreliable here.
-//
-// Add-Type used to recompile this class on every single receipt, and that csc
-// run was the bulk of the delay. It is now compiled once to a DLL and merely
-// loaded on every later print.
-const RAW_PRINT_SCRIPT = `
-param(
-  [Parameter(Mandatory=$true)][string]$PrinterName,
-  [Parameter(Mandatory=$true)][string]$DataPath,
-  [Parameter(Mandatory=$true)][string]$DllPath
-)
+/**
+ * Both pointers winspool writes into - the printer handle and the written-byte count - have to
+ * be declared with `koffi.out()`. Koffi copies a plain pointer argument in only, so an
+ * undecorated `void **` left the JS array untouched: `OpenPrinterA` returned true while the
+ * handle stayed null, and `StartDocPrinterA(NULL, ...)` then failed with "spooler menolak
+ * dokumen baru". See node_modules/koffi/doc/output.md.
+ */
+const HANDLE = koffi.pointer('HANDLE', koffi.opaque())
 
-$ErrorActionPreference = 'Stop'
+const OpenPrinter = winspool.func('__stdcall', 'OpenPrinterA', 'bool', ['str', koffi.out(koffi.pointer(HANDLE)), 'void *'])
+const ClosePrinter = winspool.func('__stdcall', 'ClosePrinter', 'bool', [HANDLE])
+const StartDocPrinter = winspool.func('__stdcall', 'StartDocPrinterA', 'int32', [HANDLE, 'uint32', koffi.pointer(DOC_INFO_1)])
+const EndDocPrinter = winspool.func('__stdcall', 'EndDocPrinter', 'bool', [HANDLE])
+const StartPagePrinter = winspool.func('__stdcall', 'StartPagePrinter', 'bool', [HANDLE])
+const EndPagePrinter = winspool.func('__stdcall', 'EndPagePrinter', 'bool', [HANDLE])
+const WritePrinter = winspool.func('__stdcall', 'WritePrinter', 'bool', [HANDLE, 'uint8_t *', 'uint32', koffi.out(koffi.pointer('uint32'))])
 
-$source = @"
-using System;
-using System.Runtime.InteropServices;
+const PRINT_TIMEOUT_MS = 30_000
 
-public class RawPrinterHelper
-{
-    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
-    public class DOCINFOA
-    {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
-
-    [DllImport("winspool.drv", EntryPoint="OpenPrinterA", SetLastError=true, CharSet=CharSet.Ansi, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
-
-    [DllImport("winspool.drv", EntryPoint="ClosePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint="StartDocPrinterA", SetLastError=true, CharSet=CharSet.Ansi, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
-
-    [DllImport("winspool.drv", EntryPoint="EndDocPrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint="StartPagePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint="EndPagePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.drv", EntryPoint="WritePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
-
-    public static void SendBytesToPrinter(string szPrinterName, byte[] pBytes)
-    {
-        IntPtr hPrinter;
-        DOCINFOA di = new DOCINFOA();
-        int dwWritten;
-        bool bSuccess = false;
-
-        di.pDocName = "POS Receipt";
-        di.pDataType = "RAW";
-
-        if (OpenPrinter(szPrinterName, out hPrinter, IntPtr.Zero))
-        {
-            if (StartDocPrinter(hPrinter, 1, di))
-            {
-                if (StartPagePrinter(hPrinter))
-                {
-                    bSuccess = WritePrinter(hPrinter, pBytes, pBytes.Length, out dwWritten);
-                    EndPagePrinter(hPrinter);
-                }
-                EndDocPrinter(hPrinter);
-            }
-            ClosePrinter(hPrinter);
-        }
-
-        if (!bSuccess)
-        {
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-        }
-    }
-}
-"@
-
-if (-not (Test-Path $DllPath)) {
-  Add-Type -TypeDefinition $source -OutputAssembly $DllPath -OutputType Library
+/**
+ * Runs a koffi function on koffi's worker-thread pool instead of the main thread, so a
+ * spooler that never answers cannot freeze every ipcMain handler and all better-sqlite3
+ * access. `fn.async(...args, cb)` is koffi's own async calling convention - see
+ * node_modules/koffi/doc/load.md.
+ */
+function callAsync<T>(fn: { async: (...args: unknown[]) => void }, ...args: unknown[]): Promise<T> {
+  return new Promise((resolve, reject) => {
+    fn.async(...args, (err: unknown, res: T) => {
+      if (err) {
+        reject(err instanceof Error ? err : new Error(String(err)))
+      } else {
+        resolve(res)
+      }
+    })
+  })
 }
 
-try {
-  Add-Type -Path $DllPath
-} catch {
-  Remove-Item $DllPath -Force -ErrorAction SilentlyContinue
-  Add-Type -TypeDefinition $source -OutputAssembly $DllPath -OutputType Library
-  Add-Type -Path $DllPath
-}
+async function sendToPrinter(printerName: string, data: Buffer): Promise<void> {
+  const handleOut = [null] as unknown[]
 
-$bytes = [System.IO.File]::ReadAllBytes($DataPath)
-[RawPrinterHelper]::SendBytesToPrinter($PrinterName, $bytes)
-`
+  if (!(await callAsync<boolean>(OpenPrinter, printerName, handleOut, null))) {
+    throw new Error(`printer "${printerName}" tidak bisa dibuka`)
+  }
 
-async function runPrint(printerName: string, data: Buffer): Promise<void> {
-  const dataPath = join(tmpdir(), `pos-print-${randomUUID()}.bin`)
-
-  writeFileSync(dataPath, data)
-  writeFileSync(SCRIPT_PATH, RAW_PRINT_SCRIPT)
+  const handle = handleOut[0]
 
   try {
-    await execFileAsync(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        SCRIPT_PATH,
-        '-PrinterName',
-        printerName,
-        '-DataPath',
-        dataPath,
-        '-DllPath',
-        DLL_PATH,
-      ],
-      { timeout: 30_000 },
-    )
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    throw new Error(`Gagal mencetak: ${message}`)
-  } finally {
-    try {
-      unlinkSync(dataPath)
-    } catch {
-      // best-effort cleanup
+    const docInfo = { pDocName: 'POS Receipt', pOutputFile: null, pDatatype: 'RAW' }
+
+    if ((await callAsync<number>(StartDocPrinter, handle, 1, docInfo)) === 0) {
+      throw new Error('spooler menolak dokumen baru')
     }
+
+    try {
+      if (!(await callAsync<boolean>(StartPagePrinter, handle))) {
+        throw new Error('spooler menolak halaman baru')
+      }
+
+      try {
+        const written = [0]
+
+        if (!(await callAsync<boolean>(WritePrinter, handle, data, data.length, written))) {
+          throw new Error('data gagal dikirim ke printer')
+        }
+      } finally {
+        await callAsync(EndPagePrinter, handle)
+      }
+    } finally {
+      await callAsync(EndDocPrinter, handle)
+    }
+  } finally {
+    await callAsync(ClosePrinter, handle)
   }
 }
 
-// One receipt at a time. Two concurrent runs would race to compile the same DLL
-// and could interleave on the printer; the renderer now fires prints without
-// awaiting them, so overlap is a real possibility rather than a theoretical one.
+/**
+ * Races the actual print against a 30s clock, mirroring the timeout the old
+ * `execFile(..., { timeout: 30_000 })` used to give a hung spooler. Koffi has no way to
+ * cancel an in-flight async call, so a truly-hung native call keeps running in the
+ * background and still releases its handle whenever the OS eventually answers - this
+ * timeout only bounds how long the caller waits, same as any FFI/blocking native call.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
+async function runPrint(printerName: string, data: Buffer): Promise<void> {
+  try {
+    await withTimeout(sendToPrinter(printerName, data), PRINT_TIMEOUT_MS, 'printer tidak merespons dalam 30 detik')
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Gagal mencetak: ${message}`)
+  }
+}
+
+// One receipt at a time. The renderer fires prints without awaiting them, so two receipts
+// really can overlap - this is not a theoretical race.
 let printQueue: Promise<unknown> = Promise.resolve()
 
 export function printRaw(printerName: string, data: Buffer): Promise<void> {

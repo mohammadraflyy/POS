@@ -3,6 +3,8 @@ export interface ProductUnitOption {
   satuan: string
   konversi: number
   hargaJual: number
+  /** this unit's own cost - the floor a hand-set price may not go under */
+  hargaPokok: number
 }
 
 export interface PriceTier {
@@ -21,6 +23,8 @@ export interface Product {
   namaItem: string
   satuan: string
   hargaJual: number
+  /** the base unit's cost, mirrored from the base product_units row */
+  hargaPokok: number
   stok: number
   /** the base unit's product_units.id - a cart line's null productUnitId resolves to this */
   baseProductUnitId: number
@@ -41,6 +45,16 @@ export interface CartLine {
    * call sites that build a CartLine keep compiling.
    */
   hargaOverride?: number | null
+  /**
+   * Whole rupiah taken off this line by hand. Stored as a plain amount even when the
+   * cashier typed a percentage: the percentage is resolved the moment it is entered, so
+   * changing qty afterwards leaves the discount where the cashier put it rather than
+   * silently growing it.
+   *
+   * ponytail: frozen nominal, not a live percentage. If "10% off, whatever the qty ends
+   * up being" is ever wanted, store the raw entry alongside this and re-resolve on qty change.
+   */
+  diskon?: number
 }
 
 // Mirrors main/kasir.ts's findTierForQty/priceForQty — duplicated (not
@@ -90,6 +104,60 @@ export function unitPrice(line: CartLine): number {
   return priceForQty(tiersForLine(line), normalPrice, line.qty)
 }
 
+/** the cost of the unit this line sells - what a hand-set price is floored at */
+export function unitHargaPokok(line: CartLine): number {
+  if (line.productUnitId === null) {
+    return line.product.hargaPokok
+  }
+
+  return line.product.productUnits.find((u) => u.id === line.productUnitId)?.hargaPokok ?? line.product.hargaPokok
+}
+
+/**
+ * A hand-set price that sells this line at a loss - main/kasir.ts rejects it on save,
+ * so this is the till's own warning before the cashier gets that far. Mirrors that
+ * guard exactly: only `hargaOverride` is checked, never the discount, and never a
+ * master or tier price the owner set on purpose.
+ */
+export function isBelowHargaPokok(line: CartLine): boolean {
+  return line.hargaOverride != null && line.hargaOverride < unitHargaPokok(line)
+}
+
+/** what the line is worth before its own discount */
+export function lineGross(line: CartLine): number {
+  return Math.round(line.qty * unitPrice(line))
+}
+
+/** what the line contributes to the bill; a discount can zero a line but never invert it */
+export function lineSubtotal(line: CartLine): number {
+  return Math.max(0, lineGross(line) - (line.diskon ?? 0))
+}
+
+/**
+ * Reads a discount the cashier typed. `10%` is resolved against `base` there and then;
+ * anything else is read as whole rupiah. Junk and negatives read as no discount, and the
+ * result never exceeds `base` - main/kasir.ts rejects an over-large discount outright, so
+ * clamping here keeps the till from ever sending one.
+ */
+export function parseDiskon(raw: string, base: number): number {
+  const trimmed = raw.trim()
+
+  if (trimmed === '') {
+    return 0
+  }
+
+  const isPersen = trimmed.endsWith('%')
+  const digits = Number(trimmed.replace(/[^0-9.]/g, ''))
+
+  if (!Number.isFinite(digits) || digits <= 0) {
+    return 0
+  }
+
+  const nominal = isPersen ? Math.round((base * digits) / 100) : Math.round(digits)
+
+  return Math.min(Math.max(0, nominal), Math.max(0, base))
+}
+
 export function lineKey(productId: number, productUnitId: number | null): string {
   return `${productId}:${productUnitId ?? 'base'}`
 }
@@ -111,10 +179,16 @@ export interface StoredCartLine {
   productId: number
   productUnitId: number | null
   qty: number
+  diskon?: number
 }
 
 export function toStoredCart(cart: CartLine[]): StoredCartLine[] {
-  return cart.map((line) => ({ productId: line.product.id, productUnitId: line.productUnitId, qty: line.qty }))
+  return cart.map((line) => ({
+    productId: line.product.id,
+    productUnitId: line.productUnitId,
+    qty: line.qty,
+    diskon: line.diskon ?? 0,
+  }))
 }
 
 /** rebuilds cart lines against the current catalog, dropping products or satuan that no longer exist */
@@ -140,6 +214,7 @@ export function restoreCart(stored: StoredCartLine[], products: Product[]): Cart
       productUnitId: line.productUnitId,
       satuan: unit?.satuan ?? product.satuan,
       qty: line.qty,
+      diskon: line.diskon ?? 0,
     })
   }
 
@@ -214,6 +289,14 @@ export function applyHarga(cart: CartLine[], key: string, rawHarga: number): Car
   return cart.map((i) => (i.key === key ? { ...i, hargaOverride: harga } : i))
 }
 
+/**
+ * Sets a manual discount on one line from what the cashier typed (`5000` or `10%`).
+ * Resolved against that line's own gross, so the percentage means what it looks like.
+ */
+export function applyDiskon(cart: CartLine[], key: string, raw: string): CartLine[] {
+  return cart.map((i) => (i.key === key ? { ...i, diskon: parseDiskon(raw, lineGross(i)) } : i))
+}
+
 /** one selectable row in the product palette: a product *at one of its units* */
 export interface UnitResult {
   /** same shape as a cart line's key, so React keys stay unique across units */
@@ -223,6 +306,8 @@ export interface UnitResult {
   productUnitId: number | null
   satuan: string
   hargaJual: number
+  /** stock expressed in this row's own satuan, so a DUS row reads in DUS and not in PCS */
+  stok: number
 }
 
 /** one line of a saved sale, as `kasir:getSaleForEdit` hands it over */
@@ -231,6 +316,8 @@ export interface EditSaleItem {
   productUnitId: number | null
   qty: number
   hargaJual: number
+  /** whole rupiah taken off this line when the sale was saved; absent on pre-discount sales */
+  diskon?: number
   priceSource: 'normal' | 'price_tier' | 'manual'
 }
 
@@ -293,6 +380,8 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
 
     if (existing) {
       existing.qty = roundQty(existing.qty + item.qty)
+      // both rows' discounts were really given, so the merged line carries their sum
+      existing.diskon = (existing.diskon ?? 0) + (item.diskon ?? 0)
 
       if (hargaOverride != null) {
         existing.hargaOverride = hargaOverride
@@ -308,6 +397,7 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
       satuan: unit?.satuan ?? product.satuan,
       qty: item.qty,
       hargaOverride,
+      diskon: item.diskon ?? 0,
     })
   }
 
@@ -315,36 +405,63 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
 }
 
 /**
- * Expands matching products into one row per satuan, so the cashier can pick DUS
- * without adding PCS first and converting. Matches barcode as well as name and
- * kode - a scanner types the barcode straight into the search box, and leaving
- * barcode out of this filter is what made scanning look broken.
+ * How well a product answers the query: 0 the query *is* one of its fields, 1 a
+ * field starts with it, 2 a field only contains it, -1 no match at all. Matches
+ * barcode as well as name and kode - a scanner types the barcode straight into
+ * the search box, and leaving barcode out of this filter is what made scanning
+ * look broken.
  */
-export function expandUnitResults(products: Product[], query: string, limit: number): UnitResult[] {
+function matchRank(product: Product, q: string): number {
+  const fields = [product.namaItem, product.kodeItem, product.barcode ?? ''].map((field) => field.toLowerCase())
+
+  if (fields.some((field) => field === q)) {
+    return 0
+  }
+
+  if (fields.some((field) => field.startsWith(q))) {
+    return 1
+  }
+
+  return fields.some((field) => field.includes(q)) ? 2 : -1
+}
+
+/**
+ * Every product the query matches, best match first. The palette can only show
+ * so many rows, so this ordering decides which products a cashier ever sees:
+ * plain catalog order meant a short query filled the list with products whose
+ * name starts in A, and anything later in the alphabet never appeared at all.
+ */
+export function matchingProducts(products: Product[], query: string): Product[] {
   const q = query.trim().toLowerCase()
 
   if (!q) {
     return []
   }
 
+  return products
+    .map((product) => ({ product, rank: matchRank(product, q) }))
+    .filter((entry) => entry.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.product.namaItem.localeCompare(b.product.namaItem))
+    .map((entry) => entry.product)
+}
+
+/**
+ * Expands matching products into one row per satuan, so the cashier can pick DUS
+ * without adding PCS first and converting. `limit` counts rows, not products - a
+ * product with three satuan eats four slots - so pair it with `matchingProducts`
+ * to tell the cashier how many products the cap left out.
+ */
+export function expandUnitResults(products: Product[], query: string, limit: number): UnitResult[] {
   const results: UnitResult[] = []
 
-  for (const product of products) {
-    const matches =
-      product.namaItem.toLowerCase().includes(q) ||
-      product.kodeItem.toLowerCase().includes(q) ||
-      (product.barcode ?? '').toLowerCase().includes(q)
-
-    if (!matches) {
-      continue
-    }
-
+  for (const product of matchingProducts(products, query)) {
     results.push({
       key: lineKey(product.id, null),
       product,
       productUnitId: null,
       satuan: product.satuan,
       hargaJual: product.hargaJual,
+      stok: product.stok,
     })
 
     for (const unit of product.productUnits) {
@@ -354,6 +471,8 @@ export function expandUnitResults(products: Product[], query: string, limit: num
         productUnitId: unit.id,
         satuan: unit.satuan,
         hargaJual: unit.hargaJual,
+        // konversi 0 would be a broken catalog row; guard so the row shows 0 rather than Infinity
+        stok: unit.konversi > 0 ? roundQty(product.stok / unit.konversi) : 0,
       })
     }
 

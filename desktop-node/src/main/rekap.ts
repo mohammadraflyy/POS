@@ -1,9 +1,14 @@
-import { and, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, gte, lte, ne, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
-import { categories, products, productUnits, purchases, saleItems, sales, suppliers, units } from './db/schema'
+import { bonPayments, categories, products, productUnits, purchases, saleItems, sales, suppliers, units } from './db/schema'
 import { METODE_NON_TUNAI, type MetodePembayaran } from './kasir'
+
+/** the local calendar day, in the `YYYY-MM-DD` shape the report ranges are given in */
+function tanggalLokal(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 
 export interface RekapSummary {
   omzetTunai: number
@@ -81,42 +86,106 @@ export interface RekapResult {
   salesHistory: SalesHistoryRow[]
 }
 
+/**
+ * Every sale whose money could land inside the range, and the day it landed.
+ *
+ * The report is on a cash basis: a sale counts as income on the day the shop was actually
+ * paid, not on the day the goods walked out. Cash, QRIS and transfer settle at the till, so
+ * for them the two days are the same. A bon counts for nothing at all until it is paid off,
+ * and then it counts on the day of the payment that cleared it - which is why an old bon
+ * settled today lands in today's rekap and never retroactively in last month's.
+ *
+ * A bon marked paid without any recorded `bon_payments` row (an admin correcting money that
+ * was taken but never entered) has no payment date to use, so it falls back to its own.
+ *
+ * The query pulls every bon rather than only those created in range, because the payment
+ * that recognises a bon can arrive any length of time after the sale. Bons are a small
+ * slice of the table, and only their recognised subset survives the filter below.
+ */
+function pengakuanPenjualan(
+  db: BetterSQLite3Database<typeof schema>,
+  rangeStart: Date,
+  rangeEnd: Date,
+): Map<number, { tanggal: string; metodePembayaran: MetodePembayaran; total: number; diskon: number }> {
+  const saleRows = db
+    .select({
+      id: sales.id,
+      metodePembayaran: sales.metodePembayaran,
+      total: sales.total,
+      diskon: sales.diskon,
+      dibayar: sales.dibayar,
+      createdAt: sales.createdAt,
+    })
+    .from(sales)
+    .where(
+      and(
+        eq(sales.status, 'selesai'),
+        or(
+          eq(sales.metodePembayaran, 'bon'),
+          and(ne(sales.metodePembayaran, 'bon'), gte(sales.createdAt, rangeStart), lte(sales.createdAt, rangeEnd)),
+        ),
+      ),
+    )
+    .all()
+
+  const pelunasanRows = db
+    .select({ saleId: bonPayments.saleId, tanggal: sql<string>`max(${bonPayments.tanggal})` })
+    .from(bonPayments)
+    .groupBy(bonPayments.saleId)
+    .all()
+  const pelunasanBySaleId = new Map(pelunasanRows.map((row) => [row.saleId, row.tanggal]))
+
+  const from = tanggalLokal(rangeStart)
+  const to = tanggalLokal(rangeEnd)
+  const diakui = new Map<
+    number,
+    { tanggal: string; metodePembayaran: MetodePembayaran; total: number; diskon: number }
+  >()
+
+  for (const sale of saleRows) {
+    let tanggal = tanggalLokal(sale.createdAt)
+
+    if (sale.metodePembayaran === 'bon') {
+      if (sale.dibayar < sale.total) {
+        continue
+      }
+
+      tanggal = pelunasanBySaleId.get(sale.id) ?? tanggal
+    }
+
+    if (tanggal < from || tanggal > to) {
+      continue
+    }
+
+    diakui.set(sale.id, {
+      tanggal,
+      metodePembayaran: sale.metodePembayaran,
+      total: sale.total,
+      diskon: sale.diskon,
+    })
+  }
+
+  return diakui
+}
+
 export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from: string; to: string }): RekapResult {
   const rangeStart = new Date(`${input.from}T00:00:00`)
   const rangeEnd = new Date(`${input.to}T23:59:59`)
 
-  const omzetTunaiRow = db
-    .select({ total: sql<number>`coalesce(sum(${sales.total}), 0)` })
-    .from(sales)
-    .where(
-      and(
-        eq(sales.status, 'selesai'),
-        eq(sales.metodePembayaran, 'tunai'),
-        gte(sales.createdAt, rangeStart),
-        lte(sales.createdAt, rangeEnd),
-      ),
-    )
-    .get()
+  const diakui = pengakuanPenjualan(db, rangeStart, rangeEnd)
 
-  // qris and transfer are takings the till never sees; the cash book needs them apart
-  const omzetNonTunaiRow = db
-    .select({ total: sql<number>`coalesce(sum(${sales.total}), 0)` })
-    .from(sales)
-    .where(
-      and(
-        eq(sales.status, 'selesai'),
-        inArray(sales.metodePembayaran, [...METODE_NON_TUNAI]),
-        gte(sales.createdAt, rangeStart),
-        lte(sales.createdAt, rangeEnd),
-      ),
-    )
-    .get()
+  let omzetTunai = 0
+  let omzetNonTunai = 0
 
-  const jumlahTransaksiRow = db
-    .select({ count: sql<number>`count(*)` })
-    .from(sales)
-    .where(and(eq(sales.status, 'selesai'), gte(sales.createdAt, rangeStart), lte(sales.createdAt, rangeEnd)))
-    .get()
+  for (const sale of diakui.values()) {
+    // a settled bon is cash in the drawer on the day it was settled, so it lands here
+    if ((METODE_NON_TUNAI as readonly string[]).includes(sale.metodePembayaran)) {
+      // qris and transfer are takings the till never sees; the cash book needs them apart
+      omzetNonTunai += sale.total
+    } else {
+      omzetTunai += sale.total
+    }
+  }
 
   const piutangRow = db
     .select({ piutang: sql<number>`coalesce(sum(${sales.total} - ${sales.dibayar}), 0)` })
@@ -124,9 +193,11 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     .where(and(eq(sales.status, 'selesai'), eq(sales.metodePembayaran, 'bon')))
     .get()
 
+  // Same net as pengakuanPenjualan casts, then narrowed to the sales it recognised - the
+  // margin has to be counted on exactly the sales the omzet was counted on.
   const saleItemRows = db
     .select({
-      createdAt: sales.createdAt,
+      saleId: saleItems.saleId,
       categoryName: categories.nama,
       productId: products.id,
       namaItem: products.namaItem,
@@ -143,8 +214,17 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .leftJoin(productUnits, eq(saleItems.productUnitId, productUnits.id))
     .leftJoin(units, eq(productUnits.unitId, units.id))
-    .where(and(eq(sales.status, 'selesai'), gte(sales.createdAt, rangeStart), lte(sales.createdAt, rangeEnd)))
+    .where(
+      and(
+        eq(sales.status, 'selesai'),
+        or(
+          eq(sales.metodePembayaran, 'bon'),
+          and(ne(sales.metodePembayaran, 'bon'), gte(sales.createdAt, rangeStart), lte(sales.createdAt, rangeEnd)),
+        ),
+      ),
+    )
     .all()
+    .filter((row) => diakui.has(row.saleId))
 
   let labaKotor = 0
   const labaPerKategoriMap = new Map<string, { omzet: number; laba: number }>()
@@ -152,34 +232,59 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
   const labaPerSatuanMap = new Map<string, { qtyTerjual: number; omzet: number; laba: number }>()
   const produkTerlarisMap = new Map<number, { namaItem: string; qtyTerjual: number; totalPenjualan: number }>()
 
+  /**
+   * A bill-wide discount belongs to no single line, so it is spread across the sale's
+   * lines in proportion to what each one contributed. Without this the shop would be
+   * shown margin on money it never took, and omzet per kategori/hari/satuan would not
+   * add up to omzetTunai + omzetNonTunai, which both read `sales.total`.
+   *
+   * Each line takes its share of what is *left*, so the rounding remainder lands on the
+   * last line of the sale and the allocations sum to the discount exactly.
+   */
+  const sisaAlokasi = new Map<number, { diskon: number; subtotal: number }>()
+
   for (const row of saleItemRows) {
+    const sisa = sisaAlokasi.get(row.saleId) ?? { diskon: diakui.get(row.saleId)!.diskon, subtotal: 0 }
+    sisa.subtotal += row.subtotal
+    sisaAlokasi.set(row.saleId, sisa)
+  }
+
+  for (const row of saleItemRows) {
+    const sisa = sisaAlokasi.get(row.saleId)!
+    const alokasiDiskon = sisa.subtotal > 0 ? Math.round((sisa.diskon * row.subtotal) / sisa.subtotal) : 0
+    sisa.diskon -= alokasiDiskon
+    sisa.subtotal -= row.subtotal
+
+    // what this line really brought in: its own subtotal less its share of the bill discount
+    const omzet = row.subtotal - alokasiDiskon
     // hargaPokok is the cost of one of the unit that was sold, so qty alone scales it
-    const laba = row.subtotal - row.qty * row.hargaPokok
+    const laba = omzet - row.qty * row.hargaPokok
     labaKotor += laba
 
     const categoryName = row.categoryName ?? 'Tanpa Kategori'
     const kategoriEntry = labaPerKategoriMap.get(categoryName) ?? { omzet: 0, laba: 0 }
-    kategoriEntry.omzet += row.subtotal
+    kategoriEntry.omzet += omzet
     kategoriEntry.laba += laba
     labaPerKategoriMap.set(categoryName, kategoriEntry)
 
-    const createdAt = row.createdAt
-    const tanggal = `${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, '0')}-${String(createdAt.getDate()).padStart(2, '0')}`
+    // filed under the day the money arrived, not the day the goods left - a bon settled
+    // today adds its margin to today, the same day its omzet lands on
+    const tanggal = diakui.get(row.saleId)!.tanggal
     const hariEntry = labaPerHariMap.get(tanggal) ?? { omzet: 0, laba: 0 }
-    hariEntry.omzet += row.subtotal
+    hariEntry.omzet += omzet
     hariEntry.laba += laba
     labaPerHariMap.set(tanggal, hariEntry)
 
     const satuan = row.unitCode ?? row.satuanSnapshot ?? 'Tanpa Satuan'
     const satuanEntry = labaPerSatuanMap.get(satuan) ?? { qtyTerjual: 0, omzet: 0, laba: 0 }
     satuanEntry.qtyTerjual += row.qty
-    satuanEntry.omzet += row.subtotal
+    satuanEntry.omzet += omzet
     satuanEntry.laba += laba
     labaPerSatuanMap.set(satuan, satuanEntry)
 
     const produkEntry = produkTerlarisMap.get(row.productId) ?? { namaItem: row.namaItem, qtyTerjual: 0, totalPenjualan: 0 }
     produkEntry.qtyTerjual += row.qty
-    produkEntry.totalPenjualan += row.subtotal
+    produkEntry.totalPenjualan += omzet
     produkTerlarisMap.set(row.productId, produkEntry)
   }
 
@@ -217,10 +322,10 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
 
   return {
     summary: {
-      omzetTunai: omzetTunaiRow?.total ?? 0,
-      omzetNonTunai: omzetNonTunaiRow?.total ?? 0,
+      omzetTunai,
+      omzetNonTunai,
       piutangBeredar: piutangRow?.piutang ?? 0,
-      jumlahTransaksi: jumlahTransaksiRow?.count ?? 0,
+      jumlahTransaksi: diakui.size,
       labaKotor,
     },
     labaPerKategori,

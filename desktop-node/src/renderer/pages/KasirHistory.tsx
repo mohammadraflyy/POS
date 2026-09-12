@@ -22,7 +22,7 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { METODE_LABEL } from '@/lib/metode'
-import { formatRupiah } from '@/lib/utils'
+import { formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -151,7 +151,9 @@ export function KasirHistory() {
       description:
         sale.status === 'dibatalkan'
           ? `Transaksi #${sale.id} dihapus permanen dan datanya tidak bisa dikembalikan.`
-          : `Transaksi #${sale.id} dihapus permanen, stoknya dikembalikan, dan datanya tidak bisa dikembalikan.`,
+          : sale.metodePembayaran === 'bon'
+            ? `Transaksi #${sale.id} dihapus permanen, stoknya dikembalikan, dan seluruh riwayat pembayaran bonnya ikut terhapus. Datanya tidak bisa dikembalikan.`
+            : `Transaksi #${sale.id} dihapus permanen, stoknya dikembalikan, dan datanya tidak bisa dikembalikan.`,
       confirmLabel: 'Hapus',
       destructive: true,
     })
@@ -209,7 +211,7 @@ export function KasirHistory() {
       key: 'items',
       name: 'Item',
       width: itemWidth,
-      renderCell: ({ row }) => row.items.map((i) => `${i.namaItem} x${i.qty}`).join(', '),
+      renderCell: ({ row }) => row.items.map((i) => `${i.namaItem} x${formatQty(i.qty)}`).join(', '),
     },
     {
       key: 'namaPelanggan',

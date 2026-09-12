@@ -1,10 +1,11 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
 import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments, units } from './db/schema'
 import { getBaseUnitCode, syncBaseProductUnit, syncUnitCostsFromBase } from './inventory-units'
 import { resolveOrCreateUnit } from './master-satuan'
+import { bulatkanQty, isQtyValid } from './qty'
 
 type Db = BetterSQLite3Database<typeof schema>
 type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T : never
@@ -124,8 +125,8 @@ export function validateBulkRows(db: DbOrTx, rows: BulkSaveRow[]): Record<string
       addError(row.key, 'hargaJual', 'Harga jual tidak boleh negatif.')
     }
 
-    if (!Number.isInteger(row.stok) || row.stok < 0) {
-      addError(row.key, 'stok', 'Stok harus bilangan bulat dan tidak boleh negatif.')
+    if (!isQtyValid(row.stok)) {
+      addError(row.key, 'stok', 'Stok harus berupa angka dan tidak boleh negatif.')
     }
   }
 
@@ -194,6 +195,8 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
   const now = new Date()
 
   for (const row of rows) {
+    // stock may be fractional (5,5 KG) - pin it to 3 decimals before it is compared or stored
+    const stok = bulatkanQty(row.stok)
     let categoryId: number | null = null
     const kategori = row.kategori?.trim()
 
@@ -223,7 +226,7 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
         getBaseUnitCode(db, row.id) !== row.satuan.trim().toUpperCase() ||
         existingProduct.hargaPokok !== row.hargaPokok ||
         existingProduct.hargaJual !== row.hargaJual ||
-        (options.updateStok && existingProduct.stok !== row.stok)
+        (options.updateStok && existingProduct.stok !== stok)
 
       if (!changed) {
         unchanged++
@@ -238,7 +241,7 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           categoryId,
           hargaPokok: row.hargaPokok,
           hargaJual: row.hargaJual,
-          ...(options.updateStok ? { stok: row.stok } : {}),
+          ...(options.updateStok ? { stok } : {}),
         })
         .where(eq(products.id, row.id))
         .run()
@@ -265,14 +268,14 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           .run()
       }
 
-      if (options.updateStok && existingProduct.stok !== row.stok) {
+      if (options.updateStok && existingProduct.stok !== stok) {
         db.insert(stockAdjustments)
           .values({
             productId: row.id,
             userId: options.userId,
             stokSebelum: existingProduct.stok,
-            stokSesudah: row.stok,
-            selisih: row.stok - existingProduct.stok,
+            stokSesudah: stok,
+            selisih: bulatkanQty(stok - existingProduct.stok),
             alasan: 'Import Excel',
             tanggal: now.toISOString().slice(0, 10),
             createdAt: now,
@@ -290,7 +293,7 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
           categoryId,
           hargaPokok: row.hargaPokok,
           hargaJual: row.hargaJual,
-          stok: row.stok,
+          stok,
           isActive: true,
           createdAt: now,
           updatedAt: now,
@@ -443,7 +446,7 @@ export function importProducts(db: Db, filePath: string, userId: number | null):
     const kategoriRaw = resolvedColumns.kategori !== undefined ? String(sheetRow[resolvedColumns.kategori] ?? '').trim() : ''
     const hargaPokok = parseImportNumber(sheetRow[resolvedColumns.hargaPokok])
     const hargaJual = parseImportNumber(sheetRow[resolvedColumns.hargaJual])
-    const stok = resolvedColumns.stok !== undefined ? Math.trunc(parseImportNumber(sheetRow[resolvedColumns.stok]) ?? 0) : 0
+    const stok = resolvedColumns.stok !== undefined ? bulatkanQty(parseImportNumber(sheetRow[resolvedColumns.stok]) ?? 0) : 0
 
     if (
       hargaPokok === null ||
@@ -744,6 +747,326 @@ export function importSatuan(db: Db, filePath: string): ImportSatuanResult {
       }
 
       result.produkDiperbarui++
+    }
+  })
+
+  return result
+}
+
+const IMPORT_TIER_COLUMN_LABELS: Record<string, string[]> = {
+  kodeItem: ['kode item'],
+  satuan: ['satuan'],
+  jml1: ['jml 1'],
+  hargaJml1: ['harga jml 1'],
+  jml2: ['jml 2'],
+  hargaJml2: ['harga jml 2'],
+  jml3: ['jml 3'],
+  hargaJml3: ['harga jml 3'],
+  jml4: ['jml 4'],
+  hargaJml4: ['harga jml 4'],
+}
+
+// "Konversi" is deliberately absent: product_units already owns the conversion,
+// and requiring a column nothing reads would only reject otherwise-valid files.
+const IMPORT_TIER_REQUIRED_COLUMNS = ['kodeItem', 'satuan', 'jml1', 'hargaJml1']
+
+const IMPORT_TIER_PAIRS: [string, string][] = [
+  ['jml1', 'hargaJml1'],
+  ['jml2', 'hargaJml2'],
+  ['jml3', 'hargaJml3'],
+  ['jml4', 'hargaJml4'],
+]
+
+function resolveImportTierColumns(sheetRow: unknown[]): Record<string, number> | null {
+  const found: Record<string, number> = {}
+
+  sheetRow.forEach((cell, index) => {
+    const text = String(cell ?? '').trim().toLowerCase()
+    if (!text) {
+      return
+    }
+
+    for (const [field, labels] of Object.entries(IMPORT_TIER_COLUMN_LABELS)) {
+      if (!(field in found) && labels.includes(text)) {
+        found[field] = index
+      }
+    }
+  })
+
+  const hasAllRequired = IMPORT_TIER_REQUIRED_COLUMNS.every((field) => field in found)
+  return hasAllRequired ? found : null
+}
+
+export interface ImportHargaBertingkatResult {
+  satuanDiperbarui: number
+  tierDitambahkan: number
+  dilewatiProdukTidakDitemukan: number
+  dilewatiSatuanTidakDitemukan: number
+}
+
+const EMPTY_IMPORT_HARGA_BERTINGKAT_RESULT: ImportHargaBertingkatResult = {
+  satuanDiperbarui: 0,
+  tierDitambahkan: 0,
+  dilewatiProdukTidakDitemukan: 0,
+  dilewatiSatuanTidakDitemukan: 0,
+}
+
+/**
+ * Reads a legacy POS "harga bertingkat" export: one row per product satuan, each
+ * carrying up to four (Jml N, Harga Jml N) pairs. `Jml` is a minimum quantity in
+ * that row's own satuan - the file's `Konversi` column is never applied to it.
+ *
+ * Matches on kodeItem + satuan against existing rows only; never creates a product,
+ * a unit, or a satuan. For every satuan the file actually prices, its tiers are
+ * replaced wholesale so a re-import converges instead of piling up stale rows.
+ */
+export function importHargaBertingkat(db: Db, filePath: string): ImportHargaBertingkatResult {
+  const workbook = XLSX.readFile(filePath)
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return { ...EMPTY_IMPORT_HARGA_BERTINGKAT_RESULT }
+  }
+
+  const sheet = workbook.Sheets[sheetName]
+  const sheetRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+  let columns: Record<string, number> | null = null
+  let headerIndex = -1
+
+  for (let i = 0; i < sheetRows.length; i++) {
+    const resolved = resolveImportTierColumns(sheetRows[i])
+    if (resolved) {
+      columns = resolved
+      headerIndex = i
+      break
+    }
+  }
+
+  if (!columns) {
+    return { ...EMPTY_IMPORT_HARGA_BERTINGKAT_RESULT }
+  }
+
+  const resolvedColumns = columns
+  const dataRows = sheetRows.slice(headerIndex + 1)
+  const result = { ...EMPTY_IMPORT_HARGA_BERTINGKAT_RESULT }
+  const now = new Date()
+
+  db.transaction((tx) => {
+    for (const sheetRow of dataRows) {
+      const kodeItem = String(sheetRow[resolvedColumns.kodeItem] ?? '').trim()
+      const satuan = String(sheetRow[resolvedColumns.satuan] ?? '').trim().toUpperCase()
+
+      if (!kodeItem || !satuan) {
+        continue
+      }
+
+      // Parsed before the lookups so a row with no tiers at all - by far the common
+      // case in these exports - is never counted as a miss and never deletes anything.
+      const byMinQty = new Map<number, number>()
+
+      for (const [qtyField, hargaField] of IMPORT_TIER_PAIRS) {
+        const qtyIndex = resolvedColumns[qtyField]
+        const hargaIndex = resolvedColumns[hargaField]
+
+        if (qtyIndex === undefined || hargaIndex === undefined) {
+          continue
+        }
+
+        const minQty = parseImportNumber(sheetRow[qtyIndex])
+        const harga = parseImportNumber(sheetRow[hargaIndex])
+
+        if (minQty === null || harga === null || !Number.isInteger(minQty) || minQty <= 0 || harga <= 0) {
+          continue
+        }
+
+        // a repeated Jml would violate the (product_unit_id, min_qty) unique index,
+        // so the later pair simply overwrites the earlier one
+        byMinQty.set(minQty, Math.round(harga * 100))
+      }
+
+      if (byMinQty.size === 0) {
+        continue
+      }
+
+      const product = tx.select({ id: products.id }).from(products).where(eq(products.kodeItem, kodeItem)).get()
+
+      if (!product) {
+        result.dilewatiProdukTidakDitemukan++
+        continue
+      }
+
+      const productUnit = tx
+        .select({ id: productUnits.id })
+        .from(productUnits)
+        .innerJoin(units, eq(productUnits.unitId, units.id))
+        .where(and(eq(productUnits.productId, product.id), eq(units.code, satuan)))
+        // a product holding two rows for one unit code is a data bug, but ordering
+        // makes the pick deterministic rather than whatever sqlite returns first
+        .orderBy(desc(productUnits.isBaseUnit))
+        .get()
+
+      if (!productUnit) {
+        result.dilewatiSatuanTidakDitemukan++
+        continue
+      }
+
+      tx.delete(productPriceTiers).where(eq(productPriceTiers.productUnitId, productUnit.id)).run()
+
+      for (const [minQty, hargaJual] of byMinQty) {
+        tx.insert(productPriceTiers)
+          .values({
+            productId: product.id,
+            productUnitId: productUnit.id,
+            minQty,
+            // findTierForQty picks the highest minQty the quantity clears, so
+            // open-ended tiers already stack into a staircase
+            maxQty: null,
+            hargaJual,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run()
+
+        result.tierDitambahkan++
+      }
+
+      result.satuanDiperbarui++
+    }
+  })
+
+  return result
+}
+
+const IMPORT_BARCODE_COLUMN_LABELS: Record<string, string[]> = {
+  kodeItem: ['kode item'],
+  barcode: ['kode barcode', 'barcode'],
+}
+
+const IMPORT_BARCODE_REQUIRED_COLUMNS = ['kodeItem', 'barcode']
+
+function resolveImportBarcodeColumns(sheetRow: unknown[]): Record<string, number> | null {
+  const found: Record<string, number> = {}
+
+  sheetRow.forEach((cell, index) => {
+    const text = String(cell ?? '').trim().toLowerCase()
+    if (!text) {
+      return
+    }
+
+    for (const [field, labels] of Object.entries(IMPORT_BARCODE_COLUMN_LABELS)) {
+      if (!(field in found) && labels.includes(text)) {
+        found[field] = index
+      }
+    }
+  })
+
+  const hasAllRequired = IMPORT_BARCODE_REQUIRED_COLUMNS.every((field) => field in found)
+  return hasAllRequired ? found : null
+}
+
+export interface ImportBarcodeResult {
+  diperbarui: number
+  dilewatiSudahSama: number
+  dilewatiProdukTidakDitemukan: number
+  dilewatiBarcodeDipakai: number
+  dilewatiBarcodeTerlaluPanjang: number
+}
+
+const EMPTY_IMPORT_BARCODE_RESULT: ImportBarcodeResult = {
+  diperbarui: 0,
+  dilewatiSudahSama: 0,
+  dilewatiProdukTidakDitemukan: 0,
+  dilewatiBarcodeDipakai: 0,
+  dilewatiBarcodeTerlaluPanjang: 0,
+}
+
+/**
+ * Reads a barcode-only sheet: `Kode Item` plus `Kode Barcode`, nothing else required.
+ * `importProducts` also carries barcodes, but it insists on nama/satuan/harga columns
+ * and rewrites those fields - this is for the common case of scanning barcodes into an
+ * existing catalog and nothing else.
+ *
+ * Matches existing products by kodeItem only; never creates one. A blank barcode cell
+ * is left alone rather than clearing what the product already has - a partially filled
+ * scan sheet is normal, and wiping the rest would be silent data loss.
+ *
+ * `products.barcode` is unique, so a barcode already on another product is counted and
+ * skipped instead of failing the whole import. The collision lookup runs inside the
+ * transaction, so a barcode claimed by an earlier row of the same file collides too.
+ */
+export function importBarcode(db: Db, filePath: string): ImportBarcodeResult {
+  const workbook = XLSX.readFile(filePath)
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return { ...EMPTY_IMPORT_BARCODE_RESULT }
+  }
+
+  const sheet = workbook.Sheets[sheetName]
+  const sheetRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+
+  let columns: Record<string, number> | null = null
+  let headerIndex = -1
+
+  for (let i = 0; i < sheetRows.length; i++) {
+    const resolved = resolveImportBarcodeColumns(sheetRows[i])
+    if (resolved) {
+      columns = resolved
+      headerIndex = i
+      break
+    }
+  }
+
+  if (!columns) {
+    return { ...EMPTY_IMPORT_BARCODE_RESULT }
+  }
+
+  const resolvedColumns = columns
+  const dataRows = sheetRows.slice(headerIndex + 1)
+  const result = { ...EMPTY_IMPORT_BARCODE_RESULT }
+  const now = new Date()
+
+  db.transaction((tx) => {
+    for (const sheetRow of dataRows) {
+      const kodeItem = String(sheetRow[resolvedColumns.kodeItem] ?? '').trim()
+      // a barcode cell typed as a number arrives as one; String() is what the
+      // products import already does with this same column
+      const barcode = String(sheetRow[resolvedColumns.barcode] ?? '').trim()
+
+      if (!kodeItem || !barcode) {
+        continue
+      }
+
+      if (barcode.length > 100) {
+        result.dilewatiBarcodeTerlaluPanjang++
+        continue
+      }
+
+      const product = tx
+        .select({ id: products.id, barcode: products.barcode })
+        .from(products)
+        .where(eq(products.kodeItem, kodeItem))
+        .get()
+
+      if (!product) {
+        result.dilewatiProdukTidakDitemukan++
+        continue
+      }
+
+      if (product.barcode === barcode) {
+        result.dilewatiSudahSama++
+        continue
+      }
+
+      if (findBarcodeCollision(tx, barcode, product.id)) {
+        result.dilewatiBarcodeDipakai++
+        continue
+      }
+
+      tx.update(products).set({ barcode, updatedAt: now }).where(eq(products.id, product.id)).run()
+
+      result.diperbarui++
     }
   })
 

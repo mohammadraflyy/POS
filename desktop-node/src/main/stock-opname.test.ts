@@ -294,15 +294,28 @@ describe('recordStockAdjustment', () => {
   it('throws when stokSesudah is negative', () => {
     const db = seedDb()
     expect(() => recordStockAdjustment(db, { productId: 1, stokSesudah: -1, alasan: null, userId: 1 })).toThrow(
-      'Stok fisik harus bilangan bulat, minimal 0.',
+      'Stok fisik harus berupa angka, minimal 0.',
     )
   })
 
-  it('throws when stokSesudah is not an integer', () => {
+  it('records a fractional count, keeping the decimals in stok and selisih', () => {
     const db = seedDb()
-    expect(() => recordStockAdjustment(db, { productId: 1, stokSesudah: 1.5, alasan: null, userId: 1 })).toThrow(
-      'Stok fisik harus bilangan bulat, minimal 0.',
-    )
+    const result = recordStockAdjustment(db, { productId: 1, stokSesudah: 5.5, alasan: null, userId: 1 })
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(5.5)
+
+    const adjustment = db.select().from(stockAdjustments).where(eq(stockAdjustments.id, result.id)).get()
+    expect(adjustment?.stokSesudah).toBe(5.5)
+    expect(adjustment?.selisih).toBe(-4.5)
+  })
+
+  it('rounds a count to 3 decimals so float dust never reaches the database', () => {
+    const db = seedDb()
+    recordStockAdjustment(db, { productId: 1, stokSesudah: 0.1 + 0.2, alasan: null, userId: 1 })
+
+    const product = db.select().from(products).where(eq(products.id, 1)).get()
+    expect(product?.stok).toBe(0.3)
   })
 
   it('throws when the product does not exist', () => {

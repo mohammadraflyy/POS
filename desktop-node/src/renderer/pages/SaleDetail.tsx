@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ReportTable } from '@/components/report-table'
 import { METODE_LABEL } from '@/lib/metode'
-import { formatRupiah } from '@/lib/utils'
+import { formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -20,6 +20,8 @@ interface SaleDetailItem {
   satuan: string | null
   namaItem: string
   hargaJual: number
+  /** already taken off `subtotal` */
+  diskon: number
   subtotal: number
   priceSource: 'normal' | 'price_tier' | 'manual'
 }
@@ -48,12 +50,24 @@ interface SaleDetailData {
   namaPelanggan: string | null
   metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   status: 'selesai' | 'dibatalkan'
+  /** bill-wide discount, already taken off `total` */
+  diskon: number
   total: number
   dibayar: number
+  /** free note on the sale itself, distinct from the per-edit reasons in `edits` */
+  keterangan: string | null
   createdAt: string
   kasirName: string | null
   items: SaleDetailItem[]
   bonPayments: BonPaymentRow[]
+  edits: {
+    id: number
+    keterangan: string
+    kasirName: string | null
+    totalSebelum: number
+    totalSesudah: number
+    createdAt: string
+  }[]
 }
 
 // Accepts a plain decimal, with either dot or comma as separator (Indonesian
@@ -72,7 +86,7 @@ const ITEM_COLUMNS: Column<SaleDetailItem>[] = [
     key: 'qty',
     name: 'Qty',
     width: 100,
-    renderCell: ({ row }) => <span className="w-full text-right">{row.qty}</span>,
+    renderCell: ({ row }) => <span className="w-full text-right">{formatQty(row.qty)}</span>,
   },
   { key: 'satuan', name: 'Satuan', width: 100, renderCell: ({ row }) => row.satuan ?? '-' },
   {
@@ -80,6 +94,16 @@ const ITEM_COLUMNS: Column<SaleDetailItem>[] = [
     name: 'Harga',
     width: 140,
     renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.hargaJual)}</span>,
+  },
+  {
+    key: 'diskon',
+    name: 'Diskon',
+    width: 140,
+    renderCell: ({ row }) => (
+      <span className="w-full text-right">
+        {row.diskon > 0 ? <span className="text-destructive">-{formatRupiah(row.diskon)}</span> : '-'}
+      </span>
+    ),
   },
   {
     key: 'subtotal',
@@ -244,6 +268,8 @@ export function SaleDetail() {
               <Field label="Kasir" value={sale.kasirName ?? '-'} />
             </div>
 
+            {sale.keterangan && <Field label="Keterangan" value={sale.keterangan} />}
+
             <ReportTable
               title="Item"
               columns={ITEM_COLUMNS}
@@ -253,6 +279,9 @@ export function SaleDetail() {
             />
 
             <div className="grid gap-3 sm:grid-cols-3">
+              {/* only takes a slot when there was one - an ordinary sale keeps the
+                  three-field row it always had */}
+              {sale.diskon > 0 && <Field label="Diskon Nota" value={`-${formatRupiah(sale.diskon)}`} />}
               <Field label="Total" value={formatRupiah(sale.total)} />
               <Field label="Dibayar" value={formatRupiah(sale.dibayar)} />
               <Field
@@ -269,6 +298,28 @@ export function SaleDetail() {
                 rowKey={(row) => row.id}
                 emptyMessage="Belum ada pembayaran."
               />
+            )}
+
+            {sale.edits.length > 0 && (
+              <div className="rounded-xl border p-5">
+                <h2 className="text-sm font-medium text-muted-foreground">Riwayat Edit</h2>
+                <ul className="mt-3 space-y-3">
+                  {sale.edits.map((edit) => (
+                    <li key={edit.id} className="border-b pb-3 text-sm last:border-b-0 last:pb-0">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <span className="font-medium">{edit.keterangan}</span>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {new Date(edit.createdAt).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {edit.kasirName ?? 'Pengguna dihapus'} &middot; {formatRupiah(edit.totalSebelum)} &rarr;{' '}
+                        {formatRupiah(edit.totalSesudah)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             {sale.metodePembayaran === 'bon' && sale.status === 'selesai' && sisa > 0 && (

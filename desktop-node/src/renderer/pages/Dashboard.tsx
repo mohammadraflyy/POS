@@ -7,7 +7,7 @@ import { ReportTable } from '@/components/report-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { METODE_LABEL } from '@/lib/metode'
-import { formatRupiah } from '@/lib/utils'
+import { formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -71,7 +71,7 @@ export function Dashboard() {
       renderCell: ({ row }) => (
         <span className="flex w-full items-center justify-end gap-1 text-right">
           {row.stok <= 0 && <TriangleAlert className="size-3.5 text-destructive" />}
-          {row.stok} {row.satuan}
+          {formatQty(row.stok)} {row.satuan}
         </span>
       ),
     },

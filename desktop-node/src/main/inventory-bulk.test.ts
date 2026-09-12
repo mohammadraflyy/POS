@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import * as XLSX from 'xlsx'
 import { and, eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
-import { categories, products, productPriceHistories, productUnits, stockAdjustments, units, users } from './db/schema'
+import { categories, products, productPriceHistories, productPriceTiers, productUnits, stockAdjustments, units, users } from './db/schema'
 import {
   getProductsByIds,
   saveProductRows,
@@ -13,7 +13,11 @@ import {
   bulkSaveProducts,
   importProducts,
   importSatuan,
+  importHargaBertingkat,
+  importBarcode,
   type BulkSaveRow,
+  type ImportHargaBertingkatResult,
+  type ImportBarcodeResult,
 } from './inventory-bulk'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
@@ -150,13 +154,13 @@ describe('validateBulkRows', () => {
     })
   })
 
-  it('flags negative or non-integer stok', () => {
+  it('flags negative stok but accepts a fractional one', () => {
     const db = seedDb()
     const errors = validateBulkRows(db, [baseRow({ stok: -5 })])
-    expect(errors['row-1'].stok).toBe('Stok harus bilangan bulat dan tidak boleh negatif.')
+    expect(errors['row-1'].stok).toBe('Stok harus berupa angka dan tidak boleh negatif.')
 
     const errors2 = validateBulkRows(db, [baseRow({ key: 'row-2', stok: 2.5 })])
-    expect(errors2['row-2'].stok).toBe('Stok harus bilangan bulat dan tidak boleh negatif.')
+    expect(errors2['row-2']?.stok).toBeUndefined()
   })
 
   it('flags every row sharing a duplicate kodeItem within the batch', () => {
@@ -625,3 +629,378 @@ function emptySatuanResult() {
     dilewatiRantaiTidakValid: 0,
   }
 }
+
+describe('importHargaBertingkat', () => {
+  // Mirrors the real legacy export: four fixed (Jml N, Harga Jml N) pairs, unused ones zeroed.
+  const TIER_HEADER = [
+    'Kode Item',
+    'Konversi',
+    'Satuan',
+    'Jml 1',
+    'Harga Jml 1',
+    'Jml 2',
+    'Harga Jml 2',
+    'Jml 3',
+    'Harga Jml 3',
+    'Jml 4',
+    'Harga Jml 4',
+  ]
+
+  function emptyTierResult(): ImportHargaBertingkatResult {
+    return {
+      satuanDiperbarui: 0,
+      tierDitambahkan: 0,
+      dilewatiProdukTidakDitemukan: 0,
+      dilewatiSatuanTidakDitemukan: 0,
+    }
+  }
+
+  function tiersFor(db: ReturnType<typeof createDb>, productUnitId: number) {
+    return db
+      .select({
+        minQty: productPriceTiers.minQty,
+        maxQty: productPriceTiers.maxQty,
+        hargaJual: productPriceTiers.hargaJual,
+      })
+      .from(productPriceTiers)
+      .where(eq(productPriceTiers.productUnitId, productUnitId))
+      .orderBy(productPriceTiers.minQty)
+      .all()
+  }
+
+  /** Adds a DUS satuan (12 PCS) to the seeded BRS5 product, as product_units id 102. */
+  function seedDusUnit(db: ReturnType<typeof createDb>) {
+    const now = new Date()
+    db.insert(units).values({ id: 2, code: 'DUS', name: 'Dus', symbol: 'dus', createdAt: now, updatedAt: now }).run()
+    db.insert(productUnits)
+      .values({
+        id: 102,
+        productId: 1,
+        unitId: 2,
+        jumlahKemasan: 12,
+        conversionFactor: 12,
+        hargaJual: 780000_00,
+        isBaseUnit: false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+  }
+
+  it('stores every filled tier pair against the base unit, in cents and open-ended', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 1, 1000, 5, 950, 10, 925, 0, 0]])
+
+    const result = importHargaBertingkat(db, filePath)
+
+    expect(result).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 3 })
+    expect(tiersFor(db, 101)).toEqual([
+      { minQty: 1, maxQty: null, hargaJual: 1000_00 },
+      { minQty: 5, maxQty: null, hargaJual: 950_00 },
+      { minQty: 10, maxQty: null, hargaJual: 925_00 },
+    ])
+  })
+
+  it('takes minQty from Jml verbatim on a derived unit row', () => {
+    const db = seedDb()
+    seedDusUnit(db)
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 12, 'DUS', 3, 770000, 0, 0, 0, 0, 0, 0]])
+
+    const result = importHargaBertingkat(db, filePath)
+
+    expect(result).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    // 3 means three DUS, not three PCS - Konversi is not applied
+    expect(tiersFor(db, 102)).toEqual([{ minQty: 3, maxQty: null, hargaJual: 770000_00 }])
+    expect(tiersFor(db, 101)).toEqual([])
+  })
+
+  it('matches the satuan case-insensitively', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'pcs', 2, 950, 0, 0, 0, 0, 0, 0]])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+  })
+
+  it('leaves existing tiers alone for a row whose tier columns are all zero', () => {
+    const db = seedDb()
+    const now = new Date()
+    db.insert(productPriceTiers)
+      .values({ productId: 1, productUnitId: 101, minQty: 6, maxQty: null, hargaJual: 60000_00, createdAt: now, updatedAt: now })
+      .run()
+
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 0, 0, 0, 0, 0, 0, 0, 0]])
+
+    // a blank tier block means "not specified", never "delete what you have"
+    expect(importHargaBertingkat(db, filePath)).toEqual(emptyTierResult())
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 6, maxQty: null, hargaJual: 60000_00 }])
+  })
+
+  it('skips a tier pair whose price is zero', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 1, 1000, 5, 0, 0, 0, 0, 0]])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 1, maxQty: null, hargaJual: 1000_00 }])
+  })
+
+  it('counts an unknown kodeItem as dilewatiProdukTidakDitemukan', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['GHOST', 1, 'PCS', 1, 1000, 0, 0, 0, 0, 0, 0]])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), dilewatiProdukTidakDitemukan: 1 })
+  })
+
+  it('counts a satuan the product does not have as dilewatiSatuanTidakDitemukan', () => {
+    const db = seedDb() // BRS5 only has PCS
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 12, 'DUS', 1, 780000, 0, 0, 0, 0, 0, 0]])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), dilewatiSatuanTidakDitemukan: 1 })
+  })
+
+  it('collapses a duplicated Jml into one tier, the later pair winning', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 5, 1000, 5, 900, 0, 0, 0, 0]])
+
+    // the unique index on (product_unit_id, min_qty) would reject two rows here
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 5, maxQty: null, hargaJual: 900_00 }])
+  })
+
+  it('replaces rather than accumulates when re-run', () => {
+    const db = seedDb()
+    importHargaBertingkat(db, writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 1, 1000, 5, 950, 0, 0, 0, 0]]))
+
+    const result = importHargaBertingkat(db, writeTestSheet([TIER_HEADER, ['BRS5', 1, 'PCS', 1, 1100, 0, 0, 0, 0, 0, 0]]))
+
+    expect(result).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 1, maxQty: null, hargaJual: 1100_00 }])
+  })
+
+  it('works when the sheet carries only the first tier pair', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Satuan', 'Jml 1', 'Harga Jml 1'],
+      ['BRS5', 'PCS', 2, 950],
+    ])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+    expect(tiersFor(db, 101)).toEqual([{ minQty: 2, maxQty: null, hargaJual: 950_00 }])
+  })
+
+  it('locates the header row even when preceded by a title block', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['DATA HARGA BERTINGKAT', '', '', '', '', '', '', '', '', '', ''],
+      TIER_HEADER,
+      ['BRS5', 1, 'PCS', 1, 1000, 0, 0, 0, 0, 0, 0],
+    ])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual({ ...emptyTierResult(), satuanDiperbarui: 1, tierDitambahkan: 1 })
+  })
+
+  it('returns all-zero counts when no header row is found', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Ini', 'Bukan', 'Header'],
+      ['a', 'b', 'c'],
+    ])
+
+    expect(importHargaBertingkat(db, filePath)).toEqual(emptyTierResult())
+  })
+})
+
+describe('importBarcode', () => {
+  function emptyBarcodeResult(): ImportBarcodeResult {
+    return {
+      diperbarui: 0,
+      dilewatiSudahSama: 0,
+      dilewatiProdukTidakDitemukan: 0,
+      dilewatiBarcodeDipakai: 0,
+      dilewatiBarcodeTerlaluPanjang: 0,
+    }
+  }
+
+  function barcodeOf(db: ReturnType<typeof createDb>, kodeItem: string) {
+    return db.select({ barcode: products.barcode }).from(products).where(eq(products.kodeItem, kodeItem)).get()?.barcode
+  }
+
+  /** a second product with no barcode of its own, as products id 2 */
+  function seedSecondProduct(db: ReturnType<typeof createDb>) {
+    const now = new Date()
+    db.insert(products)
+      .values({
+        id: 2,
+        kodeItem: 'GLA1',
+        barcode: null,
+        namaItem: 'Gula 1kg',
+        categoryId: 1,
+        hargaPokok: 12000_00,
+        hargaJual: 14000_00,
+        stok: 5,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+  }
+
+  it('sets a barcode on a product matched by kodeItem', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBe('8991234500015')
+  })
+
+  it('accepts a plain "Barcode" header too', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Barcode'],
+      ['GLA1', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+  })
+
+  it('reads a barcode typed as a number', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', 8991234500015],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBe('8991234500015')
+  })
+
+  it('replaces a barcode the product already had', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['BRS5', '9998887776665'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+    expect(barcodeOf(db, 'BRS5')).toBe('9998887776665')
+  })
+
+  it('counts a row whose barcode is already the one on file', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['BRS5', '1234567890'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), dilewatiSudahSama: 1 })
+  })
+
+  it('leaves a blank barcode cell alone instead of clearing the product', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['BRS5', ''],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual(emptyBarcodeResult())
+    expect(barcodeOf(db, 'BRS5')).toBe('1234567890')
+  })
+
+  it('counts a kodeItem that is not in the catalog', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['TIDAKADA', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), dilewatiProdukTidakDitemukan: 1 })
+  })
+
+  it('skips a barcode already used by another product rather than failing the import', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '1234567890'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), dilewatiBarcodeDipakai: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBeNull()
+  })
+
+  it('treats a barcode claimed by an earlier row of the same file as taken', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '8991234500015'],
+      ['BRS5', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1, dilewatiBarcodeDipakai: 1 })
+    expect(barcodeOf(db, 'BRS5')).toBe('1234567890')
+  })
+
+  it('skips a barcode longer than 100 characters', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '9'.repeat(101)],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), dilewatiBarcodeTerlaluPanjang: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBeNull()
+  })
+
+  it('finds the header below a title row', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const filePath = writeTestSheet([
+      ['DATA BARCODE', ''],
+      ['Kode Item', 'Kode Barcode'],
+      ['GLA1', '8991234500015'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+  })
+
+  it('returns all-zero counts when no header row is found', () => {
+    const db = seedDb()
+    const filePath = writeTestSheet([
+      ['Ini', 'Bukan', 'Header'],
+      ['a', 'b', 'c'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual(emptyBarcodeResult())
+  })
+
+  // Mirrors the real "DAFTAR ITEM" export: a title block above the header, and the two
+  // columns that matter sitting at indexes 1 and 5 with empty spacer columns between
+  // them. Roughly half of that file's rows carry no barcode at all.
+  it('reads the legacy DAFTAR ITEM layout, header buried under a title block', () => {
+    const db = seedDb()
+    seedSecondProduct(db)
+    const spacer = ['', '', '', '', '', '', '', '']
+    const filePath = writeTestSheet([
+      spacer,
+      ['', '', '', '', 'DAFTAR ITEM', '', '', ''],
+      ['', '', '', '', 'TOKO SEMBAKO RATNA', '', '', ''],
+      spacer,
+      ['', 'Kode Item', '', '', '', 'Kode Barcode', '', 'Nama Item'],
+      spacer,
+      ['', 'GLA1', '', '', '', '8991002105584', '', 'Gula 1kg'],
+      ['', 'BRS5', '', '', '', '', '', 'Beras 5kg'],
+    ])
+
+    expect(importBarcode(db, filePath)).toEqual({ ...emptyBarcodeResult(), diperbarui: 1 })
+    expect(barcodeOf(db, 'GLA1')).toBe('8991002105584')
+    // the blank barcode cell left the existing one untouched
+    expect(barcodeOf(db, 'BRS5')).toBe('1234567890')
+  })
+})

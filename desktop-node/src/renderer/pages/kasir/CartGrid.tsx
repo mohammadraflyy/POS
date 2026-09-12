@@ -11,8 +11,25 @@ import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { formatRupiah } from '@/lib/utils'
-import { activeTier, unitPrice, type CartLine } from './cart-logic'
+import { formatQty, formatRupiah, parseQty } from '@/lib/utils'
+import {
+  activeTier,
+  isBelowHargaPokok,
+  lineGross,
+  lineSubtotal,
+  parseDiskon,
+  unitHargaPokok,
+  unitPrice,
+  type CartLine,
+} from './cart-logic'
+
+/**
+ * Column order, single-sourced so a keyboard shortcut can aim at a column by name.
+ * Keep it in step with `columns` below - the grid is built from these keys in order.
+ */
+const COLUMN_KEYS = ['no', 'produk', 'satuan', 'harga', 'diskon', 'qty', 'subtotal', 'aksi'] as const
+
+export const QTY_COLUMN_IDX = COLUMN_KEYS.indexOf('qty')
 
 function focusAndSelectQtyInput(input: HTMLInputElement | null) {
   input?.focus()
@@ -49,6 +66,33 @@ function renderHargaEditCell({ row, onRowChange, onClose }: RenderEditCellProps<
   )
 }
 
+function renderDiskonEditCell({ row, onRowChange, onClose }: RenderEditCellProps<CartLine>) {
+  // resolved against the line as it stands, so "10%" means 10% of what this line costs now
+  const base = lineGross(row)
+
+  return (
+    <input
+      type="text"
+      ref={focusAndSelectQtyInput}
+      // uncontrolled like qty and harga: "10%" has to survive being typed one key at a
+      // time, and a value re-synced from the parsed number would eat the "%"
+      defaultValue={row.diskon ? String(row.diskon) : ''}
+      title="Isi nominal rupiah (5000) atau persen (10%) - dihitung dari subtotal baris ini"
+      placeholder="0 atau 10%"
+      className="h-full w-full bg-background px-2 text-right text-sm outline-none"
+      onChange={(e) => onRowChange({ ...row, diskon: parseDiskon(e.target.value, base) })}
+      onBlur={() => onClose(true, false)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          onClose(true, false)
+        } else if (e.key === 'Escape') {
+          onClose(false)
+        }
+      }}
+    />
+  )
+}
+
 function renderQtyEditCell({ row, onRowChange, onClose }: RenderEditCellProps<CartLine>) {
   return (
     <input
@@ -58,10 +102,10 @@ function renderQtyEditCell({ row, onRowChange, onClose }: RenderEditCellProps<Ca
       // uncontrolled: a controlled `value` re-synced from the parsed number
       // on every keystroke wipes out a trailing "." before the fractional
       // digits are typed, so "0.25" degrades into "025"
-      defaultValue={row.qty}
-      title="Boleh diisi pecahan, misalnya 0.25 - diambil persis sesuai satuan yang dipilih"
+      defaultValue={formatQty(row.qty)}
+      title="Boleh diisi pecahan, misalnya 0,25 - diambil persis sesuai satuan yang dipilih"
       className="h-full w-full bg-background px-2 text-center text-sm font-semibold outline-none"
-      onChange={(e) => onRowChange({ ...row, qty: Number(e.target.value) || 0 })}
+      onChange={(e) => onRowChange({ ...row, qty: parseQty(e.target.value) || 0 })}
       onBlur={() => onClose(true, false)}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -98,7 +142,7 @@ export function CartGrid({
   onChangeUnit,
   onRemoveLine,
 }: CartGridProps) {
-  const CART_OTHER_COLUMNS_WIDTH = 50 + 180 + 120 + 80 + 130 + 50
+  const CART_OTHER_COLUMNS_WIDTH = 50 + 180 + 120 + 110 + 80 + 130 + 50
   const produkWidth = Math.max(160, width - CART_OTHER_COLUMNS_WIDTH - 2)
 
   const columns: Column<CartLine>[] = [
@@ -167,15 +211,54 @@ export function CartGrid({
       renderEditCell: renderHargaEditCell,
       renderCell: ({ row }) => {
         const tier = activeTier(row)
+        const rugi = isBelowHargaPokok(row)
 
         return (
-          <span className="text-xs text-muted-foreground">
+          <span className={rugi ? 'text-xs font-semibold text-destructive' : 'text-xs text-muted-foreground'}>
             {formatRupiah(unitPrice(row))}
+            {rugi && (
+              <span
+                className="block text-[10px] text-destructive"
+                title={`Di bawah harga pokok ${formatRupiah(unitHargaPokok(row))} - simpan akan ditolak`}
+              >
+                &lt; pokok {formatRupiah(unitHargaPokok(row))}
+              </span>
+            )}
             {tier && (
               <span className="block text-[10px] text-muted-foreground">
                 tier {tier.minQty}
                 {tier.maxQty === null ? '+' : `-${tier.maxQty}`}
               </span>
+            )}
+          </span>
+        )
+      },
+    },
+    {
+      // unlike Harga, this is editable on a brand new sale too: giving a discount at the
+      // till is the whole point, where correcting a charged price is a repair job
+      key: 'diskon',
+      name: 'Diskon',
+      width: 110,
+      editable: true,
+      renderEditCell: renderDiskonEditCell,
+      renderCell: ({ row }) => {
+        const diskon = row.diskon ?? 0
+        const gross = lineGross(row)
+
+        return (
+          <span className="w-full text-right text-xs tabular-nums">
+            {diskon > 0 ? (
+              <>
+                <span className="text-destructive">-{formatRupiah(diskon)}</span>
+                {gross > 0 && (
+                  <span className="block text-[10px] text-muted-foreground">
+                    {Math.round((diskon / gross) * 100)}%
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-muted-foreground">-</span>
             )}
           </span>
         )
@@ -190,9 +273,9 @@ export function CartGrid({
       renderCell: ({ row }) => (
         <span
           className="text-sm font-semibold"
-          title="Boleh diisi pecahan, misalnya 0.25 - diambil persis sesuai satuan yang dipilih"
+          title="Boleh diisi pecahan, misalnya 0,25 - diambil persis sesuai satuan yang dipilih"
         >
-          {row.qty}
+          {formatQty(row.qty)}
         </span>
       ),
     },
@@ -201,7 +284,14 @@ export function CartGrid({
       name: 'Subtotal',
       width: 130,
       renderCell: ({ row }) => (
-        <span className="w-full text-right font-semibold">{formatRupiah(row.qty * unitPrice(row))}</span>
+        <span className="w-full text-right font-semibold tabular-nums">
+          {formatRupiah(lineSubtotal(row))}
+          {(row.diskon ?? 0) > 0 && (
+            <span className="block text-[10px] font-normal text-muted-foreground line-through">
+              {formatRupiah(lineGross(row))}
+            </span>
+          )}
+        </span>
       ),
     },
     {

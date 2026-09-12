@@ -214,6 +214,8 @@ function UnitChainManager({
         <UnitChainAddForm
           productId={productId}
           defaultParentId={largest?.id ?? null}
+          baseHargaPokok={units.find((unit) => unit.isBaseUnit)?.hargaPokok ?? 0}
+          derived={derived}
           parentOptions={parentOptionsFor(derived, baseSatuan)}
           unitOptions={masterUnits.filter((option) => !usedUnitIds.includes(option.id))}
           onDone={() => setAdding(false)}
@@ -500,6 +502,8 @@ function ParentSelect({
 function UnitChainAddForm({
   productId,
   defaultParentId,
+  baseHargaPokok,
+  derived,
   parentOptions,
   unitOptions,
   onDone,
@@ -507,6 +511,8 @@ function UnitChainAddForm({
 }: {
   productId: number
   defaultParentId: number | null
+  baseHargaPokok: number
+  derived: UnitRow[]
   parentOptions: { id: number | null; label: string }[]
   unitOptions: MasterUnit[]
   onDone: () => void
@@ -520,6 +526,16 @@ function UnitChainAddForm({
   const [hargaPokok, setHargaPokok] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [processing, setProcessing] = useState(false)
+
+  // what the backend will derive when Harga Beli is left blank: the same
+  // `base cost x conversionFactor` addProductUnit falls back to. Shown rather than
+  // filled in, so the field stays blank and keeps meaning "follow the product".
+  const konversiInduk = parentUnitId === 'base' ? 1 : (derived.find((u) => String(u.id) === parentUnitId)?.konversi ?? 1)
+  const jumlahPreview = Number(jumlahKemasan)
+  const modalOtomatis =
+    jumlahKemasan.trim() !== '' && Number.isFinite(jumlahPreview) && jumlahPreview > 0
+      ? baseHargaPokok * jumlahPreview * konversiInduk
+      : null
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -587,10 +603,13 @@ function UnitChainAddForm({
           <Label className="text-xs">Harga Beli</Label>
           <Input
             type="number"
-            placeholder="otomatis"
+            placeholder={modalOtomatis === null ? 'otomatis' : String(modalOtomatis)}
             value={hargaPokok}
             onChange={(e) => setHargaPokok(e.target.value)}
           />
+          {modalOtomatis !== null && hargaPokok.trim() === '' && (
+            <span className="text-[10px] text-muted-foreground">otomatis {formatRupiah(modalOtomatis)}</span>
+          )}
         </div>
         <div className="grid w-32 gap-1">
           <Label className="text-xs">Harga Jual</Label>

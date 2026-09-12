@@ -109,6 +109,15 @@ export const suppliers = sqliteTable('suppliers', {
   ...timestamps(),
 })
 
+export const customers = sqliteTable('customers', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nama: text('nama').notNull(),
+  telepon: text('telepon'),
+  alamat: text('alamat'),
+  keterangan: text('keterangan'),
+  ...timestamps(),
+})
+
 export const purchases = sqliteTable('purchases', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   supplierId: integer('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
@@ -141,6 +150,12 @@ export const purchaseItems = sqliteTable('purchase_items', {
 export const sales = sqliteTable('sales', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  customerId: integer('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+  /**
+   * The customer name as it stood when the sale was rung up. Kept alongside
+   * `customerId` on purpose: a receipt reprint, the history list and rekap all read
+   * this snapshot, so renaming or deleting a master row never rewrites past sales.
+   */
   namaPelanggan: text('nama_pelanggan'),
   /**
    * How the sale was settled. `tunai` is cash in the drawer, `bon` is customer credit,
@@ -149,8 +164,21 @@ export const sales = sqliteTable('sales', {
    */
   metodePembayaran: text('metode_pembayaran', { enum: ['tunai', 'bon', 'qris', 'transfer'] }).notNull(),
   status: text('status', { enum: ['selesai', 'dibatalkan'] }).notNull().default('selesai'),
+  /**
+   * A manual discount on the whole bill, on top of whatever the individual lines were
+   * discounted by. Already subtracted from `total`, so nothing that reads `total` has to
+   * know this column exists.
+   */
+  diskon: integer('diskon').notNull().default(0),
   total: integer('total').notNull().default(0),
   dibayar: integer('dibayar').notNull().default(0),
+  /**
+   * A free note the cashier may attach to the sale, from the very first ring-up onwards.
+   * Optional, and overwritten whenever the sale is edited - it describes the sale as it
+   * stands now ("pesanan antar", "titipan Bu Rina"), not the history of its edits, which
+   * is what {@link saleEdits} is for.
+   */
+  keterangan: text('keterangan'),
   ...timestamps(),
 })
 
@@ -169,7 +197,38 @@ export const saleItems = sqliteTable('sale_items', {
   hargaPokok: integer('harga_pokok').notNull(),
   /** where hargaJual came from, so a later tier edit can never re-explain a past sale */
   priceSource: text('price_source', { enum: ['normal', 'price_tier', 'manual'] }).notNull().default('normal'),
+  /**
+   * A manual discount on this line alone, already subtracted from `subtotal`. Kept apart
+   * from `hargaJual` so the struk can still show what the goods were priced at before the
+   * cashier gave anything away - and so rekap's margin keeps using the real selling price.
+   */
+  diskon: integer('diskon').notNull().default(0),
   subtotal: integer('subtotal').notNull(),
+  ...timestamps(),
+})
+
+/**
+ * One row per saved edit of a sale, never overwritten.
+ *
+ * A single `keterangan` column on `sales` would have been cheaper, but the second edit
+ * would erase the first edit's reason - and it is exactly that sequence the owner wants
+ * to be able to follow. The two totals are stored so the log can be read without
+ * reconstructing the sale.
+ */
+export const saleEdits = sqliteTable('sale_edits', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  saleId: integer('sale_id').notNull().references(() => sales.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  /**
+   * Why the sale was edited. No longer demanded of the cashier, so this is an empty
+   * string when none was given - the column stays NOT NULL because relaxing it in SQLite
+   * means rebuilding the table, and a rebuild is how foreign keys quietly lose their
+   * ON DELETE actions. Read it as "reason, if the cashier bothered".
+   */
+  keterangan: text('keterangan').notNull(),
+  /** whole cents, as `sales.total` is */
+  totalSebelum: integer('total_sebelum').notNull(),
+  totalSesudah: integer('total_sesudah').notNull(),
   ...timestamps(),
 })
 
