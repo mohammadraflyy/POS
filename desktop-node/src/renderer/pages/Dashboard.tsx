@@ -4,6 +4,7 @@ import type { Column } from 'react-data-grid'
 import { TriangleAlert } from 'lucide-react'
 import { Page, PageHeader } from '@/components/page'
 import { ReportTable } from '@/components/report-table'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { METODE_LABEL } from '@/lib/metode'
@@ -13,6 +14,7 @@ import type { BreadcrumbItem } from '../types'
 
 interface DashboardSummary {
   omzetTunai: number
+  omzetNonTunai: number
   piutangBeredar: number
   jumlahTransaksi: number
   labaKotor: number
@@ -129,6 +131,12 @@ export function Dashboard() {
     },
   ]
 
+  // total pendapatan hari ini = tunai + QRIS/Transfer digabung, supaya sebuah hari yang
+  // penjualannya banyak lewat QRIS tidak terlihat seolah "omzet-nya hilang" - Laba Hari
+  // Ini di bawah sudah menghitung margin dari kedua metode sejak awal, jadi kartu ini
+  // harus mencerminkan pendapatan yang sama, bukan cuma bagian tunainya
+  const pendapatanHariIni = (summary?.omzetTunai ?? 0) + (summary?.omzetNonTunai ?? 0)
+
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
       <Page>
@@ -142,11 +150,36 @@ export function Dashboard() {
         />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
+          <Card className="gap-3 pb-0">
             <CardHeader>
-              <CardDescription>Omzet Hari Ini</CardDescription>
-              <CardTitle className="text-2xl">{formatRupiah(summary?.omzetTunai ?? 0)}</CardTitle>
+              <CardDescription>Pendapatan Hari Ini</CardDescription>
+              <CardTitle className="text-2xl">{formatRupiah(pendapatanHariIni)}</CardTitle>
             </CardHeader>
+            <Accordion type="single" collapsible>
+              <AccordionItem value="rincian" className="border-b-0">
+                <AccordionTrigger className="px-6 py-2 text-xs font-normal text-muted-foreground hover:no-underline">
+                  Lihat rincian per metode bayar
+                </AccordionTrigger>
+                <AccordionContent className="px-6">
+                  <dl className="space-y-1.5 text-sm">
+                    <div className="flex items-center justify-between">
+                      <dt className="flex items-center gap-2 text-muted-foreground">
+                        <span className="size-2 rounded-full bg-primary" aria-hidden />
+                        Tunai
+                      </dt>
+                      <dd className="font-medium">{formatRupiah(summary?.omzetTunai ?? 0)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <dt className="flex items-center gap-2 text-muted-foreground">
+                        <span className="size-2 rounded-full bg-primary/40" aria-hidden />
+                        QRIS / Transfer
+                      </dt>
+                      <dd className="font-medium">{formatRupiah(summary?.omzetNonTunai ?? 0)}</dd>
+                    </div>
+                  </dl>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </Card>
           <Card>
             <CardHeader>
@@ -158,6 +191,7 @@ export function Dashboard() {
             <CardHeader>
               <CardDescription>Laba Hari Ini</CardDescription>
               <CardTitle className="text-2xl">{formatRupiah(summary?.labaKotor ?? 0)}</CardTitle>
+              <p className="text-xs leading-snug text-muted-foreground">Dari semua metode bayar, sebelum dikurangi pengeluaran kas.</p>
             </CardHeader>
           </Card>
           <Card>

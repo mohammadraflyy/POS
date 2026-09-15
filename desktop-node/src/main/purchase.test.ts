@@ -658,12 +658,46 @@ describe('listPurchases', () => {
 
   it('sums the total of every matching purchase, not just the page', () => {
     const db = seedDb()
-    recordPurchase(db, { supplierId: 1, tanggal: '2026-08-01', catatan: null, items: [baseItem({ qty: 10, hargaBeli: 1000_00 })], userId: 1 })
-    recordPurchase(db, { supplierId: 1, tanggal: '2026-08-02', catatan: null, items: [baseItem({ qty: 5, hargaBeli: 2000_00 })], userId: 1 })
 
-    const result = listPurchases(db, { page: 1, pageSize: 1 })
-    expect(result.data).toHaveLength(1)
-    expect(result.totalKeseluruhan).toBe(20000_00)
+    // 11 invoices of Rp10.000 each so a valid page size (10, the smallest in
+    // VALID_PAGE_SIZES) still leaves one invoice off the first page - proving
+    // totalKeseluruhan sums every invoice, not just the ones returned in `data`
+    for (let i = 1; i <= 11; i++) {
+      recordPurchase(db, {
+        supplierId: 1,
+        tanggal: `2026-08-${String(i).padStart(2, '0')}`,
+        catatan: null,
+        items: [baseItem({ qty: 10, hargaBeli: 1000_00 })],
+        userId: 1,
+      })
+    }
+
+    const result = listPurchases(db, { page: 1, pageSize: 10 })
+    expect(result.data).toHaveLength(10)
+    expect(result.totalKeseluruhan).toBe(11 * 10000_00)
+  })
+
+  it('filters by date range on both data and totalKeseluruhan', () => {
+    const db = seedDb()
+    recordPurchase(db, { supplierId: 1, tanggal: '2026-07-31', catatan: null, items: [baseItem({ qty: 1, hargaBeli: 1000_00 })], userId: 1 })
+    recordPurchase(db, { supplierId: 1, tanggal: '2026-08-05', catatan: null, items: [baseItem({ qty: 1, hargaBeli: 2000_00 })], userId: 1 })
+    recordPurchase(db, { supplierId: 1, tanggal: '2026-08-31', catatan: null, items: [baseItem({ qty: 1, hargaBeli: 3000_00 })], userId: 1 })
+    recordPurchase(db, { supplierId: 1, tanggal: '2026-09-01', catatan: null, items: [baseItem({ qty: 1, hargaBeli: 4000_00 })], userId: 1 })
+
+    const result = listPurchases(db, { page: 1, dari: '2026-08-01', sampai: '2026-08-31' })
+
+    expect(result.data.map((p) => p.tanggal)).toEqual(['2026-08-31', '2026-08-05'])
+    expect(result.total).toBe(2)
+    expect(result.totalKeseluruhan).toBe(2000_00 + 3000_00)
+  })
+
+  it('treats an open-ended dari or sampai as unbounded on that side', () => {
+    const db = seedDb()
+    recordPurchase(db, { supplierId: 1, tanggal: '2026-08-01', catatan: null, items: [baseItem({ qty: 1 })], userId: 1 })
+    recordPurchase(db, { supplierId: 1, tanggal: '2026-09-01', catatan: null, items: [baseItem({ qty: 1 })], userId: 1 })
+
+    expect(listPurchases(db, { page: 1, dari: '2026-08-15' }).total).toBe(1)
+    expect(listPurchases(db, { page: 1, sampai: '2026-08-15' }).total).toBe(1)
   })
 })
 
@@ -1138,16 +1172,25 @@ describe('getPurchaseDetail', () => {
       cicilan: 0,
     })
     expect(detail.items).toHaveLength(2)
+    // baseHargaPokok is the PCS cost *after* this purchase, not before: the second
+    // line buys 2 Renteng (konversi 12), and Renteng carries PCS inside it, so that
+    // line's weighted average pulls the PCS cost along too - it isn't pinned at the
+    // seeded 1500_00 just because the first line was already in PCS.
+    // line 1 (10 PCS @ 1400_00): (10*1500_00 + 10*1400_00) / (10+10) = 1450_00
+    // line 2 (2 Renteng @ 15000_00, qtyDasar 2*12=24, nilaiBeli 2*15000_00=30000_00):
+    //   (20*1450_00 + 30000_00) / (20+24) = 5900000/44 = 134090.9... -> rounds to 1340_91
     expect(detail.items[0]).toMatchObject({
       productId: 1,
       productUnitId: null,
       qty: 10,
       hargaBeli: 1400_00,
       baseSatuan: 'PCS',
-      baseHargaPokok: 1500_00,
+      baseHargaPokok: 1340_91,
     })
     expect(detail.items[1]).toMatchObject({ productUnitId: 1, qty: 2, hargaBeli: 15000_00 })
-    expect(detail.items[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12, hargaPokok: 18000_00 }])
+    // Renteng's own cost moves too - line 2 bought Renteng directly:
+    // (20*18000_00 + 2*15000_00*12) / (20+24) = 72000000/44 = 1636363.6... -> rounds to 16363_64
+    expect(detail.items[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12, hargaPokok: 16363_64 }])
   })
 
   it('splits dibayar into the down payment and the instalments since', () => {

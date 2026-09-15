@@ -124,6 +124,14 @@ export function Purchase() {
   const [total, setTotal] = useState(0)
   const [totalKeseluruhan, setTotalKeseluruhan] = useState(0)
 
+  // what the table below actually reflects right now - only moves when a load
+  // lands, mirroring Rekap's appliedFrom/appliedTo so the filter inputs can be
+  // edited without the table jumping ahead of a pending "Terapkan" click
+  const [historyDari, setHistoryDari] = useState('')
+  const [historySampai, setHistorySampai] = useState('')
+  const [appliedHistoryDari, setAppliedHistoryDari] = useState('')
+  const [appliedHistorySampai, setAppliedHistorySampai] = useState('')
+
   const { confirm, ConfirmDialog } = useConfirm()
 
   // A restored draft can name a supplier that has since been deleted. Drop it rather
@@ -141,14 +149,30 @@ export function Purchase() {
     })
   }
 
-  function loadPurchases(page: number) {
-    window.api.purchase.listPurchases({ page }).then((result) => {
+  // Pagination and post-save/-delete reloads keep whatever filter is currently
+  // applied; only an explicit "Terapkan" click (submitHistoryFilter) should pick up
+  // live, not-yet-applied edits to the date inputs.
+  function loadPurchases(page: number, dari = appliedHistoryDari, sampai = appliedHistorySampai) {
+    window.api.purchase.listPurchases({ page, dari: dari || undefined, sampai: sampai || undefined }).then((result) => {
       setPurchases(result.data)
       setCurrentPage(result.currentPage)
       setLastPage(result.lastPage)
       setTotal(result.total)
       setTotalKeseluruhan(result.totalKeseluruhan)
+      setAppliedHistoryDari(dari)
+      setAppliedHistorySampai(sampai)
     })
+  }
+
+  function submitHistoryFilter(e: FormEvent) {
+    e.preventDefault()
+    loadPurchases(1, historyDari, historySampai)
+  }
+
+  function resetHistoryFilter() {
+    setHistoryDari('')
+    setHistorySampai('')
+    loadPurchases(1, '', '')
   }
 
   useEffect(() => {
@@ -674,9 +698,30 @@ export function Purchase() {
         </form>
 
         <div className="grid gap-1 rounded-lg border p-3 sm:w-64">
-          <span className="text-sm text-muted-foreground">Total Keseluruhan</span>
+          <span className="text-sm text-muted-foreground">
+            Total Keseluruhan {(appliedHistoryDari || appliedHistorySampai) && <span className="font-normal">(sesuai filter)</span>}
+          </span>
           <span className="text-lg font-semibold">{formatRupiah(totalKeseluruhan)}</span>
         </div>
+
+        <form onSubmit={submitHistoryFilter} className="flex flex-wrap items-end gap-2 rounded-lg border p-4">
+          <div className="grid gap-1">
+            <Label className="text-xs">Dari</Label>
+            <Input type="date" value={historyDari} onChange={(e) => setHistoryDari(e.target.value)} className="w-40" />
+          </div>
+          <div className="grid gap-1">
+            <Label className="text-xs">Sampai</Label>
+            <Input type="date" value={historySampai} onChange={(e) => setHistorySampai(e.target.value)} className="w-40" />
+          </div>
+          <Button type="submit" variant="secondary">
+            Terapkan
+          </Button>
+          {(historyDari || historySampai || appliedHistoryDari || appliedHistorySampai) && (
+            <Button type="button" variant="outline" onClick={resetHistoryFilter}>
+              Reset
+            </Button>
+          )}
+        </form>
 
         <ReportTable<PurchaseRow>
           title="Riwayat Pembelian"

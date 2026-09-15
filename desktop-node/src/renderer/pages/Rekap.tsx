@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import type { Column } from 'react-data-grid'
 import { ReportTable } from '@/components/report-table'
 import { Page, PageHeader } from '@/components/page'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -357,35 +358,44 @@ export function Rekap() {
           <h2 className="text-sm font-semibold text-muted-foreground">
             Ringkasan periode <span className="text-foreground">{periodeLabel}</span>
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <Card className="border-primary/30 bg-primary/5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Card className="gap-3 border-primary/30 bg-primary/5 pb-0">
               <CardHeader>
                 <CardDescription>Total Pendapatan</CardDescription>
                 <CardTitle className="text-2xl">{formatRupiah(totalPendapatan)}</CardTitle>
                 <p className="text-xs leading-snug text-muted-foreground">
-                  Semua metode digabung: Omzet Tunai + QRIS/Transfer di samping. Ini angka pendapatan penuh periode
-                  ini, sebelum dikurangi harga pokok.
+                  Semua metode bayar digabung, sebelum dikurangi harga pokok.
                 </p>
               </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardDescription>Omzet Tunai</CardDescription>
-                <CardTitle className="text-2xl">{formatRupiah(summary?.omzetTunai ?? 0)}</CardTitle>
-                <p className="text-xs leading-snug text-muted-foreground">
-                  Bagian dari Total Pendapatan yang tunai: penjualan tunai + bon yang baru lunas pada periode ini.
-                  Tidak termasuk QRIS/Transfer.
-                </p>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardDescription>QRIS / Transfer</CardDescription>
-                <CardTitle className="text-2xl">{formatRupiah(summary?.omzetNonTunai ?? 0)}</CardTitle>
-                <p className="text-xs leading-snug text-muted-foreground">
-                  Bagian dari Total Pendapatan yang non-tunai. Uang nyata, tapi tidak masuk laci kas.
-                </p>
-              </CardHeader>
+              <Accordion type="single" collapsible>
+                <AccordionItem value="rincian" className="border-b-0">
+                  <AccordionTrigger className="px-6 py-2 text-xs font-normal text-muted-foreground hover:no-underline">
+                    Lihat rincian per metode bayar
+                  </AccordionTrigger>
+                  <AccordionContent className="px-6">
+                    <dl className="space-y-1.5 text-sm">
+                      <div className="flex items-center justify-between">
+                        <dt className="flex items-center gap-2 text-muted-foreground">
+                          <span className="size-2 rounded-full bg-primary" aria-hidden />
+                          Tunai
+                        </dt>
+                        <dd className="font-medium">{formatRupiah(summary?.omzetTunai ?? 0)}</dd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <dt className="flex items-center gap-2 text-muted-foreground">
+                          <span className="size-2 rounded-full bg-primary/40" aria-hidden />
+                          QRIS / Transfer
+                        </dt>
+                        <dd className="font-medium">{formatRupiah(summary?.omzetNonTunai ?? 0)}</dd>
+                      </div>
+                    </dl>
+                    <p className="mt-2 text-xs leading-snug text-muted-foreground">
+                      Tunai: penjualan tunai + bon yang baru lunas pada periode ini. QRIS/Transfer: uang nyata, tapi
+                      tidak masuk laci kas.
+                    </p>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </Card>
             <Card>
               <CardHeader>
@@ -403,7 +413,7 @@ export function Rekap() {
                 <CardTitle className="text-2xl">{formatRupiah(summary?.labaKotor ?? 0)}</CardTitle>
                 <p className="text-xs leading-snug text-muted-foreground">
                   {summary && summary.jumlahTransaksi > 0
-                    ? `≈ ${marginKotorPersen.toFixed(1)}% dari Total Pendapatan (${formatRupiah(totalPendapatan)}) - sisanya adalah harga pokok barang yang terjual.`
+                    ? `≈ ${marginKotorPersen.toFixed(1)}% dari Total Pendapatan - sisanya adalah harga pokok barang yang terjual. Belum dikurangi pengeluaran kas.`
                     : 'Total Pendapatan dikurangi harga pokok barang yang terjual pada periode ini.'}
                 </p>
               </CardHeader>

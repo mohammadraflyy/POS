@@ -100,7 +100,7 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
     }
   })
 
-  ipcMain.handle('purchase:listPurchases', (_event, input: { page: number; pageSize?: number }) => {
+  ipcMain.handle('purchase:listPurchases', (_event, input: { page: number; pageSize?: number; dari?: string; sampai?: string }) => {
     requireUser()
 
     const result = listPurchases(db, input)

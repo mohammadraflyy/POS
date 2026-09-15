@@ -173,7 +173,8 @@ const api = {
     ) => invoke('purchase:updatePurchase', purchaseId, input),
     deletePurchase: (purchaseId: number) => invoke('purchase:deletePurchase', purchaseId),
     getPurchaseDetail: (purchaseId: number) => invoke('purchase:getPurchaseDetail', purchaseId),
-    listPurchases: (input: { page: number; pageSize?: number }) => invoke('purchase:listPurchases', input),
+    listPurchases: (input: { page: number; pageSize?: number; dari?: string; sampai?: string }) =>
+      invoke('purchase:listPurchases', input),
     searchProducts: (q: string) => invoke('purchase:searchProducts', q),
     findProductByBarcode: (barcode: string) => invoke('purchase:findProductByBarcode', barcode),
     listSupplierDebts: (supplierId?: number | null) => invoke('purchase:listSupplierDebts', supplierId ?? null),

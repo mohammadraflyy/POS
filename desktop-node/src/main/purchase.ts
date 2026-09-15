@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, like, lte, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import {
@@ -692,14 +692,29 @@ const VALID_PAGE_SIZES = [10, 25, 50, 100]
 
 export function listPurchases(
   db: BetterSQLite3Database<typeof schema>,
-  input: { page: number; pageSize?: number },
+  input: { page: number; pageSize?: number; dari?: string; sampai?: string },
 ): { data: PurchaseListItem[]; currentPage: number; lastPage: number; total: number; totalKeseluruhan: number } {
   const pageSize = input.pageSize && VALID_PAGE_SIZES.includes(input.pageSize) ? input.pageSize : DEFAULT_PAGE_SIZE
   const page = Math.max(1, input.page)
 
+  // `purchases.tanggal` is a plain YYYY-MM-DD string, so a lexical gte/lte is
+  // already a correct date-range filter - no need to parse it into a Date.
+  const conditions = []
+
+  if (input.dari) {
+    conditions.push(gte(purchases.tanggal, input.dari))
+  }
+
+  if (input.sampai) {
+    conditions.push(lte(purchases.tanggal, input.sampai))
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
   const totalRow = db
     .select({ count: sql<number>`count(*)`, total: sql<number>`coalesce(sum(${purchases.total}), 0)` })
     .from(purchases)
+    .where(whereClause)
     .get()
   const total = totalRow?.count ?? 0
   const totalKeseluruhan = totalRow?.total ?? 0
@@ -716,6 +731,7 @@ export function listPurchases(
     })
     .from(purchases)
     .leftJoin(suppliers, eq(purchases.supplierId, suppliers.id))
+    .where(whereClause)
     .orderBy(desc(purchases.tanggal), desc(purchases.id))
     .limit(pageSize)
     .offset((page - 1) * pageSize)

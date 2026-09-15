@@ -8,20 +8,21 @@ import { handleHttpRequest } from '../router'
 import type { HttpRequest, RouterDeps } from '../context'
 
 const migrationsFolder = path.resolve(__dirname, '../../../../drizzle')
-const db = createDb(':memory:', migrationsFolder)
 
 function req(partial: Partial<HttpRequest> & Pick<HttpRequest, 'method' | 'path'>): HttpRequest {
   return { query: {}, headers: {}, body: undefined, ...partial }
 }
 
+// A checkout in one test writes purchase-history-adjacent rows (sale_items,
+// stock_movements) that FK-restrict a delete of `products` - a fresh in-memory db
+// per test sidesteps that instead of having to delete every table in dependency
+// order, and it's what kasir.test.ts/purchase.test.ts already do.
+let db: ReturnType<typeof createDb>
 let token: string
 let productId: number
 
 beforeEach(() => {
-  db.delete(productUnits).run()
-  db.delete(units).run()
-  db.delete(products).run()
-  db.delete(users).run()
+  db = createDb(':memory:', migrationsFolder)
 
   const now = new Date()
 

@@ -441,7 +441,7 @@ declare global {
             hargaBeli: number
           }[]
         }>
-        listPurchases: (input: { page: number; pageSize?: number }) => Promise<{
+        listPurchases: (input: { page: number; pageSize?: number; dari?: string; sampai?: string }) => Promise<{
           data: {
             id: number
             tanggal: string

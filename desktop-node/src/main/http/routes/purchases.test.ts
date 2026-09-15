@@ -2,27 +2,25 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import path from 'node:path'
 import bcrypt from 'bcryptjs'
 import { createDb } from '../../db/migrate'
-import { users, products, productUnits, units, suppliers } from '../../db/schema'
+import { users, products, productUnits, units } from '../../db/schema'
 import { issueDeviceToken } from '../../device-tokens'
 import { handleHttpRequest } from '../router'
 import type { HttpRequest } from '../context'
 
 const migrationsFolder = path.resolve(__dirname, '../../../../drizzle')
-const db = createDb(':memory:', migrationsFolder)
 
 function req(partial: Partial<HttpRequest> & Pick<HttpRequest, 'method' | 'path'>): HttpRequest {
   return { query: {}, headers: {}, body: undefined, ...partial }
 }
 
+// Fresh in-memory db per test - a recorded purchase writes purchase_items rows that
+// FK-restrict a delete of `products`, same reasoning as sales.test.ts.
+let db: ReturnType<typeof createDb>
 let token: string
 let productId: number
 
 beforeEach(() => {
-  db.delete(suppliers).run()
-  db.delete(productUnits).run()
-  db.delete(units).run()
-  db.delete(products).run()
-  db.delete(users).run()
+  db = createDb(':memory:', migrationsFolder)
 
   const now = new Date()
 

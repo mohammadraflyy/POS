@@ -247,6 +247,7 @@ describe('resolveCartItem', () => {
       qtyDasar: 5,
       priceSource: 'price_tier',
       diskon: 0,
+      stokCukup: true,
     })
   })
 
@@ -274,6 +275,7 @@ describe('resolveCartItem', () => {
       qtyDasar: 24,
       priceSource: 'normal',
       diskon: 0,
+      stokCukup: true,
     })
   })
 
@@ -2607,8 +2609,9 @@ describe('previewCart', () => {
     const result = previewCart(db, { items: [{ productId: 1, productUnitId: null, qty: 11 }] })
 
     expect(result.lines[0].stokCukup).toBe(false)
-    // still priced, so the phone can show the total even though it can't be sold yet
-    expect(result.lines[0].subtotal).toBe(65000_00 * 11)
+    // still priced (at the qty>=5 tier rate, same as a normal sale would get), so the
+    // phone can show the total even though it can't be sold yet
+    expect(result.lines[0].subtotal).toBe(62000_00 * 11)
   })
 
   it('flags only the line that pushes a combined total over stock', () => {
