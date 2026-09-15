@@ -16,6 +16,7 @@ import { Purchase } from './pages/Purchase'
 import { HutangSupplier } from './pages/HutangSupplier'
 import { Pengeluaran } from './pages/Pengeluaran'
 import { StockOpname } from './pages/StockOpname'
+import { StockMovements } from './pages/StockMovements'
 import { Rekap } from './pages/Rekap'
 import { Dashboard } from './pages/Dashboard'
 
@@ -52,6 +53,7 @@ export function App() {
         <Route path="/hutang-supplier" element={<HutangSupplier />} />
         <Route path="/pengeluaran" element={<Pengeluaran />} />
         <Route path="/stock-opname" element={<StockOpname />} />
+        <Route path="/stock-movements" element={<StockMovements />} />
         <Route path="/rekap" element={<Rekap />} />
         <Route path="/users" element={<Users />} />
       </Routes>

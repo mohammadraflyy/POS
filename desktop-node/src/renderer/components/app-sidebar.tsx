@@ -1,4 +1,5 @@
 import {
+  ArrowLeftRight,
   Boxes,
   Building2,
   ClipboardCheck,
@@ -36,6 +37,7 @@ const pembelianNavItems: NavItem[] = [
   { title: 'Katalog Produk', href: '/inventory', icon: Boxes },
   { title: 'Master Satuan', href: '/master-satuan', icon: Ruler },
   { title: 'Stock Opname', href: '/stock-opname', icon: ClipboardCheck },
+  { title: 'Riwayat Stok', href: '/stock-movements', icon: ArrowLeftRight },
 ]
 
 const laporanNavItems: NavItem[] = [{ title: 'Rekap', href: '/rekap', icon: ClipboardList }]

@@ -8,6 +8,7 @@ import { registerCustomerIpc } from './ipc/customer'
 import { registerSupplierIpc } from './ipc/supplier'
 import { registerPurchaseIpc } from './ipc/purchase'
 import { registerStockOpnameIpc } from './ipc/stock-opname'
+import { registerStockMovementsIpc } from './ipc/stock-movements'
 import { registerExpenseIpc } from './ipc/expense'
 import { registerRekapIpc } from './ipc/rekap'
 import { registerDashboardIpc } from './ipc/dashboard'
@@ -118,6 +119,7 @@ app.whenReady().then(() => {
   registerCustomerIpc(db)
   registerPurchaseIpc(db)
   registerStockOpnameIpc(db)
+  registerStockMovementsIpc(db)
   registerExpenseIpc(db)
   registerRekapIpc(db)
   registerDashboardIpc(db)

@@ -539,6 +539,32 @@ declare global {
         >
         recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null }) => Promise<{ id: number }>
       }
+      stockMovements: {
+        list: (input: {
+          q?: string
+          movementType?: 'sale' | 'sale_cancel' | 'purchase' | 'stock_adjustment'
+          dari?: string
+          sampai?: string
+          page: number
+          pageSize?: number
+        }) => Promise<{
+          data: {
+            id: number
+            createdAt: string
+            productId: number
+            kodeItem: string
+            namaItem: string
+            satuan: string | null
+            quantity: number
+            baseQuantity: number
+            movementType: 'sale' | 'sale_cancel' | 'purchase' | 'stock_adjustment'
+            referenceId: number
+          }[]
+          currentPage: number
+          lastPage: number
+          total: number
+        }>
+      }
       rekap: {
         getRekap: (input: { from: string; to: string }) => Promise<{
           summary: {

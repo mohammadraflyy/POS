@@ -198,6 +198,16 @@ const api = {
     recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null }) =>
       invoke('stock-opname:recordAdjustment', input),
   },
+  stockMovements: {
+    list: (input: {
+      q?: string
+      movementType?: 'sale' | 'sale_cancel' | 'purchase' | 'stock_adjustment'
+      dari?: string
+      sampai?: string
+      page: number
+      pageSize?: number
+    }) => invoke('stockMovements:list', input),
+  },
   rekap: {
     getRekap: (input: { from: string; to: string }) => invoke('rekap:getRekap', input),
     exportExcel: (input: { from: string; to: string }) => invoke('rekap:exportExcel', input),
