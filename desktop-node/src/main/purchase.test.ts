@@ -655,6 +655,16 @@ describe('listPurchases', () => {
     const result = listPurchases(db, { page: 1, pageSize: 999 })
     expect(result.lastPage).toBe(1)
   })
+
+  it('sums the total of every matching purchase, not just the page', () => {
+    const db = seedDb()
+    recordPurchase(db, { supplierId: 1, tanggal: '2026-08-01', catatan: null, items: [baseItem({ qty: 10, hargaBeli: 1000_00 })], userId: 1 })
+    recordPurchase(db, { supplierId: 1, tanggal: '2026-08-02', catatan: null, items: [baseItem({ qty: 5, hargaBeli: 2000_00 })], userId: 1 })
+
+    const result = listPurchases(db, { page: 1, pageSize: 1 })
+    expect(result.data).toHaveLength(1)
+    expect(result.totalKeseluruhan).toBe(20000_00)
+  })
 })
 
 describe('searchProductsForPurchase', () => {
@@ -665,10 +675,10 @@ describe('searchProductsForPurchase', () => {
     expect(results[0]).toMatchObject({ id: 1, kodeItem: 'KOPI1', namaItem: 'Kopi Kapal Api', satuan: 'PCS', hargaPokok: 1500_00 })
   })
 
-  it('includes each product\'s available units', () => {
+  it('includes each product\'s available units, with their own harga pokok', () => {
     const db = seedDb()
     const results = searchProductsForPurchase(db, 'kopi')
-    expect(results[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12 }])
+    expect(results[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12, hargaPokok: 18000_00 }])
   })
 
   it('returns an empty units array for a product with no satuan turunan', () => {
@@ -1128,9 +1138,16 @@ describe('getPurchaseDetail', () => {
       cicilan: 0,
     })
     expect(detail.items).toHaveLength(2)
-    expect(detail.items[0]).toMatchObject({ productId: 1, productUnitId: null, qty: 10, hargaBeli: 1400_00, baseSatuan: 'PCS' })
+    expect(detail.items[0]).toMatchObject({
+      productId: 1,
+      productUnitId: null,
+      qty: 10,
+      hargaBeli: 1400_00,
+      baseSatuan: 'PCS',
+      baseHargaPokok: 1500_00,
+    })
     expect(detail.items[1]).toMatchObject({ productUnitId: 1, qty: 2, hargaBeli: 15000_00 })
-    expect(detail.items[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12 }])
+    expect(detail.items[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12, hargaPokok: 18000_00 }])
   })
 
   it('splits dibayar into the down payment and the instalments since', () => {

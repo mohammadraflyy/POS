@@ -2,7 +2,7 @@ import { and, desc, eq, gt, gte, lte, ne, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
-import { bonPayments, categories, products, productUnits, purchases, saleItems, sales, suppliers, units } from './db/schema'
+import { bonPayments, categories, customers, products, productUnits, purchases, saleItems, sales, suppliers, units } from './db/schema'
 import { METODE_NON_TUNAI, type MetodePembayaran } from './kasir'
 
 /** the local calendar day, in the `YYYY-MM-DD` shape the report ranges are given in */
@@ -51,6 +51,15 @@ export interface PembelianPerSupplierRow {
   totalPembelian: number
 }
 
+export interface PiutangPerPelangganRow {
+  customerId: number | null
+  namaPelanggan: string
+  telepon: string | null
+  totalPiutang: number
+  /** how many of this customer's bon are still unpaid, not their whole bon history */
+  jumlahBon: number
+}
+
 export interface StockValueRow {
   namaItem: string
   kodeItem: string
@@ -82,6 +91,7 @@ export interface RekapResult {
   labaPerSatuan: LabaPerSatuanRow[]
   produkTerlaris: ProdukTerlarisRow[]
   pembelianPerSupplier: PembelianPerSupplierRow[]
+  piutangPerPelanggan: PiutangPerPelangganRow[]
   stockValue: StockValueSummary
   salesHistory: SalesHistoryRow[]
 }
@@ -187,11 +197,34 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     }
   }
 
+  // max(...,0) per row guards against an overpaid bon (dibayar > total) turning into a
+  // negative contribution that would understate everyone else's outstanding balance
   const piutangRow = db
-    .select({ piutang: sql<number>`coalesce(sum(${sales.total} - ${sales.dibayar}), 0)` })
+    .select({ piutang: sql<number>`coalesce(sum(max(${sales.total} - ${sales.dibayar}, 0)), 0)` })
     .from(sales)
     .where(and(eq(sales.status, 'selesai'), eq(sales.metodePembayaran, 'bon')))
     .get()
+
+  // Who owes what, all-time - grouped by customerId (stable identity: `findOrCreateCustomerByName`
+  // reuses the same row for the same name, and a bon always has one because it's required at
+  // checkout) so a renamed customer's older bon still lands on the same line, not a second one.
+  // `customers.nama` is preferred over the sale's own snapshot so a rename is reflected here -
+  // this list is for collecting a debt today, not for reproducing a past receipt.
+  const piutangPerPelanggan: PiutangPerPelangganRow[] = db
+    .select({
+      customerId: sales.customerId,
+      namaPelanggan: sql<string>`coalesce(${customers.nama}, ${sales.namaPelanggan}, 'Tanpa Nama')`,
+      telepon: customers.telepon,
+      totalPiutang: sql<number>`coalesce(sum(max(${sales.total} - ${sales.dibayar}, 0)), 0)`,
+      jumlahBon: sql<number>`count(case when ${sales.total} > ${sales.dibayar} then 1 end)`,
+    })
+    .from(sales)
+    .leftJoin(customers, eq(sales.customerId, customers.id))
+    .where(and(eq(sales.status, 'selesai'), eq(sales.metodePembayaran, 'bon')))
+    .groupBy(sales.customerId)
+    .having(sql`sum(max(${sales.total} - ${sales.dibayar}, 0)) > 0`)
+    .all()
+    .sort((a, b) => b.totalPiutang - a.totalPiutang)
 
   // Same net as pengakuanPenjualan casts, then narrowed to the sales it recognised - the
   // margin has to be counted on exactly the sales the omzet was counted on.
@@ -223,6 +256,10 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
         ),
       ),
     )
+    // deterministic order so the discount-rounding remainder always lands on the same
+    // line of a sale (the last one inserted), not on whichever row SQLite's query plan
+    // happens to return last
+    .orderBy(saleItems.saleId, saleItems.id)
     .all()
     .filter((row) => diakui.has(row.saleId))
 
@@ -333,6 +370,7 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     labaPerSatuan,
     produkTerlaris,
     pembelianPerSupplier,
+    piutangPerPelanggan,
     stockValue,
     salesHistory,
   }
@@ -459,6 +497,16 @@ export function buildRekapWorkbook(rekap: RekapResult): XLSX.WorkBook {
       rows: rekap.pembelianPerSupplier.map((row) => ({
         Supplier: row.supplierName,
         'Total Pembelian': toRupiahExport(row.totalPembelian),
+      })),
+    },
+    {
+      name: 'Piutang per Pelanggan',
+      headers: ['Pelanggan', 'Telepon', 'Jumlah Bon Belum Lunas', 'Total Piutang'],
+      rows: rekap.piutangPerPelanggan.map((row) => ({
+        Pelanggan: row.namaPelanggan,
+        Telepon: row.telepon ?? '-',
+        'Jumlah Bon Belum Lunas': row.jumlahBon,
+        'Total Piutang': toRupiahExport(row.totalPiutang),
       })),
     },
     {

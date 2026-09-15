@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { InputError } from '@/components/input-error'
 import { ReportTable } from '@/components/report-table'
 import { cn, formatQty, formatRupiah } from '@/lib/utils'
+import { useDraftState } from '@/hooks/use-sticky-state'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -41,8 +42,10 @@ export function BonPayment() {
   const navigate = useNavigate()
   const { saleId } = useParams<{ saleId: string }>()
   const [sale, setSale] = useState<SaleDetail | null>(null)
-  const [jumlah, setJumlah] = useState('')
-  const [keterangan, setKeterangan] = useState('')
+  // keyed per sale, so a half-typed payment survives a trip to another menu without
+  // leaking into the next sale's pending payment form
+  const [jumlah, setJumlah, clearJumlah] = useDraftState(`bon-payment.${saleId}.jumlah`, '')
+  const [keterangan, setKeterangan, clearKeterangan] = useDraftState(`bon-payment.${saleId}.keterangan`, '')
   const [processing, setProcessing] = useState(false)
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -70,8 +73,9 @@ export function BonPayment() {
     window.api.kasir
       .recordBonPayment({ saleId: Number(saleId), jumlah: Number(jumlah), keterangan: keterangan || null })
       .then(() => {
-        setJumlah('')
-        setKeterangan('')
+        // clears the stored draft too, or the recorded payment returns as a ghost draft
+        clearJumlah()
+        clearKeterangan()
         loadSale()
       })
       .catch((err) => setFieldError(err instanceof Error ? err.message : 'Gagal mencatat pembayaran'))

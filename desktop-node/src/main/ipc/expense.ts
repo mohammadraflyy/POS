@@ -1,7 +1,16 @@
-import { ipcMain } from 'electron'
+import { dialog, ipcMain } from 'electron'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import XLSX from 'xlsx'
 import * as schema from '../db/schema'
-import { recordCashExpense, listCashExpenses, deleteCashExpense } from '../expense'
+import {
+  recordCashExpense,
+  updateCashExpense,
+  listCashExpenses,
+  listAllCashExpenses,
+  buildExpenseWorkbook,
+  deleteCashExpense,
+} from '../expense'
+import { getMainWindow } from '../index'
 import { requireAdmin, requireUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -28,9 +37,24 @@ export function registerExpenseIpc(db: BetterSQLite3Database<typeof schema>) {
     },
   )
 
+  // editing rewrites the cash record like deleting does, so both stay with the owner
+  ipcMain.handle(
+    'expense:updateExpense',
+    (_event, id: number, input: { tanggal: string; kategori: string; jumlah: number; keterangan: string | null }) => {
+      requireAdmin()
+
+      updateCashExpense(db, id, {
+        tanggal: input.tanggal,
+        kategori: input.kategori,
+        jumlah: toCents(input.jumlah),
+        keterangan: input.keterangan,
+      })
+    },
+  )
+
   ipcMain.handle(
     'expense:listExpenses',
-    (_event, input: { from?: string; to?: string; page: number; pageSize?: number }) => {
+    (_event, input: { from?: string; to?: string; q?: string; page: number; pageSize?: number }) => {
       requireUser()
 
       const result = listCashExpenses(db, input)
@@ -52,10 +76,33 @@ export function registerExpenseIpc(db: BetterSQLite3Database<typeof schema>) {
     },
   )
 
-  // deleting rewrites the cash record, so it stays with the owner
   ipcMain.handle('expense:deleteExpense', (_event, id: number) => {
     requireAdmin()
 
     deleteCashExpense(db, id)
+  })
+
+  ipcMain.handle('expense:exportExcel', async (_event, input: { from?: string; to?: string; q?: string }) => {
+    requireAdmin()
+
+    const window = getMainWindow()
+    if (!window) {
+      throw new Error('Jendela aplikasi tidak ditemukan.')
+    }
+
+    const result = await dialog.showSaveDialog(window, {
+      defaultPath: `pengeluaran-${input.from ?? 'semua'}-${input.to ?? 'semua'}.xlsx`,
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+    })
+
+    if (result.canceled || !result.filePath) {
+      return null
+    }
+
+    const expenses = listAllCashExpenses(db, input)
+    const workbook = buildExpenseWorkbook(expenses)
+    XLSX.writeFile(workbook, result.filePath)
+
+    return result.filePath
   })
 }

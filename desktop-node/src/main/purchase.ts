@@ -592,7 +592,9 @@ export interface PurchaseDetailItem {
   kodeItem: string
   namaItem: string
   baseSatuan: string
-  units: { id: number; satuan: string; konversi: number }[]
+  /** the base unit's own cost, so the entry form can restore it if the satuan is switched back */
+  baseHargaPokok: number
+  units: { id: number; satuan: string; konversi: number; hargaPokok: number }[]
   productUnitId: number | null
   qty: number
   hargaBeli: number
@@ -645,13 +647,14 @@ export function getPurchaseDetail(db: Db, purchaseId: number): PurchaseDetail {
     const baseUnit = getBaseProductUnit(db, row.productId)
     const derivedUnits = listProductUnits(db, row.productId)
       .filter((u) => !u.isBaseUnit)
-      .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor }))
+      .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor, hargaPokok: u.hargaPokok }))
 
     return {
       productId: row.productId,
       kodeItem: row.kodeItem,
       namaItem: row.namaItem,
       baseSatuan: baseUnit.unitCode,
+      baseHargaPokok: baseUnit.hargaPokok,
       units: derivedUnits,
       // a satuan deleted since falls back to base, exactly where the reversal returns its value
       productUnitId: derivedUnits.some((u) => u.id === row.productUnitId) ? row.productUnitId : null,
@@ -690,12 +693,16 @@ const VALID_PAGE_SIZES = [10, 25, 50, 100]
 export function listPurchases(
   db: BetterSQLite3Database<typeof schema>,
   input: { page: number; pageSize?: number },
-): { data: PurchaseListItem[]; currentPage: number; lastPage: number; total: number } {
+): { data: PurchaseListItem[]; currentPage: number; lastPage: number; total: number; totalKeseluruhan: number } {
   const pageSize = input.pageSize && VALID_PAGE_SIZES.includes(input.pageSize) ? input.pageSize : DEFAULT_PAGE_SIZE
   const page = Math.max(1, input.page)
 
-  const totalRow = db.select({ count: sql<number>`count(*)` }).from(purchases).get()
+  const totalRow = db
+    .select({ count: sql<number>`count(*)`, total: sql<number>`coalesce(sum(${purchases.total}), 0)` })
+    .from(purchases)
+    .get()
   const total = totalRow?.count ?? 0
+  const totalKeseluruhan = totalRow?.total ?? 0
   const lastPage = Math.max(1, Math.ceil(total / pageSize))
 
   const purchaseRows = db
@@ -746,7 +753,7 @@ export function listPurchases(
     }
   })
 
-  return { data, currentPage: page, lastPage, total }
+  return { data, currentPage: page, lastPage, total, totalKeseluruhan }
 }
 
 export interface PurchaseProductOption {
@@ -755,7 +762,7 @@ export interface PurchaseProductOption {
   namaItem: string
   satuan: string
   hargaPokok: number
-  units: { id: number; satuan: string; konversi: number }[]
+  units: { id: number; satuan: string; konversi: number; hargaPokok: number }[]
 }
 
 export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schema>, q: string): PurchaseProductOption[] {
@@ -782,7 +789,7 @@ export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schem
     const baseUnit = getBaseProductUnit(db, row.id)
     const derivedUnits = listProductUnits(db, row.id)
       .filter((u) => !u.isBaseUnit)
-      .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor }))
+      .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor, hargaPokok: u.hargaPokok }))
 
     return { ...row, satuan: baseUnit.unitCode, units: derivedUnits }
   })
@@ -821,7 +828,7 @@ export function findProductForPurchaseByBarcode(
   const baseUnit = getBaseProductUnit(db, row.id)
   const derivedUnits = listProductUnits(db, row.id)
     .filter((u) => !u.isBaseUnit)
-    .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor }))
+    .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor, hargaPokok: u.hargaPokok }))
 
   return { ...row, satuan: baseUnit.unitCode, units: derivedUnits }
 }

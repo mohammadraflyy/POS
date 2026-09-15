@@ -31,14 +31,7 @@ import { buildReceiptEscPos, SAMPLE_RECEIPT, type PaperWidth } from '../escpos'
 import { printRaw } from '../print-windows'
 import { requireAdmin, requireUser } from './auth'
 import { getMainWindow } from '../index'
-
-function toRupiah(cents: number): number {
-  return cents / 100
-}
-
-function toCents(rupiah: number): number {
-  return Math.round(rupiah * 100)
-}
+import { toRupiah, toCents } from '../money'
 
 interface CheckoutRendererInput {
   metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'

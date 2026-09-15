@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import path from 'node:path'
+import { eq } from 'drizzle-orm'
+import XLSX from 'xlsx'
 import { createDb } from './db/migrate'
 import { cashExpenses, users } from './db/schema'
-import { recordCashExpense, listCashExpenses, deleteCashExpense } from './expense'
+import {
+  recordCashExpense,
+  updateCashExpense,
+  listCashExpenses,
+  listAllCashExpenses,
+  buildExpenseWorkbook,
+  deleteCashExpense,
+} from './expense'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
 
@@ -120,6 +129,94 @@ describe('listCashExpenses', () => {
     recordCashExpense(db, expenseInput())
 
     expect(listCashExpenses(db, { page: 1 }).data[0].userName).toBe('Admin')
+  })
+
+  it('filters by a search term against kategori or keterangan', () => {
+    const db = seedDb()
+    recordCashExpense(db, expenseInput({ kategori: 'BENSIN', keterangan: 'motor kasir' }))
+    recordCashExpense(db, expenseInput({ kategori: 'DPAM', keterangan: 'tagihan air' }))
+    recordCashExpense(db, expenseInput({ kategori: 'LAIN-LAIN', keterangan: 'beli bensin motor' }))
+
+    const byKategori = listCashExpenses(db, { q: 'bensin', page: 1 })
+    expect(byKategori.data.map((e) => e.kategori).sort()).toEqual(['BENSIN', 'LAIN-LAIN'])
+
+    const byKeterangan = listCashExpenses(db, { q: 'air', page: 1 })
+    expect(byKeterangan.data).toHaveLength(1)
+    expect(byKeterangan.data[0].kategori).toBe('DPAM')
+  })
+})
+
+describe('updateCashExpense', () => {
+  it('overwrites every field of an existing expense', () => {
+    const db = seedDb()
+    const { expenseId } = recordCashExpense(db, expenseInput({ kategori: 'DPAM', jumlah: 100000_00 }))
+
+    updateCashExpense(db, expenseId, {
+      tanggal: '2026-08-11',
+      kategori: 'KARYAWAN',
+      jumlah: 250000_00,
+      keterangan: 'gaji lembur',
+    })
+
+    const row = db.select().from(cashExpenses).where(eq(cashExpenses.id, expenseId)).get()
+    expect(row).toMatchObject({
+      tanggal: '2026-08-11',
+      kategori: 'KARYAWAN',
+      jumlah: 250000_00,
+      keterangan: 'gaji lembur',
+    })
+  })
+
+  it('rejects an unknown id', () => {
+    const db = seedDb()
+    expect(() =>
+      updateCashExpense(db, 99, { tanggal: '2026-08-11', kategori: 'DPAM', jumlah: 1000_00, keterangan: null }),
+    ).toThrow('Pengeluaran tidak ditemukan.')
+  })
+
+  it('rejects the same invalid input as recordCashExpense', () => {
+    const db = seedDb()
+    const { expenseId } = recordCashExpense(db, expenseInput())
+
+    expect(() => updateCashExpense(db, expenseId, { tanggal: '2026-08-11', kategori: '  ', jumlah: 1000_00, keterangan: null })).toThrow(
+      'Kategori wajib diisi.',
+    )
+  })
+})
+
+describe('listAllCashExpenses', () => {
+  it('returns every matching row, ignoring pagination', () => {
+    const db = seedDb()
+    for (let i = 0; i < 30; i++) {
+      recordCashExpense(db, expenseInput({ tanggal: '2026-08-01' }))
+    }
+
+    expect(listAllCashExpenses(db, {})).toHaveLength(30)
+  })
+
+  it('applies the same from/to/q filters as listCashExpenses', () => {
+    const db = seedDb()
+    recordCashExpense(db, expenseInput({ tanggal: '2026-07-31', kategori: 'DPAM' }))
+    recordCashExpense(db, expenseInput({ tanggal: '2026-08-01', kategori: 'BENSIN' }))
+
+    const result = listAllCashExpenses(db, { from: '2026-08-01', q: 'bensin' })
+    expect(result).toHaveLength(1)
+    expect(result[0].kategori).toBe('BENSIN')
+  })
+})
+
+describe('buildExpenseWorkbook', () => {
+  it('writes a Pengeluaran sheet with money converted from cents to Rupiah', () => {
+    const db = seedDb()
+    recordCashExpense(db, expenseInput({ tanggal: '2026-08-01', kategori: 'DPAM', jumlah: 150000_00, keterangan: 'tagihan' }))
+
+    const workbook = buildExpenseWorkbook(listAllCashExpenses(db, {}))
+
+    expect(workbook.SheetNames).toEqual(['Pengeluaran'])
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets['Pengeluaran']) as Record<string, unknown>[]
+    expect(rows).toEqual([
+      { Tanggal: '2026-08-01', Kategori: 'DPAM', Jumlah: 150000, Keterangan: 'tagihan', 'Dicatat Oleh': 'Admin' },
+    ])
   })
 })
 

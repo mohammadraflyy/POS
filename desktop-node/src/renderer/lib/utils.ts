@@ -36,6 +36,21 @@ export function parseQty(value: string): number {
   return Number(trimmed)
 }
 
+/**
+ * Formats a `YYYY-MM-DD` calendar-day string (no time zone of its own) for display.
+ * `new Date('2026-01-15')` parses as UTC midnight, which `toLocaleDateString` can then
+ * shift back a day west of Greenwich - splitting the string into a local `Date` avoids
+ * that entirely instead of depending on the machine running east of UTC.
+ */
+export function formatTanggal(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('id-ID')
+}
+
+export function copyToClipboard(text: string): Promise<void> {
+  return navigator.clipboard.writeText(text)
+}
+
 export function formatRupiah(value: number): string {
   const formatted = new Intl.NumberFormat('id-ID', {
     style: 'currency',

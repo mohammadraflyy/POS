@@ -434,7 +434,8 @@ declare global {
             kodeItem: string
             namaItem: string
             baseSatuan: string
-            units: { id: number; satuan: string; konversi: number }[]
+            baseHargaPokok: number
+            units: { id: number; satuan: string; konversi: number; hargaPokok: number }[]
             productUnitId: number | null
             qty: number
             hargaBeli: number
@@ -454,6 +455,7 @@ declare global {
           currentPage: number
           lastPage: number
           total: number
+          totalKeseluruhan: number
         }>
         listSupplierDebts: (supplierId?: number | null) => Promise<
           {
@@ -482,7 +484,7 @@ declare global {
             namaItem: string
             satuan: string
             hargaPokok: number
-            units: { id: number; level: number; satuan: string; konversi: number }[]
+            units: { id: number; level: number; satuan: string; konversi: number; hargaPokok: number }[]
           }[]
         >
         findProductByBarcode: (barcode: string) => Promise<{
@@ -491,7 +493,7 @@ declare global {
           namaItem: string
           satuan: string
           hargaPokok: number
-          units: { id: number; satuan: string; konversi: number }[]
+          units: { id: number; satuan: string; konversi: number; hargaPokok: number }[]
         } | null>
       }
       expense: {
@@ -501,7 +503,11 @@ declare global {
           jumlah: number
           keterangan: string | null
         }) => Promise<{ expenseId: number }>
-        listExpenses: (input: { from?: string; to?: string; page: number; pageSize?: number }) => Promise<{
+        updateExpense: (
+          id: number,
+          input: { tanggal: string; kategori: string; jumlah: number; keterangan: string | null },
+        ) => Promise<void>
+        listExpenses: (input: { from?: string; to?: string; q?: string; page: number; pageSize?: number }) => Promise<{
           data: {
             id: number
             tanggal: string
@@ -516,6 +522,7 @@ declare global {
           totalJumlah: number
         }>
         deleteExpense: (id: number) => Promise<void>
+        exportExcel: (input: { from?: string; to?: string; q?: string }) => Promise<string | null>
       }
       stockOpname: {
         listCategories: () => Promise<{ id: number; nama: string }[]>
@@ -546,6 +553,13 @@ declare global {
           labaPerSatuan: { satuan: string; qtyTerjual: number; omzet: number; laba: number; marginPersen: number }[]
           produkTerlaris: { namaItem: string; qtyTerjual: number; totalPenjualan: number }[]
           pembelianPerSupplier: { supplierName: string; totalPembelian: number }[]
+          piutangPerPelanggan: {
+            customerId: number | null
+            namaPelanggan: string
+            telepon: string | null
+            totalPiutang: number
+            jumlahBon: number
+          }[]
           stockValue: {
             totalNilai: number
             produk: { namaItem: string; kodeItem: string; satuan: string; stok: number; hargaPokok: number; nilai: number }[]
@@ -590,6 +604,21 @@ declare global {
         create: (input: { code: string; name: string; symbol: string }) => Promise<void>
         update: (id: number, input: { code: string; name: string; symbol: string; isActive: boolean }) => Promise<void>
         deactivate: (id: number) => Promise<void>
+      }
+      device: {
+        generatePairingCode: () => Promise<{ code: string; expiresAt: string; serverAddress: string | null }>
+        getServerStatus: () => Promise<{ running: boolean; address: string | null; port: number }>
+        listPairedDevices: () => Promise<
+          {
+            id: number
+            namaPerangkat: string | null
+            userName: string
+            createdAt: string
+            lastUsedAt: string | null
+            revokedAt: string | null
+          }[]
+        >
+        revokeDevice: (id: number) => Promise<void>
       }
     }
   }

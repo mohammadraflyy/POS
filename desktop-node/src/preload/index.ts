@@ -184,9 +184,12 @@ const api = {
   expense: {
     recordExpense: (input: { tanggal: string; kategori: string; jumlah: number; keterangan: string | null }) =>
       invoke('expense:recordExpense', input),
-    listExpenses: (input: { from?: string; to?: string; page: number; pageSize?: number }) =>
+    updateExpense: (id: number, input: { tanggal: string; kategori: string; jumlah: number; keterangan: string | null }) =>
+      invoke('expense:updateExpense', id, input),
+    listExpenses: (input: { from?: string; to?: string; q?: string; page: number; pageSize?: number }) =>
       invoke('expense:listExpenses', input),
     deleteExpense: (id: number) => invoke('expense:deleteExpense', id),
+    exportExcel: (input: { from?: string; to?: string; q?: string }) => invoke('expense:exportExcel', input),
   },
   stockOpname: {
     listCategories: () => invoke('stock-opname:listCategories'),
@@ -200,6 +203,12 @@ const api = {
   },
   dashboard: {
     getDashboard: () => invoke('dashboard:getDashboard'),
+  },
+  device: {
+    generatePairingCode: () => invoke('device:generatePairingCode'),
+    getServerStatus: () => invoke('device:getServerStatus'),
+    listPairedDevices: () => invoke('device:listPairedDevices'),
+    revokeDevice: (id: number) => invoke('device:revokeDevice', id),
   },
   masterSatuan: {
     list: () => invoke('master-satuan:list'),

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import XLSX from 'xlsx'
 import { createDb } from './db/migrate'
-import { bonPayments, categories, products, productUnits, purchases, sales, saleItems, suppliers, units, users } from './db/schema'
+import { bonPayments, categories, customers, products, productUnits, purchases, sales, saleItems, suppliers, units, users } from './db/schema'
 import { getRekap, getStockValue, getSalesHistory, buildRekapWorkbook } from './rekap'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
@@ -272,7 +272,7 @@ describe('getSalesHistory', () => {
 })
 
 describe('buildRekapWorkbook', () => {
-  it('produces a workbook with all seven expected sheets', () => {
+  it('produces a workbook with all eight expected sheets', () => {
     const db = createDb(':memory:', migrationsFolder)
     seedBase(db)
 
@@ -286,6 +286,7 @@ describe('buildRekapWorkbook', () => {
       'Laba per Satuan',
       'Produk Terlaris',
       'Pembelian per Supplier',
+      'Piutang per Pelanggan',
       'Nilai Stock',
     ])
   })
@@ -613,6 +614,35 @@ describe('getRekap', () => {
     expect(result.summary.piutangBeredar).toBe(15000_00) // 40000 - 25000, despite being outside the range
   })
 
+  it('clamps an overpaid bon at zero instead of letting it net against other customers debt', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    // a rounding or entry mistake left this one overpaid by 5.000
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'bon',
+      status: 'selesai',
+      total: 30000_00,
+      dibayar: 35000_00,
+      createdAt: new Date(2026, 0, 15, 11, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 30000_00, hargaPokok: 1000_00, subtotal: 30000_00 }],
+    })
+    insertSale(db, {
+      id: 2,
+      metodePembayaran: 'bon',
+      status: 'selesai',
+      total: 20000_00,
+      dibayar: 5000_00,
+      createdAt: new Date(2026, 0, 16, 11, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 20000_00, hargaPokok: 1000_00, subtotal: 20000_00 }],
+    })
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    // the overpaid sale contributes 0, not -5.000, so it can never mask the other debt
+    expect(result.summary.piutangBeredar).toBe(15000_00)
+  })
+
   it('labaKotor costs a derived-unit sale from the sold unit own hargaPokok', () => {
     const db = createDb(':memory:', migrationsFolder)
     seedBase(db)
@@ -858,5 +888,170 @@ describe('getRekap', () => {
     expect(result.labaPerHari).toEqual([])
     expect(result.produkTerlaris).toEqual([])
     expect(result.pembelianPerSupplier).toEqual([])
+    expect(result.piutangPerPelanggan).toEqual([])
+  })
+})
+
+describe('getRekap piutangPerPelanggan', () => {
+  it('groups outstanding bon by customer, sorted by debt descending', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+    const now = new Date()
+
+    db.insert(customers)
+      .values([
+        { id: 1, nama: 'Budi', telepon: '0812', alamat: null, keterangan: null, createdAt: now, updatedAt: now },
+        { id: 2, nama: 'Siti', telepon: null, alamat: null, keterangan: null, createdAt: now, updatedAt: now },
+      ])
+      .run()
+
+    db.insert(sales)
+      .values([
+        {
+          id: 1,
+          userId: 1,
+          customerId: 1,
+          namaPelanggan: 'Budi',
+          metodePembayaran: 'bon',
+          status: 'selesai',
+          total: 50000_00,
+          diskon: 0,
+          dibayar: 20000_00,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 2,
+          userId: 1,
+          customerId: 2,
+          namaPelanggan: 'Siti',
+          metodePembayaran: 'bon',
+          status: 'selesai',
+          total: 10000_00,
+          diskon: 0,
+          dibayar: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run()
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(result.piutangPerPelanggan).toEqual([
+      { customerId: 1, namaPelanggan: 'Budi', telepon: '0812', totalPiutang: 30000_00, jumlahBon: 1 },
+      { customerId: 2, namaPelanggan: 'Siti', telepon: null, totalPiutang: 10000_00, jumlahBon: 1 },
+    ])
+  })
+
+  it('sums multiple unpaid bon for the same customer into one row', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+    const now = new Date()
+
+    db.insert(customers)
+      .values([{ id: 1, nama: 'Budi', telepon: null, alamat: null, keterangan: null, createdAt: now, updatedAt: now }])
+      .run()
+
+    db.insert(sales)
+      .values([
+        {
+          id: 1,
+          userId: 1,
+          customerId: 1,
+          namaPelanggan: 'Budi',
+          metodePembayaran: 'bon',
+          status: 'selesai',
+          total: 20000_00,
+          diskon: 0,
+          dibayar: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 2,
+          userId: 1,
+          customerId: 1,
+          namaPelanggan: 'Budi',
+          metodePembayaran: 'bon',
+          status: 'selesai',
+          total: 15000_00,
+          diskon: 0,
+          dibayar: 5000_00,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run()
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(result.piutangPerPelanggan).toEqual([
+      { customerId: 1, namaPelanggan: 'Budi', telepon: null, totalPiutang: 30000_00, jumlahBon: 2 },
+    ])
+  })
+
+  it('leaves a customer out once every one of their bon is fully paid', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+    const now = new Date()
+
+    db.insert(customers)
+      .values([{ id: 1, nama: 'Budi', telepon: null, alamat: null, keterangan: null, createdAt: now, updatedAt: now }])
+      .run()
+
+    db.insert(sales)
+      .values([
+        {
+          id: 1,
+          userId: 1,
+          customerId: 1,
+          namaPelanggan: 'Budi',
+          metodePembayaran: 'bon',
+          status: 'selesai',
+          total: 20000_00,
+          diskon: 0,
+          dibayar: 20000_00,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run()
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(result.piutangPerPelanggan).toEqual([])
+  })
+
+  it('is all-time, unaffected by the date range, matching piutangBeredar', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+    const now = new Date()
+
+    db.insert(customers)
+      .values([{ id: 1, nama: 'Budi', telepon: null, alamat: null, keterangan: null, createdAt: now, updatedAt: now }])
+      .run()
+
+    db.insert(sales)
+      .values([
+        {
+          id: 1,
+          userId: 1,
+          customerId: 1,
+          namaPelanggan: 'Budi',
+          metodePembayaran: 'bon',
+          status: 'selesai',
+          total: 20000_00,
+          diskon: 0,
+          dibayar: 5000_00,
+          createdAt: new Date(2025, 0, 1),
+          updatedAt: new Date(2025, 0, 1),
+        },
+      ])
+      .run()
+
+    const result = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+    expect(result.piutangPerPelanggan).toEqual([
+      { customerId: 1, namaPelanggan: 'Budi', telepon: null, totalPiutang: 15000_00, jumlahBon: 1 },
+    ])
   })
 })

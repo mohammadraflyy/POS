@@ -91,7 +91,12 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
       total: toRupiah(detail.total),
       uangMuka: toRupiah(detail.uangMuka),
       cicilan: toRupiah(detail.cicilan),
-      items: detail.items.map((item) => ({ ...item, hargaBeli: toRupiah(item.hargaBeli) })),
+      items: detail.items.map((item) => ({
+        ...item,
+        baseHargaPokok: toRupiah(item.baseHargaPokok),
+        units: item.units.map((unit) => ({ ...unit, hargaPokok: toRupiah(unit.hargaPokok) })),
+        hargaBeli: toRupiah(item.hargaBeli),
+      })),
     }
   })
 
@@ -114,6 +119,7 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
       currentPage: result.currentPage,
       lastPage: result.lastPage,
       total: result.total,
+      totalKeseluruhan: toRupiah(result.totalKeseluruhan),
     }
   })
 
@@ -171,7 +177,7 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
       namaItem: product.namaItem,
       satuan: product.satuan,
       hargaPokok: toRupiah(product.hargaPokok),
-      units: product.units,
+      units: product.units.map((unit) => ({ ...unit, hargaPokok: toRupiah(unit.hargaPokok) })),
     }))
   })
 
@@ -190,7 +196,7 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
       namaItem: product.namaItem,
       satuan: product.satuan,
       hargaPokok: toRupiah(product.hargaPokok),
-      units: product.units,
+      units: product.units.map((unit) => ({ ...unit, hargaPokok: toRupiah(unit.hargaPokok) })),
     }
   })
 }

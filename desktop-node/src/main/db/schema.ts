@@ -303,6 +303,23 @@ export const stockMovements = sqliteTable('stock_movements', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 })
 
+/**
+ * Long-lived credentials for a paired phone, issued once a device successfully
+ * pairs (mobile-app design, Fase 1). `tokenHash` holds `sha256(token)`, never the
+ * token itself - the token is high-entropy and only ever exact-matched, so there
+ * is nothing bcrypt's slow, per-row comparison would buy here (bcrypt is for
+ * low-entropy human passwords, which `users.passwordHash` already is).
+ */
+export const deviceTokens = sqliteTable('device_tokens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  namaPerangkat: text('nama_perangkat'),
+  tokenHash: text('token_hash').notNull().unique(),
+  lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
+  revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  ...timestamps(),
+})
+
 export const storeSettings = sqliteTable('store_settings', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   namaToko: text('nama_toko').notNull(),

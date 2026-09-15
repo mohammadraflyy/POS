@@ -34,7 +34,7 @@ interface SearchResult {
   namaItem: string
   satuan: string
   hargaPokok: number
-  units: { id: number; satuan: string; konversi: number }[]
+  units: { id: number; satuan: string; konversi: number; hargaPokok: number }[]
 }
 
 interface PurchaseRow {
@@ -54,7 +54,9 @@ interface DraftItem {
   namaItem: string
   kodeItem: string
   baseSatuan: string
-  units: { id: number; satuan: string; konversi: number }[]
+  // the base unit's own cost, restored to hargaBeli when the satuan is switched back to it
+  baseHargaPokok: number
+  units: { id: number; satuan: string; konversi: number; hargaPokok: number }[]
   productUnitId: number | null
   qty: string
   hargaBeli: string
@@ -95,6 +97,7 @@ export function Purchase() {
   const [items, setItems, clearItems] = useDraftState<DraftItem[]>('purchase.items', [], drafting)
   const [processing, setProcessing] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [scanError, setScanError] = useState('')
   // instalments already paid against the edited invoice - an edit cannot take them back,
   // so they cap how low its new total is allowed to go
   const [cicilan, setCicilan] = useState(0)
@@ -119,6 +122,7 @@ export function Purchase() {
   const [currentPage, setCurrentPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [totalKeseluruhan, setTotalKeseluruhan] = useState(0)
 
   const { confirm, ConfirmDialog } = useConfirm()
 
@@ -143,6 +147,7 @@ export function Purchase() {
       setCurrentPage(result.currentPage)
       setLastPage(result.lastPage)
       setTotal(result.total)
+      setTotalKeseluruhan(result.totalKeseluruhan)
     })
   }
 
@@ -187,6 +192,7 @@ export function Purchase() {
           namaItem: product.namaItem,
           kodeItem: product.kodeItem,
           baseSatuan: product.satuan,
+          baseHargaPokok: product.hargaPokok,
           units: product.units,
           productUnitId: null,
           qty: '1',
@@ -209,7 +215,13 @@ export function Purchase() {
           return i
         }
         if (field === 'productUnitId') {
-          return { ...i, productUnitId: value === 'base' ? null : Number(value) }
+          if (value === 'base') {
+            return { ...i, productUnitId: null, hargaBeli: String(i.baseHargaPokok) }
+          }
+
+          const unit = i.units.find((u) => u.id === Number(value))
+
+          return { ...i, productUnitId: Number(value), hargaBeli: String(unit?.hargaPokok ?? i.hargaBeli) }
         }
         return { ...i, [field]: value }
       }),
@@ -246,6 +258,7 @@ export function Purchase() {
             namaItem: item.namaItem,
             kodeItem: item.kodeItem,
             baseSatuan: item.baseSatuan,
+            baseHargaPokok: item.baseHargaPokok,
             units: item.units,
             productUnitId: item.productUnitId,
             qty: formatQty(item.qty),
@@ -449,10 +462,80 @@ export function Purchase() {
     }
   }
 
+  // Hardware scanners type a barcode + Enter almost instantly (unlike a human typing).
+  // Buffer keystrokes globally and treat a fast burst ending in Enter as a scan, so an
+  // item lands in the list the moment it is scanned - the cashier should not have to
+  // open "Cari Produk" first. Mirrors the same buffer in Kasir. Only runs while no
+  // input/textarea/dialog already owns the keystrokes, so it never fights with typing
+  // in the form fields or the palettes above.
+  const scanBuffer = useRef('')
+  const scanLastKeyAt = useRef(0)
+
+  useEffect(() => {
+    function isEditableFocused() {
+      const el = document.activeElement
+
+      return el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+    }
+
+    function handleKeydown(e: globalThis.KeyboardEvent) {
+      if (isEditableFocused() || paletteOpen || supplierPaletteOpen || newSupplierOpen) {
+        return
+      }
+
+      const now = Date.now()
+
+      if (now - scanLastKeyAt.current > 100) {
+        scanBuffer.current = ''
+      }
+
+      scanLastKeyAt.current = now
+
+      if (e.key === 'Enter') {
+        const code = scanBuffer.current
+        scanBuffer.current = ''
+
+        if (code.length < 4) {
+          return
+        }
+
+        e.preventDefault()
+
+        window.api.purchase
+          .findProductByBarcode(code)
+          .then((product) => {
+            if (product) {
+              setScanError('')
+              addItem(product)
+            } else {
+              setScanError(`Barcode "${code}" tidak ditemukan.`)
+            }
+          })
+          .catch((err) => setScanError(err instanceof Error ? err.message : 'Gagal mencari barcode.'))
+
+        return
+      }
+
+      if (e.key.length === 1) {
+        scanBuffer.current += e.key
+      }
+    }
+
+    window.addEventListener('keydown', handleKeydown)
+
+    return () => window.removeEventListener('keydown', handleKeydown)
+  }, [paletteOpen, supplierPaletteOpen, newSupplierOpen])
+
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
       <Page>
         <PageHeader title="Pembelian" />
+
+        {scanError && (
+          <p role="alert" className="text-sm text-destructive">
+            {scanError}
+          </p>
+        )}
 
         <form ref={formRef} onSubmit={submit} className="space-y-4 rounded-xl border p-4">
           {editingId !== null && (
@@ -589,6 +672,11 @@ export function Purchase() {
             {editingId === null ? 'Simpan Pembelian' : 'Simpan Perubahan'}
           </Button>
         </form>
+
+        <div className="grid gap-1 rounded-lg border p-3 sm:w-64">
+          <span className="text-sm text-muted-foreground">Total Keseluruhan</span>
+          <span className="text-lg font-semibold">{formatRupiah(totalKeseluruhan)}</span>
+        </div>
 
         <ReportTable<PurchaseRow>
           title="Riwayat Pembelian"

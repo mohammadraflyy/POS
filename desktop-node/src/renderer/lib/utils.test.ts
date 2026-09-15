@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cn, formatQty, formatRupiah, parseQty } from './utils'
+import { cn, formatQty, formatRupiah, formatTanggal, parseQty } from './utils'
 
 describe('cn', () => {
   it('merges class names and resolves Tailwind conflicts (last one wins)', () => {
@@ -82,5 +82,17 @@ describe('formatRupiah', () => {
 
   it('formats a large amount', () => {
     expect(formatRupiah(1250000)).toBe('Rp 1.250.000')
+  })
+})
+
+describe('formatTanggal', () => {
+  it('formats a YYYY-MM-DD string as an Indonesian date', () => {
+    expect(formatTanggal('2026-01-15')).toBe('15/1/2026')
+  })
+
+  it('never shifts to the previous day regardless of the machine time zone', () => {
+    // a naive `new Date('2026-01-01')` parses as UTC midnight, which west-of-Greenwich
+    // machines then render as 31/12/2025 - this must always read the 1st
+    expect(formatTanggal('2026-01-01')).toBe('1/1/2026')
   })
 })

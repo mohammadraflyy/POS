@@ -11,10 +11,17 @@ import { registerStockOpnameIpc } from './ipc/stock-opname'
 import { registerExpenseIpc } from './ipc/expense'
 import { registerRekapIpc } from './ipc/rekap'
 import { registerDashboardIpc } from './ipc/dashboard'
+import { registerDeviceIpc } from './ipc/device'
 import { seedDefaultAdmin } from './db/seed'
+import { startHttpServer, type HttpServerHandle } from './http/server'
+
+// Chosen to avoid the common dev-tooling ports (3000, 5173, 8080, 8787, ...);
+// otherwise arbitrary. See docs/superpowers/specs/2026-09-09-mobile-app-design.md.
+const HTTP_PORT = 48950
 
 let mainWindow: BrowserWindow | null
 let db: ReturnType<typeof createDb> | null = null
+let httpServer: HttpServerHandle | null = null
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -113,9 +120,12 @@ app.whenReady().then(() => {
   registerExpenseIpc(db)
   registerRekapIpc(db)
   registerDashboardIpc(db)
+  registerDeviceIpc(db)
+  httpServer = startHttpServer(db, HTTP_PORT)
   createWindow()
 })
 
 app.on('before-quit', () => {
+  httpServer?.stop()
   db?.$client?.close()
 })

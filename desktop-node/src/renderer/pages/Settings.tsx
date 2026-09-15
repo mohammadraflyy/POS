@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Printer, ScanLine } from 'lucide-react'
+import QRCode from 'qrcode'
+import { Printer, QrCode, ScanLine } from 'lucide-react'
 import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { Heading } from '@/components/heading'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useAppearance, type Appearance as AppearanceMode } from '@/hooks/use-appearance'
+import { copyToClipboard } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -136,6 +139,231 @@ function TestPrint() {
         <Printer className="size-4" />
         Test Print
       </Button>
+    </div>
+  )
+}
+
+function ServerStatus() {
+  const [status, setStatus] = useState<{ running: boolean; address: string | null; port: number } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    function refresh() {
+      window.api.device
+        .getServerStatus()
+        .then((s) => {
+          if (!cancelled) {
+            setStatus(s)
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setStatus(null)
+          }
+        })
+    }
+
+    refresh()
+    const interval = setInterval(refresh, 5000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
+
+  const running = status?.running ?? false
+
+  function statusText() {
+    if (!running) {
+      return 'Server belum berjalan.'
+    }
+    if (!status?.address) {
+      return 'Berjalan, tapi tidak terhubung ke jaringan lokal - HP tidak akan bisa terhubung.'
+    }
+    return `Berjalan di ${status.address}:${status.port}`
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Status Server Mobile</p>
+        <p className="text-sm text-muted-foreground">{statusText()}</p>
+      </div>
+      <Badge variant={running ? 'secondary' : 'outline'}>{running ? 'Aktif' : 'Nonaktif'}</Badge>
+    </div>
+  )
+}
+
+function PairingQr() {
+  const [pairing, setPairing] = useState<{ code: string; expiresAt: string; serverAddress: string | null } | null>(null)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  async function generate() {
+    setProcessing(true)
+    setError(null)
+    setCopied(false)
+
+    try {
+      const result = await window.api.device.generatePairingCode()
+      const dataUrl = await QRCode.toDataURL(JSON.stringify({ address: result.serverAddress, code: result.code }))
+
+      setPairing(result)
+      setQrDataUrl(dataUrl)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal membuat kode pairing.')
+      setPairing(null)
+      setQrDataUrl(null)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  async function copyCode() {
+    if (!pairing) {
+      return
+    }
+
+    await copyToClipboard(pairing.code)
+    setCopied(true)
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Pasangkan Perangkat Baru</p>
+        <p className="text-sm text-muted-foreground">
+          Buat kode pairing, lalu pindai QR ini dari aplikasi mobile untuk menyambungkan HP ke toko ini. Kode berlaku 5 menit dan hanya bisa
+          dipakai sekali.
+        </p>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        {pairing && !error && (
+          <div className="space-y-1 pt-1">
+            <p className="text-sm">
+              Kode: <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-base tracking-widest">{pairing.code}</code>{' '}
+              <button type="button" onClick={copyCode} className="text-xs text-primary hover:underline">
+                {copied ? 'Tersalin' : 'Salin'}
+              </button>
+            </p>
+            <p className="text-xs text-muted-foreground">Berlaku sampai {new Date(pairing.expiresAt).toLocaleTimeString('id-ID')}.</p>
+            {!pairing.serverAddress && (
+              <p className="text-xs text-destructive">Server tidak terhubung ke jaringan - HP tidak akan bisa memindai kode ini.</p>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col items-center gap-2">
+        {qrDataUrl && <img src={qrDataUrl} alt="QR kode pairing" className="size-32 rounded border bg-white p-1" />}
+        <Button type="button" variant="outline" onClick={generate} disabled={processing}>
+          <QrCode className="size-4" />
+          {pairing ? 'Buat Kode Baru' : 'Buat Kode Pairing'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface PairedDeviceRow {
+  id: number
+  namaPerangkat: string | null
+  userName: string
+  createdAt: string
+  lastUsedAt: string | null
+  revokedAt: string | null
+}
+
+function PairedDevices() {
+  const [devices, setDevices] = useState<PairedDeviceRow[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const { confirm, ConfirmDialog } = useConfirm()
+
+  function load() {
+    window.api.device
+      .listPairedDevices()
+      .then(setDevices)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat daftar perangkat.'))
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  async function revoke(device: PairedDeviceRow) {
+    const ok = await confirm({
+      title: 'Cabut Perangkat',
+      description: `HP "${device.namaPerangkat ?? 'tanpa nama'}" milik ${device.userName} tidak akan bisa mengakses toko ini lagi sampai dipasangkan ulang.`,
+      confirmLabel: 'Cabut',
+      destructive: true,
+    })
+
+    if (!ok) {
+      return
+    }
+
+    try {
+      await window.api.device.revokeDevice(device.id)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal mencabut perangkat.')
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Perangkat Terpasang</p>
+        <p className="text-sm text-muted-foreground">HP yang sudah dipasangkan ke toko ini lewat kode pairing.</p>
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {devices.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Belum ada perangkat yang dipasangkan.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-muted-foreground">
+              <th className="py-2 pr-2 font-normal">Perangkat</th>
+              <th className="py-2 pr-2 font-normal">Pengguna</th>
+              <th className="py-2 pr-2 font-normal">Terakhir Aktif</th>
+              <th className="py-2 pr-2 font-normal">Status</th>
+              <th className="py-2 font-normal" />
+            </tr>
+          </thead>
+          <tbody>
+            {devices.map((device) => (
+              <tr key={device.id} className="border-b last:border-0">
+                <td className="py-2 pr-2">{device.namaPerangkat ?? '-'}</td>
+                <td className="py-2 pr-2">{device.userName}</td>
+                <td className="py-2 pr-2 text-muted-foreground">
+                  {device.lastUsedAt ? new Date(device.lastUsedAt).toLocaleString('id-ID') : 'Belum pernah'}
+                </td>
+                <td className="py-2 pr-2">
+                  <Badge variant={device.revokedAt ? 'outline' : 'secondary'}>{device.revokedAt ? 'Dicabut' : 'Aktif'}</Badge>
+                </td>
+                <td className="py-2 text-right">
+                  {!device.revokedAt && (
+                    <button type="button" onClick={() => revoke(device)} className="text-xs text-destructive hover:underline">
+                      Cabut
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {ConfirmDialog}
     </div>
   )
 }
@@ -412,6 +640,13 @@ export function Settings() {
           <Heading variant="small" title="Perangkat" description="Uji scanner barcode dan printer struk yang terhubung" />
           <TestScan />
           <TestPrint />
+        </div>
+
+        <div className="space-y-6">
+          <Heading variant="small" title="Perangkat Mobile" description="Sambungkan HP kasir tambahan ke toko ini lewat jaringan lokal" />
+          <ServerStatus />
+          <PairingQr />
+          <PairedDevices />
         </div>
 
         <div className="space-y-6">
