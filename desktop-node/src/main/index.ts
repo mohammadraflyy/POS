@@ -14,6 +14,7 @@ import { registerDashboardIpc } from './ipc/dashboard'
 import { registerDeviceIpc } from './ipc/device'
 import { seedDefaultAdmin } from './db/seed'
 import { startHttpServer, type HttpServerHandle } from './http/server'
+import { printReceiptForSale } from './receipt'
 
 // Chosen to avoid the common dev-tooling ports (3000, 5173, 8080, 8787, ...);
 // otherwise arbitrary. See docs/superpowers/specs/2026-09-09-mobile-app-design.md.
@@ -121,7 +122,7 @@ app.whenReady().then(() => {
   registerRekapIpc(db)
   registerDashboardIpc(db)
   registerDeviceIpc(db)
-  httpServer = startHttpServer(db, HTTP_PORT)
+  httpServer = startHttpServer(db, HTTP_PORT, { printReceipt: printReceiptForSale })
   createWindow()
 })
 

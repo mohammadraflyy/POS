@@ -3,6 +3,7 @@ import os from 'node:os'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { handleHttpRequest } from './router'
+import type { RouterDeps } from './context'
 
 export interface HttpServerHandle {
   stop(): void
@@ -70,12 +71,16 @@ function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
  * `handleHttpRequest` (the tested, socket-free router) already knows how to
  * answer, then writes that answer back out. No routing logic belongs here.
  */
-export function startHttpServer(db: BetterSQLite3Database<typeof schema>, port: number): HttpServerHandle {
+export function startHttpServer(db: BetterSQLite3Database<typeof schema>, port: number, deps: RouterDeps = {}): HttpServerHandle {
   currentPort = port
 
   const server = http.createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost')
+      const query: Record<string, string> = {}
+      for (const [key, value] of url.searchParams) {
+        query[key] = value
+      }
 
       let body: unknown
       if (req.method === 'POST' || req.method === 'PUT') {
@@ -93,7 +98,7 @@ export function startHttpServer(db: BetterSQLite3Database<typeof schema>, port: 
         headers[key] = Array.isArray(value) ? value[0] : value
       }
 
-      const result = handleHttpRequest(db, { method: req.method ?? 'GET', path: url.pathname, headers, body })
+      const result = await handleHttpRequest(db, { method: req.method ?? 'GET', path: url.pathname, query, headers, body }, deps)
 
       res.writeHead(result.status, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(result.body))

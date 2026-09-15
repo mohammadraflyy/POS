@@ -1,25 +1,17 @@
 import { ipcMain } from 'electron'
-import { and, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm'
+import { eq, gte, inArray } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
-import {
-  products,
-  productUnits,
-  productPriceTiers,
-  sales,
-  saleItems,
-  saleEdits,
-  bonPayments,
-  storeSettings,
-  units,
-  users,
-} from '../db/schema'
+import { products, productUnits, productPriceTiers, sales, saleItems, storeSettings, units, users } from '../db/schema'
 import {
   checkout,
   addItemsToSale,
   cancelSale,
   deleteSale,
+  getReceipt,
+  getSaleDetail,
   listCustomers,
+  listSalesHistory,
   recordBonPayment,
   updateStoreSettings,
   purgeSalesBefore,
@@ -29,6 +21,7 @@ import {
 } from '../kasir'
 import { buildReceiptEscPos, SAMPLE_RECEIPT, type PaperWidth } from '../escpos'
 import { printRaw } from '../print-windows'
+import { printReceiptForSale, resolvePrinterName } from '../receipt'
 import { requireAdmin, requireUser } from './auth'
 import { getMainWindow } from '../index'
 import { toRupiah, toCents } from '../money'
@@ -43,59 +36,6 @@ interface CheckoutRendererInput {
   /** free note on the sale; optional from the first ring-up */
   keterangan?: string | null
   items: { productId: number; productUnitId: number | null; qty: number; diskon?: number | null }[]
-}
-
-function getReceipt(db: BetterSQLite3Database<typeof schema>, saleId: number, kasirName: string | null) {
-  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
-
-  if (!sale) {
-    throw new Error('Transaksi tidak ditemukan.')
-  }
-
-  const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
-  const productIds = itemRows.map((item) => item.productId)
-  const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
-  const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
-
-  return {
-    saleId: sale.id,
-    diskon: toRupiah(sale.diskon),
-    total: toRupiah(sale.total),
-    dibayar: toRupiah(sale.dibayar),
-    metodePembayaran: sale.metodePembayaran,
-    namaPelanggan: sale.namaPelanggan,
-    createdAt: sale.createdAt.toISOString(),
-    kasirName,
-    items: itemRows.map((item) => ({
-      namaItem: productNameById.get(item.productId) ?? '',
-      qty: item.qty,
-      satuan: item.satuan,
-      hargaJual: toRupiah(item.hargaJual),
-      diskon: toRupiah(item.diskon),
-      subtotal: toRupiah(item.subtotal),
-    })),
-  }
-}
-
-async function resolvePrinterName(savedName: string | null): Promise<string> {
-  if (savedName) {
-    return savedName
-  }
-
-  const window = getMainWindow()
-
-  if (!window) {
-    throw new Error('Jendela aplikasi tidak ditemukan.')
-  }
-
-  const printers = await window.webContents.getPrintersAsync()
-  const defaultPrinter = printers.find((printer) => printer.isDefault)
-
-  if (!defaultPrinter) {
-    throw new Error('Tidak ada printer default. Pilih printer di Pengaturan.')
-  }
-
-  return defaultPrinter.name
 }
 
 export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
@@ -333,20 +273,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     }
 
     const kasir = sale.userId ? db.select().from(users).where(eq(users.id, sale.userId)).get() : null
-    const receipt = getReceipt(db, saleId, kasir?.name ?? null)
-
-    const setting = db.select().from(storeSettings).get()
-    const storeInfo = {
-      namaToko: setting?.namaToko ?? 'Toko',
-      alamat: setting?.alamat ?? null,
-      telepon: setting?.telepon ?? null,
-      pesanFooter: setting?.pesanFooter ?? null,
-    }
-    const paperWidth: PaperWidth = setting?.receiptWidth ?? '58mm'
-
-    const bytes = buildReceiptEscPos(receipt, storeInfo, paperWidth)
-    const printerName = await resolvePrinterName(setting?.printerName ?? null)
-    await printRaw(printerName, bytes)
+    await printReceiptForSale(db, saleId, kasir?.name ?? null)
   })
 
   ipcMain.handle('kasir:listPrinters', async () => {
@@ -394,63 +321,10 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
     ) => {
       requireUser()
 
-      const pageSize = 20
-      const page = Math.max(1, input.page)
-
-      const conditions = []
-
-      if (input.dari) {
-        conditions.push(gte(sales.createdAt, new Date(`${input.dari}T00:00:00`)))
-      }
-
-      if (input.sampai) {
-        conditions.push(lte(sales.createdAt, new Date(`${input.sampai}T23:59:59`)))
-      }
-
-      if (input.status) {
-        conditions.push(eq(sales.status, input.status))
-      }
-
-      if (input.metodePembayaran) {
-        conditions.push(eq(sales.metodePembayaran, input.metodePembayaran))
-      }
-
-      if (input.search) {
-        const q = `%${input.search}%`
-        const byCustomer = db.select({ id: sales.id }).from(sales).where(like(sales.namaPelanggan, q)).all()
-        const byProduct = db
-          .select({ id: saleItems.saleId })
-          .from(saleItems)
-          .innerJoin(products, eq(saleItems.productId, products.id))
-          .where(like(products.namaItem, q))
-          .all()
-        const matchingIds = Array.from(new Set([...byCustomer.map((row) => row.id), ...byProduct.map((row) => row.id)]))
-        conditions.push(matchingIds.length > 0 ? inArray(sales.id, matchingIds) : sql`0`)
-      }
-
-      const whereClause = conditions.length > 0 ? and(...conditions) : undefined
-
-      const totalRow = db.select({ count: sql<number>`count(*)` }).from(sales).where(whereClause).get()
-      const total = totalRow?.count ?? 0
-      const lastPage = Math.max(1, Math.ceil(total / pageSize))
-
-      const saleRows = db
-        .select()
-        .from(sales)
-        .where(whereClause)
-        .orderBy(desc(sales.createdAt), desc(sales.id))
-        .limit(pageSize)
-        .offset((page - 1) * pageSize)
-        .all()
-
-      const saleIds = saleRows.map((sale) => sale.id)
-      const itemRows = saleIds.length > 0 ? db.select().from(saleItems).where(inArray(saleItems.saleId, saleIds)).all() : []
-      const productIds = itemRows.map((item) => item.productId)
-      const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
-      const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
+      const result = listSalesHistory(db, input)
 
       return {
-        data: saleRows.map((sale) => ({
+        data: result.data.map((sale) => ({
           id: sale.id,
           createdAt: sale.createdAt.toISOString(),
           namaPelanggan: sale.namaPelanggan,
@@ -458,13 +332,11 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
           status: sale.status,
           total: toRupiah(sale.total),
           dibayar: toRupiah(sale.dibayar),
-          items: itemRows
-            .filter((item) => item.saleId === sale.id)
-            .map((item) => ({ namaItem: productNameById.get(item.productId) ?? '', qty: item.qty })),
+          items: sale.items,
         })),
-        currentPage: page,
-        lastPage,
-        total,
+        currentPage: result.currentPage,
+        lastPage: result.lastPage,
+        total: result.total,
       }
     },
   )
@@ -472,73 +344,38 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
   ipcMain.handle('kasir:getSaleDetail', (_event, saleId: number) => {
     requireUser()
 
-    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
-
-    if (!sale) {
-      throw new Error('Transaksi tidak ditemukan.')
-    }
-
-    const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
-    const productIds = itemRows.map((item) => item.productId)
-    const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
-    const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
-
-    const paymentRows = db
-      .select()
-      .from(bonPayments)
-      .where(eq(bonPayments.saleId, saleId))
-      .orderBy(desc(bonPayments.tanggal), desc(bonPayments.id))
-      .all()
-
-    const kasir = sale.userId
-      ? db.select({ name: users.name }).from(users).where(eq(users.id, sale.userId)).get()
-      : null
-
-    const editRows = db
-      .select({
-        id: saleEdits.id,
-        keterangan: saleEdits.keterangan,
-        totalSebelum: saleEdits.totalSebelum,
-        totalSesudah: saleEdits.totalSesudah,
-        createdAt: saleEdits.createdAt,
-        kasirName: users.name,
-      })
-      .from(saleEdits)
-      .leftJoin(users, eq(saleEdits.userId, users.id))
-      .where(eq(saleEdits.saleId, saleId))
-      .orderBy(desc(saleEdits.id))
-      .all()
+    const detail = getSaleDetail(db, saleId)
 
     return {
-      id: sale.id,
-      namaPelanggan: sale.namaPelanggan,
-      metodePembayaran: sale.metodePembayaran,
-      status: sale.status,
-      diskon: toRupiah(sale.diskon),
-      total: toRupiah(sale.total),
-      dibayar: toRupiah(sale.dibayar),
-      keterangan: sale.keterangan,
-      createdAt: sale.createdAt.toISOString(),
-      kasirName: kasir?.name ?? null,
-      items: itemRows.map((item) => ({
+      id: detail.id,
+      namaPelanggan: detail.namaPelanggan,
+      metodePembayaran: detail.metodePembayaran,
+      status: detail.status,
+      diskon: toRupiah(detail.diskon),
+      total: toRupiah(detail.total),
+      dibayar: toRupiah(detail.dibayar),
+      keterangan: detail.keterangan,
+      createdAt: detail.createdAt.toISOString(),
+      kasirName: detail.kasirName,
+      items: detail.items.map((item) => ({
         id: item.id,
         productId: item.productId,
         productUnitId: item.productUnitId,
         qty: item.qty,
         satuan: item.satuan,
-        namaItem: productNameById.get(item.productId) ?? '',
+        namaItem: item.namaItem,
         hargaJual: toRupiah(item.hargaJual),
         diskon: toRupiah(item.diskon),
         subtotal: toRupiah(item.subtotal),
         priceSource: item.priceSource,
       })),
-      bonPayments: paymentRows.map((payment) => ({
+      bonPayments: detail.bonPayments.map((payment) => ({
         id: payment.id,
         jumlah: toRupiah(payment.jumlah),
         tanggal: payment.tanggal,
         keterangan: payment.keterangan,
       })),
-      edits: editRows.map((row) => ({
+      edits: detail.edits.map((row) => ({
         id: row.id,
         keterangan: row.keterangan,
         kasirName: row.kasirName,

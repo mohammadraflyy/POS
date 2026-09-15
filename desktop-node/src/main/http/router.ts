@@ -2,39 +2,24 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from '../db/schema'
 import { verifyLogin } from '../auth'
 import { consumePairingCode } from '../pairing'
-import { issueDeviceToken, resolveDeviceToken } from '../device-tokens'
+import { issueDeviceToken } from '../device-tokens'
+import { withAuth, type HttpRequest, type HttpResponse, type RouterDeps } from './context'
+import { handleCatalogRoutes } from './routes/catalog'
+import { handleCartsRoutes } from './routes/carts'
+import { handleSalesRoutes } from './routes/sales'
+import { handlePurchasesRoutes } from './routes/purchases'
+import { handleOpnameRoutes } from './routes/opname'
 import pkg from '../../../package.json'
 
+export type { HttpRequest, HttpResponse, RouterDeps } from './context'
+
 const APP_VERSION = pkg.version
-
-export interface HttpRequest {
-  method: string
-  /** pathname only - no query string */
-  path: string
-  headers: Record<string, string | undefined>
-  /** already JSON-parsed, or undefined for a body-less request */
-  body: unknown
-}
-
-export interface HttpResponse {
-  status: number
-  body: unknown
-}
 
 interface PairBody {
   pairingCode: string
   username: string
   password: string
   deviceName: string | null
-}
-
-function bearerToken(headers: Record<string, string | undefined>): string | null {
-  const header = headers['authorization']
-  if (!header?.startsWith('Bearer ')) {
-    return null
-  }
-
-  return header.slice('Bearer '.length).trim() || null
 }
 
 function handlePair(db: BetterSQLite3Database<typeof schema>, body: unknown): HttpResponse {
@@ -59,28 +44,25 @@ function handlePair(db: BetterSQLite3Database<typeof schema>, body: unknown): Ht
   }
 }
 
-function handleMe(db: BetterSQLite3Database<typeof schema>, headers: Record<string, string | undefined>): HttpResponse {
-  const token = bearerToken(headers)
-
-  if (!token) {
-    return { status: 401, body: { error: 'Token tidak ditemukan.' } }
-  }
-
-  const user = resolveDeviceToken(db, token)
-
-  if (!user) {
-    return { status: 401, body: { error: 'Token tidak valid atau sudah dicabut.' } }
-  }
-
-  return { status: 200, body: { user, appVersion: APP_VERSION } }
+function handleMe(db: BetterSQLite3Database<typeof schema>, headers: Record<string, string | undefined>): Promise<HttpResponse> {
+  return withAuth(db, headers, (user) => ({ status: 200, body: { user, appVersion: APP_VERSION } }))
 }
 
 /**
  * Pure request dispatch - no socket, no `node:http`, so it can be exercised
  * directly by tests with plain objects. `http/server.ts` is the only caller
  * that ever touches a real network.
+ *
+ * Routes are grouped by domain module (catalog, carts, sales, purchases, opname),
+ * one file each under `routes/`, mirroring how the IPC layer is split one file per
+ * module - each group returns `null` when nothing in it matches, so dispatch just
+ * tries them in turn and falls through to 404.
  */
-export function handleHttpRequest(db: BetterSQLite3Database<typeof schema>, req: HttpRequest): HttpResponse {
+export async function handleHttpRequest(
+  db: BetterSQLite3Database<typeof schema>,
+  req: HttpRequest,
+  deps: RouterDeps = {},
+): Promise<HttpResponse> {
   try {
     if (req.method === 'GET' && req.path === '/v1/health') {
       return { status: 200, body: { ok: true, appVersion: APP_VERSION } }
@@ -91,13 +73,20 @@ export function handleHttpRequest(db: BetterSQLite3Database<typeof schema>, req:
     }
 
     if (req.method === 'GET' && req.path === '/v1/me') {
-      return handleMe(db, req.headers)
+      return await handleMe(db, req.headers)
     }
 
-    return { status: 404, body: { error: 'Not found' } }
+    return (
+      (await handleCatalogRoutes(db, req)) ??
+      (await handleCartsRoutes(db, req)) ??
+      (await handleSalesRoutes(db, req, deps)) ??
+      (await handlePurchasesRoutes(db, req)) ??
+      (await handleOpnameRoutes(db, req)) ??
+      { status: 404, body: { error: 'Not found' } }
+    )
   } catch (err) {
     // Anything that reaches here is a genuine bug, not an expected rejection -
-    // handlePair already turns its own auth failures into a 401 above this.
+    // handlePair and withAuth already turn their own rejections into 401/400 above this.
     const message = err instanceof Error ? err.message : 'Terjadi kesalahan.'
     return { status: 500, body: { error: message } }
   }

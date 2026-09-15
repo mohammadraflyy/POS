@@ -11,6 +11,7 @@ import {
   cancelSale,
   deleteSale,
   listCustomers,
+  previewCart,
   recordBonPayment,
   updateStoreSettings,
   purgeSalesBefore,
@@ -2579,5 +2580,56 @@ describe('updateSale keterangan', () => {
     ).toThrow()
 
     expect(db.select().from(saleEdits).where(eq(saleEdits.saleId, saleId)).all()).toHaveLength(0)
+  })
+})
+
+describe('previewCart', () => {
+  it('throws on an empty cart, same message as checkout', () => {
+    const db = seedDb()
+
+    expect(() => previewCart(db, { items: [] })).toThrow('Keranjang tidak boleh kosong.')
+  })
+
+  it('prices a normal cart without touching stock', () => {
+    const db = seedDb()
+
+    const result = previewCart(db, { items: [{ productId: 1, productUnitId: null, qty: 1 }] })
+
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0]).toMatchObject({ hargaJual: 65000_00, subtotal: 65000_00, stokCukup: true })
+    expect(result.total).toBe(65000_00)
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(10)
+  })
+
+  it('flags a single line short on stock as data, not a thrown error', () => {
+    const db = seedDb()
+
+    const result = previewCart(db, { items: [{ productId: 1, productUnitId: null, qty: 11 }] })
+
+    expect(result.lines[0].stokCukup).toBe(false)
+    // still priced, so the phone can show the total even though it can't be sold yet
+    expect(result.lines[0].subtotal).toBe(65000_00 * 11)
+  })
+
+  it('flags only the line that pushes a combined total over stock', () => {
+    const db = seedDb()
+
+    const result = previewCart(db, {
+      items: [
+        { productId: 1, productUnitId: null, qty: 6 },
+        { productId: 1, productUnitId: null, qty: 6 },
+      ],
+    })
+
+    expect(result.lines[0].stokCukup).toBe(true)
+    expect(result.lines[1].stokCukup).toBe(false)
+  })
+
+  it('still rejects a bill-wide discount larger than the subtotal', () => {
+    const db = seedDb()
+
+    expect(() =>
+      previewCart(db, { items: [{ productId: 1, productUnitId: null, qty: 1 }], diskon: 999999_00 }),
+    ).toThrow('Diskon nota melebihi total belanja.')
   })
 })

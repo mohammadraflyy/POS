@@ -1,9 +1,22 @@
-import { and, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, like, lt, lte, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
-import { products, productUnits, productPriceTiers, units, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
+import {
+  products,
+  productUnits,
+  productPriceTiers,
+  units,
+  sales,
+  saleItems,
+  saleEdits,
+  bonPayments,
+  stockMovements,
+  storeSettings,
+  users,
+} from './db/schema'
 import { findOrCreateCustomerByName, listCustomerNames } from './customer'
 import { bulatkanQty, QTY_DECIMALS } from './qty'
+import { toRupiah } from './money'
 
 export interface PriceTier {
   minQty: number
@@ -58,6 +71,23 @@ export interface ResolvedItem {
   priceSource: 'normal' | 'price_tier' | 'manual'
   /** whole cents taken off this line by hand, already checked against the line's gross */
   diskon: number
+  /**
+   * True unless resolved with `allowStockShortage` and the shop doesn't actually have
+   * enough on the shelf. Every existing caller (checkout, updateSale, addItemsToSale)
+   * never sets that option, so for them this is always true - a shortage still throws
+   * before a line can come back with this false.
+   */
+  stokCukup: boolean
+}
+
+export interface ResolveItemsOptions {
+  /**
+   * Report a stock shortfall as `stokCukup: false` on the line instead of throwing.
+   * Used only by the mobile cart preview (`previewCart`), where two cashiers checking
+   * the same product at once is an expected race, not a broken request - the phone
+   * needs to see the rest of the cart's pricing even when one line can't be filled.
+   */
+  allowStockShortage?: boolean
 }
 
 /** what a line is worth before any discount - qty may be fractional, prices are integer cents */
@@ -79,6 +109,7 @@ export function resolveCartItem(
   hargaOverride?: number | null,
   /** whole cents off this line; may zero the line but never take it below zero */
   diskon?: number | null,
+  opts?: ResolveItemsOptions,
 ): ResolvedItem {
   const normalPrice = productUnit.hargaJual
   const tier = findTierForQty(priceTiers, qty)
@@ -96,8 +127,9 @@ export function resolveCartItem(
   }
 
   const qtyDasar = bulatkanQty(qty * productUnit.conversionFactor)
+  const stokCukup = product.stok >= qtyDasar
 
-  if (product.stok < qtyDasar) {
+  if (!stokCukup && !opts?.allowStockShortage) {
     throw new Error(`Stok ${product.namaItem} tidak cukup.`)
   }
 
@@ -124,6 +156,7 @@ export function resolveCartItem(
     qtyDasar,
     priceSource,
     diskon: diskonBaris,
+    stokCukup,
   }
 }
 
@@ -212,7 +245,7 @@ type Tx = Parameters<Db['transaction']>[0] extends (tx: infer T) => unknown ? T 
  * `addItemsToSale` so a line added to an existing bon is priced by exactly the same
  * tier rules and cost snapshot as one rung up at the till.
  */
-function resolveItems(db: Pick<Db, 'select'>, items: CartItemInput[]): ResolvedItem[] {
+function resolveItems(db: Pick<Db, 'select'>, items: CartItemInput[], opts?: ResolveItemsOptions): ResolvedItem[] {
   const productIds = items.map((item) => item.productId)
   const productRows = db.select().from(products).where(inArray(products.id, productIds)).all()
   const productsById = new Map(productRows.map((product) => [product.id, product]))
@@ -263,12 +296,19 @@ function resolveItems(db: Pick<Db, 'select'>, items: CartItemInput[]): ResolvedI
       .filter((row) => row.productUnitId === unit.id)
       .map((row) => ({ minQty: row.minQty, maxQty: row.maxQty, hargaJual: row.hargaJual }))
 
-    const resolved = resolveCartItem(product, unit, tiers, item.qty, item.hargaJual, item.diskon)
+    const resolved = resolveCartItem(product, unit, tiers, item.qty, item.hargaJual, item.diskon, opts)
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
     const totalQtyDasar = previousQtyDasar + resolved.qtyDasar
+    const cukupGabungan = product.stok >= totalQtyDasar
 
-    if (product.stok < totalQtyDasar) {
-      throw new Error(`Stok ${product.namaItem} tidak cukup.`)
+    if (!cukupGabungan) {
+      if (!opts?.allowStockShortage) {
+        throw new Error(`Stok ${product.namaItem} tidak cukup.`)
+      }
+
+      // a single line can look fine on its own (resolveCartItem's own check) but
+      // still be unfillable once combined with an earlier line for the same product
+      resolved.stokCukup = false
     }
 
     qtyDasarByProduct.set(product.id, totalQtyDasar)
@@ -276,6 +316,51 @@ function resolveItems(db: Pick<Db, 'select'>, items: CartItemInput[]): ResolvedI
   }
 
   return resolvedItems
+}
+
+export interface PreviewCartInput {
+  items: CartItemInput[]
+  /** whole cents off the whole bill, applied after every line's own discount */
+  diskon?: number | null
+}
+
+export interface PreviewCartLine extends ResolvedItem {
+  subtotal: number
+}
+
+export interface PreviewCartResult {
+  lines: PreviewCartLine[]
+  subtotal: number
+  diskon: number
+  total: number
+}
+
+/**
+ * Prices a cart exactly like `checkout` would, without writing anything to the
+ * database. Used by the mobile app to show a running total as the cart changes -
+ * `resolveItems` is called with `allowStockShortage` so a line that's briefly out of
+ * stock (another cashier just sold the last one) comes back flagged, not as a thrown
+ * error that would blank the whole cart on the phone's screen.
+ */
+export function previewCart(db: BetterSQLite3Database<typeof schema>, input: PreviewCartInput): PreviewCartResult {
+  if (input.items.length < 1) {
+    throw new Error('Keranjang tidak boleh kosong.')
+  }
+
+  for (const item of input.items) {
+    if (!(item.qty > 0)) {
+      throw new Error('Qty harus lebih dari 0.')
+    }
+  }
+
+  const resolvedItems = resolveItems(db, input.items, { allowStockShortage: true })
+  const lines: PreviewCartLine[] = resolvedItems.map((line) => ({ ...line, subtotal: lineSubtotal(line) }))
+  const subtotal = lines.reduce((sum, line) => sum + line.subtotal, 0)
+  const diskonNota = input.diskon ?? 0
+
+  assertDiskonNota(diskonNota, subtotal)
+
+  return { lines, subtotal, diskon: diskonNota, total: subtotal - diskonNota }
 }
 
 export function checkout(db: BetterSQLite3Database<typeof schema>, input: CheckoutInput): CheckoutResult {
@@ -910,4 +995,387 @@ export function purgeSalesBefore(db: BetterSQLite3Database<typeof schema>, befor
 
   const result = db.delete(sales).where(lt(sales.createdAt, beforeDate)).run()
   return result.changes
+}
+
+export interface CatalogUnit {
+  id: number
+  satuan: string
+  konversi: number
+  hargaJual: number
+  hargaPokok: number
+}
+
+export interface CatalogPriceTier {
+  productUnitId: number | null
+  minQty: number
+  maxQty: number | null
+  hargaJual: number
+}
+
+export interface CatalogItem {
+  id: number
+  kodeItem: string
+  barcode: string | null
+  namaItem: string
+  satuan: string
+  hargaJual: number
+  hargaPokok: number
+  stok: number
+  baseProductUnitId: number
+  productUnits: CatalogUnit[]
+  priceTiers: CatalogPriceTier[]
+}
+
+const CATALOG_PAGE_SIZE = 25
+const CATALOG_VALID_PAGE_SIZES = [10, 25, 50, 100]
+
+/**
+ * A paginated, searchable version of the per-product catalog `kasir:listProducts`
+ * dumps in full for the till's own screen. The mobile app cannot afford that dump -
+ * every request blocks the PC's main process, and a phone typically wants a handful
+ * of matches, not all 1500 products (mobile-app-design spec).
+ */
+export function searchCatalogForSale(
+  db: BetterSQLite3Database<typeof schema>,
+  input: { q?: string; page: number; pageSize?: number },
+): { data: CatalogItem[]; currentPage: number; lastPage: number; total: number } {
+  const pageSize = input.pageSize && CATALOG_VALID_PAGE_SIZES.includes(input.pageSize) ? input.pageSize : CATALOG_PAGE_SIZE
+  const page = Math.max(1, input.page)
+  const q = input.q?.trim()
+
+  const whereClause = q
+    ? and(
+        eq(products.isActive, true),
+        or(like(products.kodeItem, `%${q}%`), like(products.namaItem, `%${q}%`), like(products.barcode, `%${q}%`)),
+      )
+    : eq(products.isActive, true)
+
+  const totalRow = db.select({ count: sql<number>`count(*)` }).from(products).where(whereClause).get()
+  const total = totalRow?.count ?? 0
+  const lastPage = Math.max(1, Math.ceil(total / pageSize))
+
+  const productRows = db
+    .select()
+    .from(products)
+    .where(whereClause)
+    .orderBy(products.namaItem)
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .all()
+
+  const productIds = productRows.map((product) => product.id)
+
+  const unitRows =
+    productIds.length > 0
+      ? db
+          .select({
+            id: productUnits.id,
+            productId: productUnits.productId,
+            satuan: units.code,
+            konversi: productUnits.conversionFactor,
+            hargaJual: productUnits.hargaJual,
+            hargaPokok: productUnits.hargaPokok,
+            isBaseUnit: productUnits.isBaseUnit,
+          })
+          .from(productUnits)
+          .innerJoin(units, eq(productUnits.unitId, units.id))
+          .where(inArray(productUnits.productId, productIds))
+          .all()
+      : []
+
+  const tierRows =
+    productIds.length > 0
+      ? db.select().from(productPriceTiers).where(inArray(productPriceTiers.productId, productIds)).all()
+      : []
+
+  const data: CatalogItem[] = productRows.map((product) => {
+    const baseUnit = unitRows.find((unit) => unit.productId === product.id && unit.isBaseUnit)
+
+    return {
+      id: product.id,
+      kodeItem: product.kodeItem,
+      barcode: product.barcode,
+      namaItem: product.namaItem,
+      satuan: baseUnit?.satuan ?? '',
+      hargaJual: product.hargaJual,
+      hargaPokok: baseUnit?.hargaPokok ?? product.hargaPokok,
+      stok: product.stok,
+      baseProductUnitId: baseUnit?.id ?? 0,
+      productUnits: unitRows
+        .filter((unit) => unit.productId === product.id && !unit.isBaseUnit)
+        .map((unit) => ({
+          id: unit.id,
+          satuan: unit.satuan,
+          konversi: unit.konversi,
+          hargaJual: unit.hargaJual,
+          hargaPokok: unit.hargaPokok,
+        })),
+      priceTiers: tierRows
+        .filter((tier) => tier.productId === product.id)
+        .map((tier) => ({
+          productUnitId: tier.productUnitId,
+          minQty: tier.minQty,
+          maxQty: tier.maxQty,
+          hargaJual: tier.hargaJual,
+        })),
+    }
+  })
+
+  return { data, currentPage: page, lastPage, total }
+}
+
+export interface ReceiptData {
+  saleId: number
+  diskon: number
+  total: number
+  dibayar: number
+  metodePembayaran: MetodePembayaran
+  namaPelanggan: string | null
+  createdAt: string
+  kasirName: string | null
+  items: { namaItem: string; qty: number; satuan: string | null; hargaJual: number; diskon: number; subtotal: number }[]
+}
+
+/**
+ * The struk in rupiah, ready for `buildReceiptEscPos` (escpos.ts) - unlike every other
+ * function below this point, its numbers are already converted, because printing is the
+ * only consumer and there's no reason to make every caller redo the same conversion.
+ */
+export function getReceipt(
+  db: BetterSQLite3Database<typeof schema>,
+  saleId: number,
+  kasirName: string | null,
+): ReceiptData {
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+  const productIds = itemRows.map((item) => item.productId)
+  const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
+  const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
+
+  return {
+    saleId: sale.id,
+    diskon: toRupiah(sale.diskon),
+    total: toRupiah(sale.total),
+    dibayar: toRupiah(sale.dibayar),
+    metodePembayaran: sale.metodePembayaran,
+    namaPelanggan: sale.namaPelanggan,
+    createdAt: sale.createdAt.toISOString(),
+    kasirName,
+    items: itemRows.map((item) => ({
+      namaItem: productNameById.get(item.productId) ?? '',
+      qty: item.qty,
+      satuan: item.satuan,
+      hargaJual: toRupiah(item.hargaJual),
+      diskon: toRupiah(item.diskon),
+      subtotal: toRupiah(item.subtotal),
+    })),
+  }
+}
+
+export interface SalesHistoryFilters {
+  dari?: string
+  sampai?: string
+  status?: 'selesai' | 'dibatalkan'
+  metodePembayaran?: MetodePembayaran
+  search?: string
+  page: number
+}
+
+export interface SalesHistoryItem {
+  id: number
+  createdAt: Date
+  namaPelanggan: string | null
+  metodePembayaran: MetodePembayaran
+  status: 'selesai' | 'dibatalkan'
+  total: number
+  dibayar: number
+  items: { namaItem: string; qty: number }[]
+}
+
+export function listSalesHistory(
+  db: BetterSQLite3Database<typeof schema>,
+  input: SalesHistoryFilters,
+): { data: SalesHistoryItem[]; currentPage: number; lastPage: number; total: number } {
+  const pageSize = 20
+  const page = Math.max(1, input.page)
+
+  const conditions = []
+
+  if (input.dari) {
+    conditions.push(gte(sales.createdAt, new Date(`${input.dari}T00:00:00`)))
+  }
+
+  if (input.sampai) {
+    conditions.push(lte(sales.createdAt, new Date(`${input.sampai}T23:59:59`)))
+  }
+
+  if (input.status) {
+    conditions.push(eq(sales.status, input.status))
+  }
+
+  if (input.metodePembayaran) {
+    conditions.push(eq(sales.metodePembayaran, input.metodePembayaran))
+  }
+
+  if (input.search) {
+    const q = `%${input.search}%`
+    const byCustomer = db.select({ id: sales.id }).from(sales).where(like(sales.namaPelanggan, q)).all()
+    const byProduct = db
+      .select({ id: saleItems.saleId })
+      .from(saleItems)
+      .innerJoin(products, eq(saleItems.productId, products.id))
+      .where(like(products.namaItem, q))
+      .all()
+    const matchingIds = Array.from(new Set([...byCustomer.map((row) => row.id), ...byProduct.map((row) => row.id)]))
+    conditions.push(matchingIds.length > 0 ? inArray(sales.id, matchingIds) : sql`0`)
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+  const totalRow = db.select({ count: sql<number>`count(*)` }).from(sales).where(whereClause).get()
+  const total = totalRow?.count ?? 0
+  const lastPage = Math.max(1, Math.ceil(total / pageSize))
+
+  const saleRows = db
+    .select()
+    .from(sales)
+    .where(whereClause)
+    .orderBy(desc(sales.createdAt), desc(sales.id))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize)
+    .all()
+
+  const saleIds = saleRows.map((sale) => sale.id)
+  const itemRows = saleIds.length > 0 ? db.select().from(saleItems).where(inArray(saleItems.saleId, saleIds)).all() : []
+  const productIds = itemRows.map((item) => item.productId)
+  const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
+  const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
+
+  return {
+    data: saleRows.map((sale) => ({
+      id: sale.id,
+      createdAt: sale.createdAt,
+      namaPelanggan: sale.namaPelanggan,
+      metodePembayaran: sale.metodePembayaran,
+      status: sale.status,
+      total: sale.total,
+      dibayar: sale.dibayar,
+      items: itemRows
+        .filter((item) => item.saleId === sale.id)
+        .map((item) => ({ namaItem: productNameById.get(item.productId) ?? '', qty: item.qty })),
+    })),
+    currentPage: page,
+    lastPage,
+    total,
+  }
+}
+
+export interface SaleDetailItem {
+  id: number
+  productId: number
+  productUnitId: number | null
+  qty: number
+  satuan: string | null
+  namaItem: string
+  hargaJual: number
+  diskon: number
+  subtotal: number
+  priceSource: 'normal' | 'price_tier' | 'manual'
+}
+
+export interface SaleDetailResult {
+  id: number
+  namaPelanggan: string | null
+  metodePembayaran: MetodePembayaran
+  status: 'selesai' | 'dibatalkan'
+  diskon: number
+  total: number
+  dibayar: number
+  keterangan: string | null
+  createdAt: Date
+  kasirName: string | null
+  items: SaleDetailItem[]
+  bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
+  edits: { id: number; keterangan: string; kasirName: string | null; totalSebelum: number; totalSesudah: number; createdAt: Date }[]
+}
+
+export function getSaleDetail(db: BetterSQLite3Database<typeof schema>, saleId: number): SaleDetailResult {
+  const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+
+  if (!sale) {
+    throw new Error('Transaksi tidak ditemukan.')
+  }
+
+  const itemRows = db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+  const productIds = itemRows.map((item) => item.productId)
+  const productRows = productIds.length > 0 ? db.select().from(products).where(inArray(products.id, productIds)).all() : []
+  const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
+
+  const paymentRows = db
+    .select()
+    .from(bonPayments)
+    .where(eq(bonPayments.saleId, saleId))
+    .orderBy(desc(bonPayments.tanggal), desc(bonPayments.id))
+    .all()
+
+  const kasir = sale.userId ? db.select({ name: users.name }).from(users).where(eq(users.id, sale.userId)).get() : null
+
+  const editRows = db
+    .select({
+      id: saleEdits.id,
+      keterangan: saleEdits.keterangan,
+      totalSebelum: saleEdits.totalSebelum,
+      totalSesudah: saleEdits.totalSesudah,
+      createdAt: saleEdits.createdAt,
+      kasirName: users.name,
+    })
+    .from(saleEdits)
+    .leftJoin(users, eq(saleEdits.userId, users.id))
+    .where(eq(saleEdits.saleId, saleId))
+    .orderBy(desc(saleEdits.id))
+    .all()
+
+  return {
+    id: sale.id,
+    namaPelanggan: sale.namaPelanggan,
+    metodePembayaran: sale.metodePembayaran,
+    status: sale.status,
+    diskon: sale.diskon,
+    total: sale.total,
+    dibayar: sale.dibayar,
+    keterangan: sale.keterangan,
+    createdAt: sale.createdAt,
+    kasirName: kasir?.name ?? null,
+    items: itemRows.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      productUnitId: item.productUnitId,
+      qty: item.qty,
+      satuan: item.satuan,
+      namaItem: productNameById.get(item.productId) ?? '',
+      hargaJual: item.hargaJual,
+      diskon: item.diskon,
+      subtotal: item.subtotal,
+      priceSource: item.priceSource,
+    })),
+    bonPayments: paymentRows.map((payment) => ({
+      id: payment.id,
+      jumlah: payment.jumlah,
+      tanggal: payment.tanggal,
+      keterangan: payment.keterangan,
+    })),
+    edits: editRows.map((row) => ({
+      id: row.id,
+      keterangan: row.keterangan,
+      kasirName: row.kasirName,
+      totalSebelum: row.totalSebelum,
+      totalSesudah: row.totalSesudah,
+      createdAt: row.createdAt,
+    })),
+  }
 }
