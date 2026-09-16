@@ -116,6 +116,8 @@ declare global {
           pesanFooter: string | null
           printerName: string | null
           receiptWidth: '58mm' | '80mm'
+          /** lowest acceptable margin, as a percentage of the selling price */
+          marginMinimalPersen: number
         }>
         printReceipt: (saleId: number) => Promise<void>
         listPrinters: () => Promise<{ name: string; displayName: string; isDefault: boolean }[]>
@@ -136,6 +138,8 @@ declare global {
             status: 'selesai' | 'dibatalkan'
             total: number
             dibayar: number
+            /** total less the cost of the goods sold */
+            laba: number
             items: { namaItem: string; qty: number }[]
           }[]
           currentPage: number
@@ -153,6 +157,10 @@ declare global {
           keterangan: string | null
           createdAt: string
           kasirName: string | null
+          /** cost of the goods on this sale, at the harga_pokok each line was sold at */
+          modal: number
+          /** total less modal; negative when a discount was given past the margin */
+          laba: number
           items: {
             id: number
             productId: number
@@ -187,6 +195,8 @@ declare global {
           pesanFooter: string | null
           printerName: string | null
           receiptWidth: '58mm' | '80mm'
+          /** lowest acceptable margin, as a percentage of the selling price */
+          marginMinimalPersen?: number
         }) => Promise<void>
         purgeSalesBefore: (before: string) => Promise<{ deleted: number }>
         purgeTodaySales: () => Promise<{ deleted: number; skipped: number }>
@@ -349,6 +359,48 @@ declare global {
           dilewatiBarcodeDipakai: number
           dilewatiBarcodeTerlaluPanjang: number
         } | null>
+        /** what an automatic price sweep would change, without changing anything */
+        previewEfisiensiHarga: (filter: {
+          cakupan: 'rugi' | 'margin' | 'semua'
+          metode: 'margin_minimal' | 'persen' | 'nominal'
+          /** percent for `persen`, whole rupiah for `nominal` */
+          nilai?: number
+          categoryId?: number | null
+        }) => Promise<{
+          filter: {
+            cakupan: 'rugi' | 'margin' | 'semua'
+            metode: 'margin_minimal' | 'persen' | 'nominal'
+            nilai?: number
+            categoryId?: number | null
+          }
+          marginMinimalPersen: number
+          baris: {
+            jenis: 'satuan' | 'tier'
+            id: number
+            productId: number
+            namaItem: string
+            satuan: string
+            minQty: number | null
+            hargaPokok: number
+            hargaLama: number
+            hargaBaru: number
+          }[]
+          dilewati: { namaItem: string; satuan: string; hargaPokok: number; hargaLama: number; hargaBaru: number }[]
+        }>
+        applyEfisiensiHarga: (input: {
+          filter: {
+            cakupan: 'rugi' | 'margin' | 'semua'
+            metode: 'margin_minimal' | 'persen' | 'nominal'
+            nilai?: number
+            categoryId?: number | null
+          }
+          /** the ticked rows; null applies the whole plan */
+          pilihan: { satuanIds: number[]; tierIds: number[] } | null
+        }) => Promise<{
+          satuanDiubah: number
+          tierDiubah: number
+          dilewati: number
+        }>
       }
       supplier: {
         listSuppliers: (input: { search?: string; page: number; pageSize?: number }) => Promise<{
@@ -547,6 +599,36 @@ declare global {
             piutangBeredar: number
             jumlahTransaksi: number
             labaKotor: number
+          }
+          penjelasanLaba: {
+            penjualanKotor: number
+            diskonItem: number
+            diskonNota: number
+            omzet: number
+            modal: number
+            labaKotor: number
+            jumlahBarisRugi: number
+            totalRugi: number
+            barisRugi: {
+              saleId: number
+              tanggal: string
+              namaItem: string
+              satuan: string
+              qty: number
+              hargaJual: number
+              hargaPokok: number
+              diskon: number
+              omzet: number
+              modal: number
+              laba: number
+            }[]
+            saran: {
+              kode: 'harga_di_bawah_modal' | 'diskon_memakan_margin' | 'satuan_margin_tipis' | 'katalog_di_bawah_margin'
+              jumlah: number
+              nilai: number
+              persen: number
+              contoh: string[]
+            }[]
           }
           labaPerKategori: { categoryName: string; omzet: number; laba: number }[]
           labaPerHari: { tanggal: string; omzet: number; laba: number }[]

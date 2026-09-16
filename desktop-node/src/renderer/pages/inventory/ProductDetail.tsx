@@ -10,7 +10,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { InputError } from '@/components/input-error'
 import { useConfirm } from '@/hooks/use-confirm'
-import { formatRupiah } from '@/lib/utils'
+import { useMarginMinimal } from '@/hooks/use-margin-minimal'
+import { diBawahModal, hargaJualRekomendasi, marginDariHargaJual } from '@/lib/harga'
+import { cn, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../../layouts/AppShell'
 import type { BreadcrumbItem } from '../../types'
 
@@ -33,6 +35,53 @@ function marginPersen(hargaJual: number, hargaPokok: number): number | null {
 }
 
 /** the selling price badge plus the modal it has to beat, flagged red when it does not */
+/**
+ * The price advice that sits under every Harga Jual field: what this item has to be sold at to
+ * clear the shop's minimum margin, and a button that fills it in.
+ *
+ * Margin is read against the selling price here, the way rekap reports profit - deliberately not
+ * the markup-on-cost figure the badge above shows, because the minimum is a policy about how much
+ * of each rupiah taken in is allowed to be cost.
+ */
+function RekomendasiHarga({
+  hargaPokok,
+  hargaJual,
+  onPakai,
+}: {
+  hargaPokok: number
+  hargaJual: number
+  onPakai: (harga: number) => void
+}) {
+  const marginMinimal = useMarginMinimal()
+  const rekomendasi = hargaJualRekomendasi(hargaPokok, marginMinimal)
+
+  // no cost recorded yet: nothing to compute a floor from, and a guess would be worse than silence
+  if (rekomendasi <= 0) {
+    return null
+  }
+
+  const kurang = hargaJual < rekomendasi
+  const margin = marginDariHargaJual(hargaJual, hargaPokok)
+
+  return (
+    <div className={cn('flex flex-wrap items-center gap-2 text-xs', kurang ? 'text-destructive' : 'text-muted-foreground')}>
+      <span>
+        {diBawahModal(hargaJual, hargaPokok)
+          ? `Di bawah modal ${formatRupiah(hargaPokok)}.`
+          : kurang
+            ? `Margin ${margin === null ? '-' : margin.toFixed(1)}%, di bawah minimal ${marginMinimal}%.`
+            : `Margin ${margin === null ? '-' : margin.toFixed(1)}%.`}{' '}
+        Rekomendasi {formatRupiah(rekomendasi)} (margin {marginMinimal}% dari harga jual)
+      </span>
+      {kurang && (
+        <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => onPakai(rekomendasi)}>
+          Pakai
+        </Button>
+      )}
+    </div>
+  )
+}
+
 function PriceWithMargin({ hargaJual, hargaPokok }: { hargaJual: number; hargaPokok: number }) {
   const margin = marginPersen(hargaJual, hargaPokok)
   const rugi = hargaPokok > 0 && hargaJual < hargaPokok
@@ -424,6 +473,11 @@ function UnitChainRow({
             Batal
           </Button>
         </div>
+        <RekomendasiHarga
+          hargaPokok={Number(hargaPokok) || 0}
+          hargaJual={Number(hargaJual) || 0}
+          onPakai={(harga) => setHargaJual(String(harga))}
+        />
         <InputError message={error ?? undefined} />
       </form>
     )
@@ -622,6 +676,12 @@ function UnitChainAddForm({
           Batal
         </Button>
       </div>
+      <RekomendasiHarga
+        // a blank Harga Beli still has a floor: the cost the backend will derive
+        hargaPokok={hargaPokok.trim() === '' ? (modalOtomatis ?? 0) : Number(hargaPokok) || 0}
+        hargaJual={Number(hargaJual) || 0}
+        onPakai={(harga) => setHargaJual(String(harga))}
+      />
       <p className="text-xs text-muted-foreground">
         Harga beli boleh dikosongkan &mdash; nanti dihitung dari harga pokok produk, dan tiap pembelian akan
         memperbaruinya.
@@ -796,6 +856,12 @@ function PriceTiersManager({
             Tambah
           </Button>
         </div>
+        {/* a tier prices the same goods, so it answers to the same cost floor as the satuan itself */}
+        <RekomendasiHarga
+          hargaPokok={selectedUnit?.hargaPokok ?? 0}
+          hargaJual={Number(hargaJual) || 0}
+          onPakai={(harga) => setHargaJual(String(harga))}
+        />
         <InputError message={error ?? undefined} />
       </form>
       {ConfirmDialog}

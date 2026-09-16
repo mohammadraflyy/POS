@@ -22,7 +22,7 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
 import { METODE_LABEL } from '@/lib/metode'
-import { formatQty, formatRupiah } from '@/lib/utils'
+import { cn, formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -39,10 +39,12 @@ interface SaleHistoryRow {
   status: 'selesai' | 'dibatalkan'
   total: number
   dibayar: number
+  /** total less the cost of the goods sold; negative when discounts outran the margin */
+  laba: number
   items: SaleHistoryItem[]
 }
 
-const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 120 + 140 + 120 + 60
+const OTHER_COLUMNS_WIDTH = 60 + 180 + 200 + 120 + 140 + 120 + 120 + 60
 const MIN_ITEM_WIDTH = 200
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -249,6 +251,25 @@ export function KasirHistory() {
       name: 'Total',
       width: 120,
       renderCell: ({ row }) => <span className="w-full text-right">{formatRupiah(row.total)}</span>,
+    },
+    {
+      key: 'laba',
+      name: 'Laba',
+      width: 120,
+      // a cancelled sale gave its stock back, so its margin is not a real number
+      renderCell: ({ row }) =>
+        row.status === 'dibatalkan' ? (
+          <span className="w-full text-right text-muted-foreground">-</span>
+        ) : (
+          <span
+            className={cn(
+              'w-full text-right',
+              row.laba < 0 ? 'text-destructive' : 'text-green-600 dark:text-green-400',
+            )}
+          >
+            {formatRupiah(row.laba)}
+          </span>
+        ),
     },
     {
       key: 'aksi',

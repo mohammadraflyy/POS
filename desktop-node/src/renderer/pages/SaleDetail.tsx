@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ReportTable } from '@/components/report-table'
 import { METODE_LABEL } from '@/lib/metode'
-import { formatQty, formatRupiah } from '@/lib/utils'
+import { cn, formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -58,6 +58,10 @@ interface SaleDetailData {
   keterangan: string | null
   createdAt: string
   kasirName: string | null
+  /** cost of the goods sold, at the harga_pokok each line was sold at */
+  modal: number
+  /** total less modal; negative when a discount was given past the margin */
+  laba: number
   items: SaleDetailItem[]
   bonPayments: BonPaymentRow[]
   edits: {
@@ -124,11 +128,19 @@ const PAYMENT_COLUMNS: Column<BonPaymentRow>[] = [
   { key: 'keterangan', name: 'Keterangan', width: 320, renderCell: ({ row }) => row.keterangan ?? '-' },
 ]
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string
+  value: string
+  valueClassName?: string
+}) {
   return (
     <div className="rounded-xl border px-4 py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-lg font-semibold">{value}</p>
+      <p className={cn('text-lg font-semibold', valueClassName)}>{value}</p>
     </div>
   )
 }
@@ -289,6 +301,21 @@ export function SaleDetail() {
                 value={sale.status === 'dibatalkan' ? 'Dibatalkan' : formatRupiah(sisa)}
               />
             </div>
+
+            {/* A cancelled sale gave its stock back, so its margin means nothing - the
+              figures are only shown for a sale that still stands. */}
+            {sale.status !== 'dibatalkan' && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Modal Barang" value={formatRupiah(sale.modal)} />
+                <Field
+                  label="Laba"
+                  value={formatRupiah(sale.laba)}
+                  valueClassName={
+                    sale.laba < 0 ? 'text-destructive' : 'text-green-700 dark:text-green-400'
+                  }
+                />
+              </div>
+            )}
 
             {sale.bonPayments.length > 0 && (
               <ReportTable

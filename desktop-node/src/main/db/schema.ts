@@ -328,5 +328,10 @@ export const storeSettings = sqliteTable('store_settings', {
   pesanFooter: text('pesan_footer'),
   printerName: text('printer_name'),
   receiptWidth: text('receipt_width', { enum: ['58mm', '80mm'] }).notNull().default('58mm'),
+  /**
+   * Lowest margin, in percent *of the selling price*, the shop is willing to sell at.
+   * Drives the recommended price shown next to every Harga Jual field.
+   */
+  marginMinimalPersen: integer('margin_minimal_persen').notNull().default(10),
   ...timestamps(),
 })

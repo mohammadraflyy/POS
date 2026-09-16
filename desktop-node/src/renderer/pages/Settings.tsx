@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Heading } from '@/components/heading'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useAppearance, type Appearance as AppearanceMode } from '@/hooks/use-appearance'
+import { resetMarginMinimalCache } from '@/hooks/use-margin-minimal'
 import { copyToClipboard } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
@@ -519,6 +520,7 @@ export function Settings() {
   const [pesanFooter, setPesanFooter] = useState('')
   const [printerName, setPrinterName] = useState<string | null>(null)
   const [receiptWidth, setReceiptWidth] = useState<'58mm' | '80mm'>('58mm')
+  const [marginMinimal, setMarginMinimal] = useState('10')
   const [printers, setPrinters] = useState<{ name: string; displayName: string; isDefault: boolean }[]>([])
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -534,6 +536,7 @@ export function Settings() {
         setPesanFooter(settings.pesanFooter ?? '')
         setPrinterName(settings.printerName)
         setReceiptWidth(settings.receiptWidth)
+        setMarginMinimal(String(settings.marginMinimalPersen))
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat pengaturan toko.'))
 
@@ -557,8 +560,13 @@ export function Settings() {
         pesanFooter: pesanFooter || null,
         printerName,
         receiptWidth,
+        marginMinimalPersen: Number(marginMinimal),
       })
-      .then(() => setMessage('Pengaturan toko diperbarui.'))
+      .then(() => {
+        // the price forms cache this value for the session; drop it so they read the new one
+        resetMarginMinimalCache()
+        setMessage('Pengaturan toko diperbarui.')
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal menyimpan'))
       .finally(() => setProcessing(false))
   }
@@ -616,6 +624,21 @@ export function Settings() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="margin_minimal">Margin Minimal (%)</Label>
+              <Input
+                id="margin_minimal"
+                type="number"
+                min={0}
+                max={90}
+                value={marginMinimal}
+                onChange={(e) => setMarginMinimal(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Dihitung dari harga jual. Dipakai untuk menyarankan harga jual di form satuan dan harga
+                bertingkat &mdash; misal modal Rp 144.000 dengan margin 10% disarankan dijual Rp 160.000.
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="receipt_width">Lebar Kertas Struk</Label>

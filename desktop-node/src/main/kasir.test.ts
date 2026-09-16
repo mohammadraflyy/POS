@@ -10,7 +10,9 @@ import {
   addItemsToSale,
   cancelSale,
   deleteSale,
+  getSaleDetail,
   listCustomers,
+  listSalesHistory,
   previewCart,
   recordBonPayment,
   updateStoreSettings,
@@ -442,6 +444,90 @@ describe('checkout with discounts', () => {
     const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
     expect(sale?.total).toBe(60000_00)
     expect(sale?.dibayar).toBe(0)
+  })
+})
+
+describe('getSaleDetail modal and laba', () => {
+  it('costs the sale at the harga_pokok its lines were sold at', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    const detail = getSaleDetail(db, result.saleId)
+    expect(detail.modal).toBe(60000_00)
+    expect(detail.laba).toBe(5000_00)
+  })
+
+  it('costs a DUS line at the DUS cost, not at base cost x konversi', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 110000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: 9, qty: 1 }],
+    })
+
+    const detail = getSaleDetail(db, result.saleId)
+    expect(detail.modal).toBe(100000_00)
+    expect(detail.laba).toBe(10000_00)
+  })
+
+  it('goes negative when the discounts outrun the margin', () => {
+    const db = seedDb()
+
+    // 4 x 3.000 = 12.000, less 1.200 off the line and 1.000 off the bill = 9.800 taken in,
+    // against 4 x 2.500 = 10.000 of cost
+    const result = checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 9800_00,
+      userId: 1,
+      diskon: 1000_00,
+      items: [{ productId: 2, productUnitId: null, qty: 4, diskon: 1200_00 }],
+    })
+
+    const detail = getSaleDetail(db, result.saleId)
+    expect(detail.total).toBe(9800_00)
+    expect(detail.modal).toBe(10000_00)
+    expect(detail.laba).toBe(-200_00)
+  })
+})
+
+describe('listSalesHistory laba', () => {
+  it('carries each row own margin, negative ones included', () => {
+    const db = seedDb()
+
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 65000_00,
+      userId: 1,
+      items: [{ productId: 1, productUnitId: null, qty: 1 }],
+    })
+
+    // 4 x 3.000 less 1.200 off the line and 1.000 off the bill, against 4 x 2.500 of cost
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 9800_00,
+      userId: 1,
+      diskon: 1000_00,
+      items: [{ productId: 2, productUnitId: null, qty: 4, diskon: 1200_00 }],
+    })
+
+    const history = listSalesHistory(db, { page: 1 })
+    const labaById = new Map(history.data.map((row) => [row.id, row.laba]))
+
+    expect(labaById.get(1)).toBe(5000_00)
+    expect(labaById.get(2)).toBe(-200_00)
   })
 })
 
@@ -1579,6 +1665,35 @@ describe('updateStoreSettings', () => {
       printerName: null,
       receiptWidth: '58mm',
     })
+  })
+
+  it('defaults the minimum margin to 10 percent and stores what is given', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    const base = {
+      namaToko: 'Toko',
+      alamat: null,
+      telepon: null,
+      pesanFooter: null,
+      printerName: null,
+      receiptWidth: '58mm' as const,
+    }
+
+    updateStoreSettings(db, base)
+    expect(db.select().from(storeSettings).get()?.marginMinimalPersen).toBe(10)
+
+    updateStoreSettings(db, { ...base, marginMinimalPersen: 15 })
+    expect(db.select().from(storeSettings).get()?.marginMinimalPersen).toBe(15)
+
+    // the receipt half of the form does not send it, and must not reset it
+    updateStoreSettings(db, base)
+    expect(db.select().from(storeSettings).get()?.marginMinimalPersen).toBe(15)
+
+    expect(() => updateStoreSettings(db, { ...base, marginMinimalPersen: 95 })).toThrow(
+      'Margin minimal harus antara 0 dan 90 persen.',
+    )
+    expect(() => updateStoreSettings(db, { ...base, marginMinimalPersen: -1 })).toThrow(
+      'Margin minimal harus antara 0 dan 90 persen.',
+    )
   })
 
   it('updates the existing row instead of inserting a second one', () => {

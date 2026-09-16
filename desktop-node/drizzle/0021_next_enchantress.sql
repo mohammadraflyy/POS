@@ -1,0 +1,1 @@
+ALTER TABLE `store_settings` ADD `margin_minimal_persen` integer DEFAULT 10 NOT NULL;

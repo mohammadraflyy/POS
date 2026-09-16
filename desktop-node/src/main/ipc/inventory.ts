@@ -30,6 +30,13 @@ import {
   type BulkSaveRow,
 } from '../inventory-bulk'
 import { listUnits, createUnit, updateUnit, deactivateUnit } from '../master-satuan'
+import {
+  rencanakanEfisiensiHarga,
+  terapkanEfisiensiHarga,
+  type CakupanEfisiensi,
+  type FilterEfisiensi,
+  type MetodeEfisiensi,
+} from '../harga-efisiensi'
 import { requireAdmin, requireUser } from './auth'
 
 function toRupiah(cents: number): number {
@@ -38,6 +45,23 @@ function toRupiah(cents: number): number {
 
 function toCents(rupiah: number): number {
   return Math.round(rupiah * 100)
+}
+
+/** the renderer speaks whole rupiah, so a nominal raise arrives in rupiah and converts here */
+interface FilterEfisiensiDto {
+  cakupan: CakupanEfisiensi
+  metode: MetodeEfisiensi
+  nilai?: number
+  categoryId?: number | null
+}
+
+function toFilterEfisiensi(filter: FilterEfisiensiDto): FilterEfisiensi {
+  return {
+    cakupan: filter.cakupan,
+    metode: filter.metode,
+    nilai: filter.nilai === undefined ? undefined : filter.metode === 'nominal' ? toCents(filter.nilai) : filter.nilai,
+    categoryId: filter.categoryId ?? null,
+  }
 }
 
 interface ProductListItemDto {
@@ -390,6 +414,49 @@ export function registerInventoryIpc(db: BetterSQLite3Database<typeof schema>) {
 
     return importBarcode(db, result.filePaths[0])
   })
+
+  ipcMain.handle('inventory:previewEfisiensiHarga', (_event, filter: FilterEfisiensiDto) => {
+    requireAdmin()
+
+    const rencana = rencanakanEfisiensiHarga(db, toFilterEfisiensi(filter))
+
+    return {
+      filter,
+      // a percentage, not money
+      marginMinimalPersen: rencana.marginMinimalPersen,
+      baris: rencana.baris.map((row) => ({
+        jenis: row.jenis,
+        id: row.id,
+        productId: row.productId,
+        namaItem: row.namaItem,
+        satuan: row.satuan,
+        minQty: row.minQty,
+        hargaPokok: toRupiah(row.hargaPokok),
+        hargaLama: toRupiah(row.hargaLama),
+        hargaBaru: toRupiah(row.hargaBaru),
+      })),
+      dilewati: rencana.dilewati.map((row) => ({
+        namaItem: row.namaItem,
+        satuan: row.satuan,
+        hargaPokok: toRupiah(row.hargaPokok),
+        hargaLama: toRupiah(row.hargaLama),
+        hargaBaru: toRupiah(row.hargaBaru),
+      })),
+    }
+  })
+
+  ipcMain.handle(
+    'inventory:applyEfisiensiHarga',
+    (_event, input: { filter: FilterEfisiensiDto; pilihan: { satuanIds: number[]; tierIds: number[] } | null }) => {
+      const user = requireAdmin()
+
+      return terapkanEfisiensiHarga(db, {
+        filter: toFilterEfisiensi(input.filter),
+        pilihan: input.pilihan,
+        userId: user.id,
+      })
+    },
+  )
 
   ipcMain.handle('master-satuan:list', () => {
     requireUser()

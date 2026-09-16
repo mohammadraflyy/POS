@@ -24,6 +24,39 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
         jumlahTransaksi: result.summary.jumlahTransaksi,
         labaKotor: toRupiah(result.summary.labaKotor),
       },
+      penjelasanLaba: {
+        penjualanKotor: toRupiah(result.penjelasanLaba.penjualanKotor),
+        diskonItem: toRupiah(result.penjelasanLaba.diskonItem),
+        diskonNota: toRupiah(result.penjelasanLaba.diskonNota),
+        omzet: toRupiah(result.penjelasanLaba.omzet),
+        modal: toRupiah(result.penjelasanLaba.modal),
+        labaKotor: toRupiah(result.penjelasanLaba.labaKotor),
+        jumlahBarisRugi: result.penjelasanLaba.jumlahBarisRugi,
+        totalRugi: toRupiah(result.penjelasanLaba.totalRugi),
+        barisRugi: result.penjelasanLaba.barisRugi.map((row) => ({
+          saleId: row.saleId,
+          tanggal: row.tanggal,
+          namaItem: row.namaItem,
+          satuan: row.satuan,
+          // a count of goods, not money
+          qty: row.qty,
+          hargaJual: toRupiah(row.hargaJual),
+          hargaPokok: toRupiah(row.hargaPokok),
+          diskon: toRupiah(row.diskon),
+          omzet: toRupiah(row.omzet),
+          modal: toRupiah(row.modal),
+          laba: toRupiah(row.laba),
+        })),
+        saran: result.penjelasanLaba.saran.map((row) => ({
+          kode: row.kode,
+          // a count, not money
+          jumlah: row.jumlah,
+          nilai: toRupiah(row.nilai),
+          // a percentage, not money
+          persen: row.persen,
+          contoh: row.contoh,
+        })),
+      },
       labaPerKategori: result.labaPerKategori.map((row) => ({
         categoryName: row.categoryName,
         omzet: toRupiah(row.omzet),

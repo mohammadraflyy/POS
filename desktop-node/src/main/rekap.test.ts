@@ -501,6 +501,129 @@ describe('getRekap', () => {
     expect(result.summary.omzetTunai).toBe(30000_00)
   })
 
+  it('explains laba as penjualan kotor less discounts less modal, and names the losing lines', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    // line 1 earns: 10.000 taken in against 1.000 of cost
+    // line 2 loses: 2 sold at 3.000 each against 4.000 of cost each
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 14000_00,
+      diskon: 2000_00,
+      dibayar: 14000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [
+        { productId: 1, qty: 1, konversi: 1, hargaJual: 10000_00, hargaPokok: 1000_00, subtotal: 10000_00 },
+        { productId: 2, qty: 2, konversi: 1, hargaJual: 3000_00, hargaPokok: 4000_00, subtotal: 6000_00 },
+      ],
+    })
+
+    const { penjelasanLaba } = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    // 16.000 priced, 2.000 off the bill, 9.000 of cost
+    expect(penjelasanLaba.penjualanKotor).toBe(16000_00)
+    expect(penjelasanLaba.diskonItem).toBe(0)
+    expect(penjelasanLaba.diskonNota).toBe(2000_00)
+    expect(penjelasanLaba.omzet).toBe(14000_00)
+    expect(penjelasanLaba.modal).toBe(9000_00)
+    expect(penjelasanLaba.labaKotor).toBe(5000_00)
+    // the ladder has to close: kotor - diskon - modal = laba
+    expect(
+      penjelasanLaba.penjualanKotor - penjelasanLaba.diskonItem - penjelasanLaba.diskonNota - penjelasanLaba.modal,
+    ).toBe(penjelasanLaba.labaKotor)
+
+    expect(penjelasanLaba.jumlahBarisRugi).toBe(1)
+    expect(penjelasanLaba.barisRugi).toHaveLength(1)
+
+    const rugi = penjelasanLaba.barisRugi[0]
+    expect(rugi.qty).toBe(2)
+    expect(rugi.hargaJual).toBe(3000_00)
+    expect(rugi.hargaPokok).toBe(4000_00)
+    expect(rugi.modal).toBe(8000_00)
+    // 6.000 subtotal less its 750 share of the bill discount, against 8.000 of cost
+    expect(rugi.diskon).toBe(750_00)
+    expect(rugi.omzet).toBe(5250_00)
+    expect(rugi.laba).toBe(-2750_00)
+    expect(penjelasanLaba.totalRugi).toBe(-2750_00)
+  })
+
+  it('tells the owner to fix the price when a line sold under cost with no discount', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    // priced at 3.000 against 4.000 of cost - the discount is not involved at all
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 6000_00,
+      dibayar: 6000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [{ productId: 2, qty: 2, konversi: 1, hargaJual: 3000_00, hargaPokok: 4000_00, subtotal: 6000_00 }],
+    })
+
+    const { saran } = getRekap(db, { from: '2026-01-01', to: '2026-01-31' }).penjelasanLaba
+    const harga = saran.find((row) => row.kode === 'harga_di_bawah_modal')
+
+    expect(harga).toBeDefined()
+    expect(harga!.jumlah).toBe(1)
+    expect(harga!.nilai).toBe(-2000_00)
+    expect(harga!.contoh).toHaveLength(1)
+    // nothing was discounted, so the discount advice must stay quiet
+    expect(saran.some((row) => row.kode === 'diskon_memakan_margin')).toBe(false)
+  })
+
+  it('names the discount rate the goods can carry when a discount ate the margin', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    // 10.000 of goods costing 9.000 - a 10% margin - with 900 taken off the bill
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 9100_00,
+      diskon: 900_00,
+      dibayar: 9100_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 10000_00, hargaPokok: 9000_00, subtotal: 10000_00 }],
+    })
+
+    const { saran } = getRekap(db, { from: '2026-01-01', to: '2026-01-31' }).penjelasanLaba
+    const diskon = saran.find((row) => row.kode === 'diskon_memakan_margin')
+
+    expect(diskon).toBeDefined()
+    expect(diskon!.nilai).toBe(900_00)
+    // the goods carry a 10% margin, so 10% is the most a discount may take
+    expect(diskon!.persen).toBeCloseTo(10, 6)
+    // the price itself was above cost, so that advice must not appear
+    expect(saran.some((row) => row.kode === 'harga_di_bawah_modal')).toBe(false)
+  })
+
+  it('reports no losing lines when everything sold above cost', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+
+    insertSale(db, {
+      id: 1,
+      metodePembayaran: 'tunai',
+      status: 'selesai',
+      total: 10000_00,
+      dibayar: 10000_00,
+      createdAt: new Date(2026, 0, 15, 10, 0),
+      items: [{ productId: 1, qty: 1, konversi: 1, hargaJual: 10000_00, hargaPokok: 1000_00, subtotal: 10000_00 }],
+    })
+
+    const { penjelasanLaba } = getRekap(db, { from: '2026-01-01', to: '2026-01-31' })
+
+    expect(penjelasanLaba.jumlahBarisRugi).toBe(0)
+    expect(penjelasanLaba.barisRugi).toEqual([])
+    expect(penjelasanLaba.totalRugi).toBe(0)
+  })
+
   it('takes the bill-wide discount off laba and off every omzet breakdown', () => {
     const db = createDb(':memory:', migrationsFolder)
     seedBase(db)
