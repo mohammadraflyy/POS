@@ -73,6 +73,7 @@ const api = {
       pesanFooter: string | null
       printerName: string | null
       receiptWidth: '58mm' | '80mm'
+      marginMinimalPersen?: number
     }) => invoke('kasir:updateStoreSettings', input),
     purgeSalesBefore: (before: string) => invoke('kasir:purgeSalesBefore', before),
     purgeTodaySales: () => invoke('kasir:purgeTodaySales'),
@@ -130,6 +131,21 @@ const api = {
     importSatuan: () => invoke('inventory:importSatuan'),
     importHargaBertingkat: () => invoke('inventory:importHargaBertingkat'),
     importBarcode: () => invoke('inventory:importBarcode'),
+    previewEfisiensiHarga: (filter: {
+      cakupan: 'rugi' | 'margin' | 'semua'
+      metode: 'margin_minimal' | 'persen' | 'nominal'
+      nilai?: number
+      categoryId?: number | null
+    }) => invoke('inventory:previewEfisiensiHarga', filter),
+    applyEfisiensiHarga: (input: {
+      filter: {
+        cakupan: 'rugi' | 'margin' | 'semua'
+        metode: 'margin_minimal' | 'persen' | 'nominal'
+        nilai?: number
+        categoryId?: number | null
+      }
+      pilihan: { satuanIds: number[]; tierIds: number[] } | null
+    }) => invoke('inventory:applyEfisiensiHarga', input),
   },
   supplier: {
     listSuppliers: (input: { search?: string; page: number; pageSize?: number }) =>

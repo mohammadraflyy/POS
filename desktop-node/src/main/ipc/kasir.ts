@@ -260,6 +260,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       pesanFooter: setting?.pesanFooter ?? null,
       printerName: setting?.printerName ?? null,
       receiptWidth: setting?.receiptWidth ?? '58mm',
+      marginMinimalPersen: setting?.marginMinimalPersen ?? 10,
     }
   })
 
@@ -332,6 +333,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
           status: sale.status,
           total: toRupiah(sale.total),
           dibayar: toRupiah(sale.dibayar),
+          laba: toRupiah(sale.laba),
           items: sale.items,
         })),
         currentPage: result.currentPage,
@@ -357,6 +359,8 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       keterangan: detail.keterangan,
       createdAt: detail.createdAt.toISOString(),
       kasirName: detail.kasirName,
+      modal: toRupiah(detail.modal),
+      laba: toRupiah(detail.laba),
       items: detail.items.map((item) => ({
         id: item.id,
         productId: item.productId,
@@ -417,6 +421,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         pesanFooter: string | null
         printerName: string | null
         receiptWidth: '58mm' | '80mm'
+        marginMinimalPersen?: number
       },
     ) => {
       requireAdmin()

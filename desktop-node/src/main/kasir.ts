@@ -928,6 +928,11 @@ export function updateStoreSettings(
     pesanFooter: string | null
     printerName: string | null
     receiptWidth: '58mm' | '80mm'
+    /**
+     * Lowest acceptable margin as a percentage of the selling price. Omitted by callers that
+     * only edit the receipt details - the stored value is kept rather than reset.
+     */
+    marginMinimalPersen?: number
   },
 ): void {
   if (!input.namaToko.trim()) {
@@ -954,8 +959,18 @@ export function updateStoreSettings(
     throw new Error('Lebar kertas tidak valid.')
   }
 
+  // 90% of the selling price as cost leaves a 10x markup; anything above that is a typo,
+  // and a recommended price computed from it would be nonsense
+  if (
+    input.marginMinimalPersen !== undefined &&
+    (!Number.isFinite(input.marginMinimalPersen) || input.marginMinimalPersen < 0 || input.marginMinimalPersen > 90)
+  ) {
+    throw new Error('Margin minimal harus antara 0 dan 90 persen.')
+  }
+
   const now = new Date()
   const existing = db.select().from(storeSettings).get()
+  const marginMinimalPersen = Math.round(input.marginMinimalPersen ?? existing?.marginMinimalPersen ?? 10)
 
   if (existing) {
     db.update(storeSettings)
@@ -966,6 +981,7 @@ export function updateStoreSettings(
         pesanFooter: input.pesanFooter,
         printerName: input.printerName,
         receiptWidth: input.receiptWidth,
+        marginMinimalPersen,
       })
       .where(eq(storeSettings.id, existing.id))
       .run()
@@ -978,6 +994,7 @@ export function updateStoreSettings(
         pesanFooter: input.pesanFooter,
         printerName: input.printerName,
         receiptWidth: input.receiptWidth,
+        marginMinimalPersen,
         createdAt: now,
         updatedAt: now,
       })
@@ -1194,6 +1211,8 @@ export interface SalesHistoryItem {
   status: 'selesai' | 'dibatalkan'
   total: number
   dibayar: number
+  /** total less what the goods cost, at the harga_pokok each line was sold at */
+  laba: number
   items: { namaItem: string; qty: number }[]
 }
 
@@ -1257,18 +1276,23 @@ export function listSalesHistory(
   const productNameById = new Map(productRows.map((product) => [product.id, product.namaItem]))
 
   return {
-    data: saleRows.map((sale) => ({
-      id: sale.id,
-      createdAt: sale.createdAt,
-      namaPelanggan: sale.namaPelanggan,
-      metodePembayaran: sale.metodePembayaran,
-      status: sale.status,
-      total: sale.total,
-      dibayar: sale.dibayar,
-      items: itemRows
-        .filter((item) => item.saleId === sale.id)
-        .map((item) => ({ namaItem: productNameById.get(item.productId) ?? '', qty: item.qty })),
-    })),
+    data: saleRows.map((sale) => {
+      const itemsOfSale = itemRows.filter((item) => item.saleId === sale.id)
+      // hargaPokok is the cost of the unit that was sold, so qty alone scales it
+      const modal = itemsOfSale.reduce((sum, item) => sum + Math.round(item.qty * item.hargaPokok), 0)
+
+      return {
+        id: sale.id,
+        createdAt: sale.createdAt,
+        namaPelanggan: sale.namaPelanggan,
+        metodePembayaran: sale.metodePembayaran,
+        status: sale.status,
+        total: sale.total,
+        dibayar: sale.dibayar,
+        laba: sale.total - modal,
+        items: itemsOfSale.map((item) => ({ namaItem: productNameById.get(item.productId) ?? '', qty: item.qty })),
+      }
+    }),
     currentPage: page,
     lastPage,
     total,
@@ -1299,6 +1323,17 @@ export interface SaleDetailResult {
   keterangan: string | null
   createdAt: Date
   kasirName: string | null
+  /** what the goods on this sale cost, at the harga_pokok each line was sold at */
+  modal: number
+  /**
+   * Gross profit on this sale: `total` (already net of both discounts) less `modal`.
+   * Negative when a discount was given past the margin - the till allows that on purpose.
+   *
+   * Computed for a cancelled sale too; the caller decides whether a reversed sale's margin
+   * is worth showing. Unlike rekap.ts this needs no pro-rata split of the bill discount:
+   * at sale level the whole discount already sits inside `total`.
+   */
+  laba: number
   items: SaleDetailItem[]
   bonPayments: { id: number; jumlah: number; tanggal: string; keterangan: string | null }[]
   edits: { id: number; keterangan: string; kasirName: string | null; totalSebelum: number; totalSesudah: number; createdAt: Date }[]
@@ -1324,6 +1359,10 @@ export function getSaleDetail(db: BetterSQLite3Database<typeof schema>, saleId: 
     .all()
 
   const kasir = sale.userId ? db.select({ name: users.name }).from(users).where(eq(users.id, sale.userId)).get() : null
+
+  // hargaPokok is the cost of the unit that was sold, so qty alone scales it - the same
+  // rule rekap.ts costs a line by
+  const modal = itemRows.reduce((sum, item) => sum + Math.round(item.qty * item.hargaPokok), 0)
 
   const editRows = db
     .select({
@@ -1351,6 +1390,8 @@ export function getSaleDetail(db: BetterSQLite3Database<typeof schema>, saleId: 
     keterangan: sale.keterangan,
     createdAt: sale.createdAt,
     kasirName: kasir?.name ?? null,
+    modal,
+    laba: sale.total - modal,
     items: itemRows.map((item) => ({
       id: item.id,
       productId: item.productId,

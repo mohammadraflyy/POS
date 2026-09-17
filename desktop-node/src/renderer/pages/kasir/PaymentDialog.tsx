@@ -23,6 +23,12 @@ export interface PaymentDialogProps {
   diskonItem: number
   /** the bill-wide discount, already resolved from any percentage the cashier typed */
   diskonNota: number
+  /**
+   * What the goods in the cart cost, at each line's own satuan cost. Read live from the
+   * catalog, so the profit shown here is an estimate - the sale's real margin is fixed by
+   * the harga_pokok snapshot taken on save.
+   */
+  modal: number
   metode: 'tunai' | 'bon' | 'qris' | 'transfer'
   setMetode: (metode: 'tunai' | 'bon' | 'qris' | 'transfer') => void
   namaPelanggan: string
@@ -55,6 +61,7 @@ export function PaymentDialog({
   subtotal,
   diskonItem,
   diskonNota,
+  modal,
   metode,
   setMetode,
   namaPelanggan,
@@ -76,6 +83,12 @@ export function PaymentDialog({
   const totalBayar =
     metode === 'tunai' || (editMode && metode === 'bon') ? Number(dibayar || 0) : metode === 'bon' ? 0 : total
   const selisih = total - totalBayar
+  // Same arithmetic rekap.ts does per sale: what the bill takes in after every discount,
+  // less what the goods cost. Negative means the discounts ate the margin - the till lets
+  // that through on purpose (a discount is a concession, not a mispricing), so this is a
+  // warning at the point of commit, not a block.
+  const laba = total - modal
+  const rugi = laba < 0
   // qris and transfer arrive for the exact amount, so they are settled the moment they are chosen
   const isLunas = (metode === 'tunai' && selisih <= 0) || metode === 'qris' || metode === 'transfer'
   // Bon debt is collected per person, so it must never be filed under the
@@ -258,6 +271,38 @@ export function PaymentDialog({
             <div className="flex items-center justify-between rounded-xl bg-foreground px-4 py-2.5">
               <span className="text-sm text-background/60">Total Tagihan</span>
               <span className="text-3xl font-bold text-background tabular-nums">{formatRupiah(total)}</span>
+            </div>
+
+            {/* The margin this bill leaves, and the warning when there is none. Modal is
+              read from today's catalog, so this is an estimate - close enough to catch a
+              discount that has gone past the cost, which is the whole point of showing it. */}
+            <div
+              className={cn(
+                'space-y-0.5 rounded-xl border px-4 py-2 text-sm tabular-nums',
+                rugi && 'border-destructive bg-destructive/10',
+              )}
+            >
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Modal barang</span>
+                <span>{formatRupiah(modal)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Perkiraan laba</span>
+                <span
+                  className={cn(
+                    'font-bold',
+                    rugi ? 'text-destructive' : 'text-green-700 dark:text-green-400',
+                  )}
+                >
+                  {formatRupiah(laba)}
+                </span>
+              </div>
+              {rugi && (
+                <p role="alert" className="pt-1 text-xs font-medium text-destructive">
+                  Harga setelah diskon di bawah modal - transaksi ini rugi {formatRupiah(-laba)}. Tetap bisa
+                  disimpan kalau memang disengaja.
+                </p>
+              )}
             </div>
 
             {(metode === 'tunai' || (editMode && metode === 'bon')) && (

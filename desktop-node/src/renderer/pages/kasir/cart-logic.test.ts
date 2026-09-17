@@ -5,6 +5,7 @@ import {
   applyHarga,
   applyQty,
   cartFromSale,
+  cartModal,
   changeUnit,
   expandUnitResults,
   lineGross,
@@ -514,6 +515,32 @@ describe('lineSubtotal', () => {
     const tiered: CartLine = { ...line, qty: 6 }
     expect(lineGross(tiered)).toBe(372000)
     expect(lineSubtotal({ ...tiered, diskon: 2000 })).toBe(370000)
+  })
+})
+
+describe('cartModal', () => {
+  it('costs each line at its own satuan cost, not at the base cost', () => {
+    const cart: CartLine[] = [
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2 },
+      { key: lineKey(1, 9), product, productUnitId: 9, satuan: 'DUS', qty: 1 },
+    ]
+
+    // 2 x 60000 base cost + 1 x 720000 DUS cost - never 12 x 60000 for the DUS line
+    expect(cartModal(cart)).toBe(840000)
+  })
+
+  it('is what a discounted bill has to clear: below it the sale loses money', () => {
+    const cart: CartLine[] = [
+      { key: lineKey(1, null), product, productUnitId: null, satuan: 'PCS', qty: 2, diskon: 20000 },
+    ]
+
+    // 130000 gross, 20000 off, against 120000 of cost
+    expect(lineSubtotal(cart[0])).toBe(110000)
+    expect(cartModal(cart)).toBe(120000)
+  })
+
+  it('is zero for an empty cart', () => {
+    expect(cartModal([])).toBe(0)
   })
 })
 

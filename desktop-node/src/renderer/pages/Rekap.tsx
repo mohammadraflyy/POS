@@ -6,11 +6,12 @@ import { Page, PageHeader } from '@/components/page'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { METODE_LABEL } from '@/lib/metode'
-import { formatQty, formatRupiah, formatTanggal } from '@/lib/utils'
+import { cn, formatQty, formatRupiah, formatTanggal } from '@/lib/utils'
+import { EfisiensiHargaDialog } from './rekap/EfisiensiHargaDialog'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -20,6 +21,112 @@ interface RekapSummary {
   piutangBeredar: number
   jumlahTransaksi: number
   labaKotor: number
+}
+
+/** one line of the laba ladder: a label on the left, the amount on the right */
+function BarisHitung({
+  label,
+  nilai,
+  tanda = false,
+  tebal = false,
+  warnai = false,
+}: {
+  label: string
+  nilai: number
+  /** render as a subtraction (the caller passes a negative amount) */
+  tanda?: boolean
+  tebal?: boolean
+  /** red when negative, green when positive - only the bottom line uses this */
+  warnai?: boolean
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <span className={tebal ? 'font-medium' : 'text-muted-foreground'}>{label}</span>
+      <span
+        className={cn(
+          tebal && 'font-semibold',
+          warnai && (nilai < 0 ? 'text-destructive' : 'text-green-700 dark:text-green-400'),
+        )}
+      >
+        {tanda ? `- ${formatRupiah(Math.abs(nilai))}` : formatRupiah(nilai)}
+      </span>
+    </div>
+  )
+}
+
+interface BarisRugiRow {
+  saleId: number
+  tanggal: string
+  namaItem: string
+  satuan: string
+  qty: number
+  /** price of one of the unit sold, before any discount */
+  hargaJual: number
+  /** cost of one of the same unit */
+  hargaPokok: number
+  /** the line's own discount plus its share of the bill-wide one */
+  diskon: number
+  omzet: number
+  modal: number
+  laba: number
+}
+
+interface SaranLaba {
+  kode: 'harga_di_bawah_modal' | 'diskon_memakan_margin' | 'satuan_margin_tipis' | 'katalog_di_bawah_margin'
+  jumlah: number
+  nilai: number
+  persen: number
+  contoh: string[]
+}
+
+/** the wording for each kind of advice; the numbers come from the report itself */
+function isiSaran(saran: SaranLaba): { judul: string; detail: string } {
+  switch (saran.kode) {
+    case 'harga_di_bawah_modal':
+      return {
+        judul: `Perbaiki harga jual ${saran.jumlah} barang`,
+        detail: `Barang ini terjual di bawah modal tanpa diskon sama sekali, rugi ${formatRupiah(
+          Math.abs(saran.nilai),
+        )}. Contoh: ${saran.contoh.join(', ')}. Buka produknya di Inventori - kotak rekomendasi harga di form satuan sudah menghitung angka amannya.`,
+      }
+    case 'diskon_memakan_margin':
+      return {
+        judul: `Batasi diskon di bawah ${saran.persen.toFixed(1)}%`,
+        detail: `Diskon periode ini ${formatRupiah(
+          saran.nilai,
+        )} dan memakan lebih dari separuh margin. Barang yang terjual periode ini rata-rata hanya sanggup menanggung diskon ${saran.persen.toFixed(
+          1,
+        )}% sebelum mulai rugi.`,
+      }
+    case 'satuan_margin_tipis':
+      return {
+        judul: `Cek harga beli satuan ${saran.contoh[0] ?? '-'}`,
+        detail: `Margin satuan ini cuma ${saran.persen.toFixed(1)}% dari ${formatQty(
+          saran.jumlah,
+        )} terjual. Kalau dibeli grosir, catat pembeliannya dalam satuan ${
+          saran.contoh[0] ?? 'itu'
+        } supaya harga pokoknya ikut turun - membeli dalam satuan eceran tidak pernah menurunkan modal satuan besar.`,
+      }
+    case 'katalog_di_bawah_margin':
+      return {
+        judul: `${saran.jumlah} satuan di katalog masih di bawah margin minimal ${saran.persen}%`,
+        detail:
+          'Belum tentu terjual periode ini, tapi siap merugi begitu laku. Perbaiki lewat rekomendasi harga di halaman produk, atau ubah target margin minimal di Pengaturan.',
+      }
+  }
+}
+
+interface PenjelasanLaba {
+  penjualanKotor: number
+  diskonItem: number
+  diskonNota: number
+  omzet: number
+  modal: number
+  labaKotor: number
+  jumlahBarisRugi: number
+  totalRugi: number
+  barisRugi: BarisRugiRow[]
+  saran: SaranLaba[]
 }
 
 interface LabaPerKategoriRow {
@@ -90,6 +197,13 @@ function today(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
+/**
+ * Hides the bulk price-raise tool. The feature is complete and tested (main/harga-efisiensi.ts,
+ * inventory:previewEfisiensiHarga / applyEfisiensiHarga) - it is only kept out of sight until the
+ * owner wants it. Flip to true to bring the button back.
+ */
+const EFISIENSI_HARGA_AKTIF = false
+
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Rekap', href: '/rekap' }]
 
 export function Rekap() {
@@ -101,6 +215,8 @@ export function Rekap() {
   const [appliedTo, setAppliedTo] = useState(to)
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState<RekapSummary | null>(null)
+  const [penjelasanLaba, setPenjelasanLaba] = useState<PenjelasanLaba | null>(null)
+  const [efisiensiOpen, setEfisiensiOpen] = useState(false)
   const [labaPerKategori, setLabaPerKategori] = useState<LabaPerKategoriRow[]>([])
   const [labaPerHari, setLabaPerHari] = useState<LabaPerHariRow[]>([])
   const [labaPerSatuan, setLabaPerSatuan] = useState<LabaPerSatuanRow[]>([])
@@ -119,6 +235,7 @@ export function Rekap() {
       .getRekap({ from: rangeFrom, to: rangeTo })
       .then((result) => {
         setSummary(result.summary)
+        setPenjelasanLaba(result.penjelasanLaba)
         setLabaPerKategori(result.labaPerKategori)
         setLabaPerHari(result.labaPerHari)
         setLabaPerSatuan(result.labaPerSatuan)
@@ -419,6 +536,112 @@ export function Rekap() {
               </CardHeader>
             </Card>
           </div>
+
+          {penjelasanLaba && (
+            <Card>
+              <CardHeader>
+                <CardDescription>Penjelasan Laba</CardDescription>
+                <CardTitle className="text-base">
+                  Dari harga jual sampai laba &mdash; {periodeLabel}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="max-w-md space-y-1 text-sm tabular-nums">
+                  <BarisHitung label="Penjualan kotor (harga jual x qty)" nilai={penjelasanLaba.penjualanKotor} />
+                  <BarisHitung label="Diskon item" nilai={-penjelasanLaba.diskonItem} tanda />
+                  <BarisHitung label="Diskon nota" nilai={-penjelasanLaba.diskonNota} tanda />
+                  <div className="border-t pt-1">
+                    <BarisHitung label="Omzet (yang benar-benar diterima)" nilai={penjelasanLaba.omzet} tebal />
+                  </div>
+                  <BarisHitung label="Modal / harga pokok barang terjual" nilai={-penjelasanLaba.modal} tanda />
+                  <div className="border-t pt-1">
+                    <BarisHitung label="Laba kotor" nilai={penjelasanLaba.labaKotor} tebal warnai />
+                  </div>
+                </div>
+
+                {penjelasanLaba.barisRugi.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-sm">
+                      <span className="font-semibold text-destructive">
+                        {penjelasanLaba.jumlahBarisRugi} baris
+                      </span>{' '}
+                      terjual di bawah modal, menarik laba turun {formatRupiah(Math.abs(penjelasanLaba.totalRugi))}.
+                      {penjelasanLaba.barisRugi.length < penjelasanLaba.jumlahBarisRugi &&
+                        ` ${penjelasanLaba.barisRugi.length} terbesar:`}
+                    </p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[40rem] text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-xs text-muted-foreground">
+                            <th className="py-1 pr-3 font-medium">Item</th>
+                            <th className="py-1 pr-3 font-medium">Perhitungan</th>
+                            <th className="py-1 text-right font-medium">Laba</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {penjelasanLaba.barisRugi.map((row) => (
+                            <tr key={`${row.saleId}-${row.namaItem}-${row.satuan}`} className="border-b last:border-0">
+                              <td className="py-1.5 pr-3">
+                                {row.namaItem}{' '}
+                                <span className="text-muted-foreground">
+                                  ({row.satuan}) &middot; nota #{row.saleId}
+                                </span>
+                              </td>
+                              <td className="py-1.5 pr-3 text-xs tabular-nums text-muted-foreground">
+                                {formatQty(row.qty)} x ({formatRupiah(row.hargaJual)} jual &minus;{' '}
+                                {formatRupiah(row.hargaPokok)} modal)
+                                {row.diskon > 0 && <> &minus; diskon {formatRupiah(row.diskon)}</>}
+                              </td>
+                              <td className="py-1.5 text-right font-medium text-destructive tabular-nums">
+                                {formatRupiah(row.laba)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Tidak ada barang yang terjual di bawah modal pada periode ini.
+                  </p>
+                )}
+
+                {penjelasanLaba.saran.length > 0 && (
+                  <div className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 dark:bg-amber-500/15">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">Saran supaya tidak minus</p>
+                      {EFISIENSI_HARGA_AKTIF && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => setEfisiensiOpen(true)}>
+                          Naikkan Harga
+                        </Button>
+                      )}
+                    </div>
+                    <ol className="space-y-2">
+                      {penjelasanLaba.saran.map((saran, index) => {
+                        const { judul, detail } = isiSaran(saran)
+
+                        return (
+                          <li key={saran.kode} className="flex gap-2 text-sm">
+                            <span className="font-semibold tabular-nums text-muted-foreground">{index + 1}.</span>
+                            <span>
+                              <span className="font-medium">{judul}</span>
+                              <span className="block text-xs leading-relaxed text-muted-foreground">{detail}</span>
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ol>
+                    {EFISIENSI_HARGA_AKTIF && (
+                      <p className="text-xs text-muted-foreground">
+                        Tombol di atas hanya menaikkan harga jual. Diskon dan harga beli tetap keputusan Anda.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </section>
 
         <section className="space-y-3">
@@ -535,6 +758,15 @@ export function Rekap() {
           />
         </section>
       </Page>
+
+      {EFISIENSI_HARGA_AKTIF && (
+        <EfisiensiHargaDialog
+          open={efisiensiOpen}
+          onOpenChange={setEfisiensiOpen}
+          // the margins on this page were computed from the old prices
+          onSelesai={() => load(appliedFrom, appliedTo)}
+        />
+      )}
     </AppShell>
   )
 }

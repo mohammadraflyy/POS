@@ -23,6 +23,7 @@ import {
   applyHarga,
   applyQty,
   cartFromSale,
+  cartModal,
   changeUnit,
   expandUnitResults,
   isBelowHargaPokok,
@@ -289,6 +290,9 @@ export function Kasir() {
   const diskonItem = subtotalKotor - subtotalBarang
   const diskonNotaValue = useMemo(() => parseDiskon(diskonNota, subtotalBarang), [diskonNota, subtotalBarang])
   const total = subtotalBarang - diskonNotaValue
+  // what the goods in the cart cost, so the payment dialog can show the margin the bill
+  // leaves - and warn when a discount has taken it under
+  const modal = useMemo(() => cartModal(cart), [cart])
   const cartItemCount = useMemo(() => cart.reduce((sum, line) => sum + line.qty, 0), [cart])
 
   // the walk-in name is always offered, even on a fresh database where no sale
@@ -934,6 +938,7 @@ export function Kasir() {
         subtotal={subtotalKotor}
         diskonItem={diskonItem}
         diskonNota={diskonNotaValue}
+        modal={modal}
         metode={metode}
         setMetode={setMetode}
         namaPelanggan={namaPelanggan}

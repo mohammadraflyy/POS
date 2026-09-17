@@ -133,6 +133,22 @@ export function lineSubtotal(line: CartLine): number {
   return Math.max(0, lineGross(line) - (line.diskon ?? 0))
 }
 
+/** what this line's goods cost the shop, at the cost of the unit actually being sold */
+export function lineModal(line: CartLine): number {
+  return Math.round(line.qty * unitHargaPokok(line))
+}
+
+/**
+ * The cart's total cost of goods - the figure the bill has to clear to make money.
+ *
+ * Read live from the catalog, so it is an estimate: a sale's real margin is fixed by the
+ * `harga_pokok` snapshot taken at checkout (main/kasir.ts), and editing an old sale keeps
+ * the cost it was sold at rather than today's.
+ */
+export function cartModal(cart: CartLine[]): number {
+  return cart.reduce((sum, line) => sum + lineModal(line), 0)
+}
+
 /**
  * Reads a discount the cashier typed. `10%` is resolved against `base` there and then;
  * anything else is read as whole rupiah. Junk and negatives read as no discount, and the

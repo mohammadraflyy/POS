@@ -2,7 +2,7 @@ import { and, desc, eq, gt, gte, lte, ne, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
-import { bonPayments, categories, customers, products, productUnits, purchases, saleItems, sales, suppliers, units } from './db/schema'
+import { bonPayments, categories, customers, products, productUnits, purchases, saleItems, sales, storeSettings, suppliers, units } from './db/schema'
 import { METODE_NON_TUNAI, type MetodePembayaran } from './kasir'
 
 /** the local calendar day, in the `YYYY-MM-DD` shape the report ranges are given in */
@@ -84,8 +84,156 @@ export interface SalesHistoryRow {
   dibayar: number
 }
 
+/** one sold line that lost money, with every number the arithmetic needs shown separately */
+export interface BarisRugiRow {
+  saleId: number
+  tanggal: string
+  namaItem: string
+  satuan: string
+  qty: number
+  /** price of one of the unit sold, before any discount */
+  hargaJual: number
+  /** cost of one of the same unit */
+  hargaPokok: number
+  /** the line's own discount plus its share of the bill-wide one */
+  diskon: number
+  omzet: number
+  modal: number
+  laba: number
+}
+
+/**
+ * Why the margin came out the way it did, in the shape the Rekap page explains it:
+ * `penjualanKotor - diskon = omzet`, then `omzet - modal = labaKotor`.
+ */
+/**
+ * One piece of advice, derived from this period's own numbers. The wording lives in the
+ * renderer - main deals in sen, and a sentence built here would have to format money twice.
+ */
+export interface SaranLaba {
+  kode: 'harga_di_bawah_modal' | 'diskon_memakan_margin' | 'satuan_margin_tipis' | 'katalog_di_bawah_margin'
+  /** how many rows, satuan, or catalog entries this is about */
+  jumlah: number
+  /** the money involved, in sen; 0 where the advice is not about an amount */
+  nilai: number
+  /** the percentage involved; 0 where the advice is not about a rate */
+  persen: number
+  /** a few names to make the advice concrete */
+  contoh: string[]
+}
+
+export interface PenjelasanLaba {
+  /** what the goods were priced at before any discount */
+  penjualanKotor: number
+  diskonItem: number
+  diskonNota: number
+  omzet: number
+  /** harga pokok of everything sold */
+  modal: number
+  labaKotor: number
+  jumlahBarisRugi: number
+  /** what the loss-making lines cost in total - the rest of the sales carried it */
+  totalRugi: number
+  /** the worst offenders, worst first, capped so the page stays readable */
+  barisRugi: BarisRugiRow[]
+  /** what to do about it, worst cause first; empty when nothing sold at a loss */
+  saran: SaranLaba[]
+}
+
+/** a discount that leaves less than this share of the margin standing is worth flagging */
+const AMBANG_SISA_MARGIN = 0.5
+
+/** a satuan selling thinner than this is worth pointing at by name */
+const AMBANG_MARGIN_SATUAN = 5
+
+/**
+ * Turns the period's own figures into advice. Every entry has to be earned by the numbers -
+ * generic "sell for more" wording would be noise on a report the owner reads every day.
+ */
+function susunSaran(
+  db: BetterSQLite3Database<typeof schema>,
+  input: {
+    penjualanKotor: number
+    modal: number
+    labaKotor: number
+    totalDiskon: number
+    barisRugi: BarisRugiRow[]
+    labaPerSatuan: LabaPerSatuanRow[]
+  },
+): SaranLaba[] {
+  const saran: SaranLaba[] = []
+
+  // Priced under cost: no discount involved, the master price itself is wrong. This is the one
+  // cause the owner can fix outright, so it leads.
+  const rugiKarenaHarga = input.barisRugi.filter((row) => row.hargaJual < row.hargaPokok)
+
+  if (rugiKarenaHarga.length > 0) {
+    const namaUnik = [...new Set(rugiKarenaHarga.map((row) => `${row.namaItem} (${row.satuan})`))]
+
+    saran.push({
+      kode: 'harga_di_bawah_modal',
+      jumlah: namaUnik.length,
+      nilai: rugiKarenaHarga.reduce((sum, row) => sum + row.laba, 0),
+      persen: 0,
+      contoh: namaUnik.slice(0, 3),
+    })
+  }
+
+  // The discount ate most of what the goods would otherwise have earned
+  const labaSebelumDiskon = input.penjualanKotor - input.modal
+
+  if (input.totalDiskon > 0 && labaSebelumDiskon > 0 && input.labaKotor < labaSebelumDiskon * AMBANG_SISA_MARGIN) {
+    saran.push({
+      kode: 'diskon_memakan_margin',
+      jumlah: 0,
+      nilai: input.totalDiskon,
+      // the rate the goods can actually carry - a discount above this sells at a loss
+      persen: (labaSebelumDiskon / input.penjualanKotor) * 100,
+      contoh: [],
+    })
+  }
+
+  // The thinnest satuan sold, usually a grosir packaging whose real cost was never recorded
+  const satuanTertipis = [...input.labaPerSatuan].filter((row) => row.omzet > 0).sort((a, b) => a.marginPersen - b.marginPersen)[0]
+
+  if (satuanTertipis && satuanTertipis.marginPersen < AMBANG_MARGIN_SATUAN) {
+    saran.push({
+      kode: 'satuan_margin_tipis',
+      jumlah: satuanTertipis.qtyTerjual,
+      nilai: satuanTertipis.laba,
+      persen: satuanTertipis.marginPersen,
+      contoh: [satuanTertipis.satuan],
+    })
+  }
+
+  // What is still mispriced in the catalog, sold this period or not: margin = (jual - pokok) / jual,
+  // so "below m percent" is `jual * (100 - m) < pokok * 100` with no division to round away
+  const marginMinimal = db.select().from(storeSettings).get()?.marginMinimalPersen ?? 10
+  const diBawahMargin =
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(productUnits)
+      .where(
+        sql`${productUnits.hargaJual} > 0 and ${productUnits.hargaPokok} > 0 and ${productUnits.hargaJual} * ${100 - marginMinimal} < ${productUnits.hargaPokok} * 100`,
+      )
+      .get()?.count ?? 0
+
+  if (diBawahMargin > 0) {
+    saran.push({
+      kode: 'katalog_di_bawah_margin',
+      jumlah: diBawahMargin,
+      nilai: 0,
+      persen: marginMinimal,
+      contoh: [],
+    })
+  }
+
+  return saran
+}
+
 export interface RekapResult {
   summary: RekapSummary
+  penjelasanLaba: PenjelasanLaba
   labaPerKategori: LabaPerKategoriRow[]
   labaPerHari: LabaPerHariRow[]
   labaPerSatuan: LabaPerSatuanRow[]
@@ -236,6 +384,8 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
       namaItem: products.namaItem,
       subtotal: saleItems.subtotal,
       qty: saleItems.qty,
+      hargaJual: saleItems.hargaJual,
+      diskonBaris: saleItems.diskon,
       hargaPokok: saleItems.hargaPokok,
       // the live unit label, falling back to the snapshot for lines whose unit row was deleted
       unitCode: units.code,
@@ -264,6 +414,10 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     .filter((row) => diakui.has(row.saleId))
 
   let labaKotor = 0
+  let totalModal = 0
+  let totalDiskonItem = 0
+  let totalDiskonNota = 0
+  const semuaBarisRugi: BarisRugiRow[] = []
   const labaPerKategoriMap = new Map<string, { omzet: number; laba: number }>()
   const labaPerHariMap = new Map<string, { omzet: number; laba: number }>()
   const labaPerSatuanMap = new Map<string, { qtyTerjual: number; omzet: number; laba: number }>()
@@ -295,8 +449,28 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     // what this line really brought in: its own subtotal less its share of the bill discount
     const omzet = row.subtotal - alokasiDiskon
     // hargaPokok is the cost of one of the unit that was sold, so qty alone scales it
-    const laba = omzet - row.qty * row.hargaPokok
+    const modal = row.qty * row.hargaPokok
+    const laba = omzet - modal
     labaKotor += laba
+    totalModal += modal
+    totalDiskonItem += row.diskonBaris
+    totalDiskonNota += alokasiDiskon
+
+    if (laba < 0) {
+      semuaBarisRugi.push({
+        saleId: row.saleId,
+        tanggal: diakui.get(row.saleId)!.tanggal,
+        namaItem: row.namaItem,
+        satuan: row.unitCode ?? row.satuanSnapshot ?? '-',
+        qty: row.qty,
+        hargaJual: row.hargaJual,
+        hargaPokok: row.hargaPokok,
+        diskon: row.diskonBaris + alokasiDiskon,
+        omzet,
+        modal,
+        laba,
+      })
+    }
 
     const categoryName = row.categoryName ?? 'Tanpa Kategori'
     const kategoriEntry = labaPerKategoriMap.get(categoryName) ?? { omzet: 0, laba: 0 }
@@ -357,6 +531,17 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
   const stockValue = getStockValue(db)
   const salesHistory = getSalesHistory(db, input)
 
+  const omzet = omzetTunai + omzetNonTunai
+  const penjualanKotor = omzet + totalDiskonItem + totalDiskonNota
+  const saran = susunSaran(db, {
+    penjualanKotor,
+    modal: totalModal,
+    labaKotor,
+    totalDiskon: totalDiskonItem + totalDiskonNota,
+    barisRugi: semuaBarisRugi,
+    labaPerSatuan,
+  })
+
   return {
     summary: {
       omzetTunai,
@@ -364,6 +549,19 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
       piutangBeredar: piutangRow?.piutang ?? 0,
       jumlahTransaksi: diakui.size,
       labaKotor,
+    },
+    penjelasanLaba: {
+      // omzet is already net of both discounts, so adding them back gives the list price
+      penjualanKotor,
+      diskonItem: totalDiskonItem,
+      diskonNota: totalDiskonNota,
+      omzet,
+      modal: totalModal,
+      labaKotor,
+      jumlahBarisRugi: semuaBarisRugi.length,
+      totalRugi: semuaBarisRugi.reduce((sum, row) => sum + row.laba, 0),
+      barisRugi: [...semuaBarisRugi].sort((a, b) => a.laba - b.laba).slice(0, 10),
+      saran,
     },
     labaPerKategori,
     labaPerHari,
