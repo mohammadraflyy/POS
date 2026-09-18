@@ -572,6 +572,8 @@ describe('getRekap', () => {
     expect(harga!.jumlah).toBe(1)
     expect(harga!.nilai).toBe(-2000_00)
     expect(harga!.contoh).toHaveLength(1)
+    expect(harga!.produk).toEqual([expect.objectContaining({ productId: 2 })])
+    expect(harga!.saleIds).toEqual([1])
     // nothing was discounted, so the discount advice must stay quiet
     expect(saran.some((row) => row.kode === 'diskon_memakan_margin')).toBe(false)
   })
@@ -599,8 +601,25 @@ describe('getRekap', () => {
     expect(diskon!.nilai).toBe(900_00)
     // the goods carry a 10% margin, so 10% is the most a discount may take
     expect(diskon!.persen).toBeCloseTo(10, 6)
+    // This sale is still profitable: edit targets must not be limited to losing lines.
+    expect(diskon!.saleIds).toEqual([1])
+    expect(diskon!.produk).toEqual([])
     // the price itself was above cost, so that advice must not appear
     expect(saran.some((row) => row.kode === 'harga_di_bawah_modal')).toBe(false)
+  })
+
+  it('links catalog recommendations to products even without sales in the period', () => {
+    const db = createDb(':memory:', migrationsFolder)
+    seedBase(db)
+    db.update(productUnits).set({ hargaPokok: 10000_00, hargaJual: 10000_00 }).run()
+
+    const { saran } = getRekap(db, { from: '2026-01-01', to: '2026-01-31' }).penjelasanLaba
+    const katalog = saran.find((row) => row.kode === 'katalog_di_bawah_margin')!
+
+    expect(katalog).toBeDefined()
+    expect(katalog.produk).toHaveLength(katalog.jumlah)
+    expect(new Set(katalog.produk.map((row) => row.productId))).toEqual(new Set([1, 2]))
+    expect(katalog.saleIds).toEqual([])
   })
 
   it('reports no losing lines when everything sold above cost', () => {

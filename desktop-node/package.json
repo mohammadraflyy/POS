@@ -7,7 +7,7 @@
   "author": "Your Name",
   "license": "MIT",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "pack": "electron-builder --publish never",
@@ -16,6 +16,7 @@
     "rebuild:node": "npm rebuild better-sqlite3",
     "db:generate": "drizzle-kit generate",
     "db:seed": "tsx src/main/db/seed.ts",
+    "db:seed:rekap": "set ELECTRON_RUN_AS_NODE=1&& electron scripts/seed-rekap-demo.cjs",
     "test": "vitest run"
   },
   "dependencies": {

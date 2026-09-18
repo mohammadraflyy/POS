@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { CostCorrectionApply, CostCorrectionRequest } from '../shared/cost-correction'
 
 function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   return ipcRenderer.invoke(channel, ...args).catch((err: Error) => {
@@ -225,6 +226,9 @@ const api = {
     }) => invoke('stockMovements:list', input),
   },
   rekap: {
+    previewCostCorrection: (input: CostCorrectionRequest) => invoke('rekap:previewCostCorrection', input),
+    applyCostCorrection: (input: CostCorrectionApply) => invoke('rekap:applyCostCorrection', input),
+    listCostCorrections: () => invoke('rekap:listCostCorrections'),
     getRekap: (input: { from: string; to: string }) => invoke('rekap:getRekap', input),
     exportExcel: (input: { from: string; to: string }) => invoke('rekap:exportExcel', input),
   },

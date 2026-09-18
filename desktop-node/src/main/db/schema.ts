@@ -207,14 +207,25 @@ export const saleItems = sqliteTable('sale_items', {
   ...timestamps(),
 })
 
-/**
- * One row per saved edit of a sale, never overwritten.
- *
- * A single `keterangan` column on `sales` would have been cheaper, but the second edit
- * would erase the first edit's reason - and it is exactly that sequence the owner wants
- * to be able to follow. The two totals are stored so the log can be read without
- * reconstructing the sale.
- */
+/** Cost-correction snapshots deliberately outlive sale-item rewrites and deleted master records. */
+export const saleCostCorrections = sqliteTable('sale_cost_corrections', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  batchId: text('batch_id').notNull(),
+  saleId: integer('sale_id').notNull(),
+  saleItemId: integer('sale_item_id').notNull(),
+  productId: integer('product_id').notNull(),
+  namaItem: text('nama_item').notNull(),
+  satuan: text('satuan').notNull(),
+  qty: integer('qty').notNull(),
+  hargaPokokLama: integer('harga_pokok_lama').notNull(),
+  hargaPokokBaru: integer('harga_pokok_baru').notNull(),
+  userId: integer('user_id').notNull(),
+  adminName: text('admin_name').notNull(),
+  alasan: text('alasan').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+})
+
+/** One row per saved sale edit, preserving each reason and both totals. */
 export const saleEdits = sqliteTable('sale_edits', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   saleId: integer('sale_id').notNull().references(() => sales.id, { onDelete: 'cascade' }),

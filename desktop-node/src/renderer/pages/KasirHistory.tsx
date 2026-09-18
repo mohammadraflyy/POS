@@ -21,6 +21,7 @@ import { useAppearance } from '@/hooks/use-appearance'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useAvailableHeight } from '@/hooks/use-available-height'
 import { useElementWidth } from '@/hooks/use-element-width'
+import { useStickyState } from '@/hooks/use-sticky-state'
 import { METODE_LABEL } from '@/lib/metode'
 import { cn, formatQty, formatRupiah } from '@/lib/utils'
 import { AppShell } from '../layouts/AppShell'
@@ -59,14 +60,15 @@ export function KasirHistory() {
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(64)
 
-  const [search, setSearch] = useState('')
-  const [dari, setDari] = useState('')
-  const [sampai, setSampai] = useState('')
-  const [status, setStatus] = useState('')
-  const [metode, setMetode] = useState('')
+  // Keep the buyer search and filters when returning from editing or viewing a sale.
+  const [search, setSearch] = useStickyState('history.search', '')
+  const [dari, setDari] = useStickyState('history.dari', '')
+  const [sampai, setSampai] = useStickyState('history.sampai', '')
+  const [status, setStatus] = useStickyState('history.status', '')
+  const [metode, setMetode] = useStickyState('history.metode', '')
 
   const [rows, setRows] = useState<SaleHistoryRow[]>([])
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useStickyState('history.page', 1)
   const [lastPage, setLastPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
 
@@ -116,7 +118,7 @@ export function KasirHistory() {
   }
 
   useEffect(() => {
-    loadPage(1)
+    loadPage(currentPage)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

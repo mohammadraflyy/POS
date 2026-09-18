@@ -3,5 +3,6 @@ out
 dist
 dev.sqlite
 dev.sqlite-*
+dev.sqlite.before-*.sqlite
 *.sqlite-journal
 *.tsbuildinfo

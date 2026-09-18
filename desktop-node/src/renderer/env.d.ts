@@ -618,6 +618,9 @@ declare global {
         }>
       }
       rekap: {
+        previewCostCorrection: (input: import('../shared/cost-correction').CostCorrectionRequest) => Promise<import('../shared/cost-correction').CostCorrectionPreview>
+        applyCostCorrection: (input: import('../shared/cost-correction').CostCorrectionApply) => Promise<{ count: number }>
+        listCostCorrections: () => Promise<import('../shared/cost-correction').CostCorrectionHistory[]>
         getRekap: (input: { from: string; to: string }) => Promise<{
           summary: {
             omzetTunai: number
@@ -636,6 +639,9 @@ declare global {
             jumlahBarisRugi: number
             totalRugi: number
             barisRugi: {
+              saleItemId: number
+              productUnitId: number | null
+              productId: number
               saleId: number
               tanggal: string
               namaItem: string
@@ -649,11 +655,14 @@ declare global {
               laba: number
             }[]
             saran: {
+              status: 'aktif' | 'riwayat' | 'diperbaiki'
               kode: 'harga_di_bawah_modal' | 'diskon_memakan_margin' | 'satuan_margin_tipis' | 'katalog_di_bawah_margin'
               jumlah: number
               nilai: number
               persen: number
               contoh: string[]
+              produk: { productId: number; namaItem: string; satuan: string }[]
+              saleIds: number[]
             }[]
           }
           labaPerKategori: { categoryName: string; omzet: number; laba: number }[]

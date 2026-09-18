@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useStickyState } from '@/hooks/use-sticky-state'
 import type { FormEvent } from 'react'
 import type { Column } from 'react-data-grid'
 import { ReportTable } from '@/components/report-table'
@@ -12,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { METODE_LABEL } from '@/lib/metode'
 import { cn, formatQty, formatRupiah, formatTanggal } from '@/lib/utils'
 import { EfisiensiHargaDialog } from './rekap/EfisiensiHargaDialog'
+import { CostCorrectionDialog, CostCorrectionHistoryDialog, type CorrectionTarget } from './rekap/CostCorrectionDialog'
 import { AppShell } from '../layouts/AppShell'
 import type { BreadcrumbItem } from '../types'
 
@@ -55,6 +58,9 @@ function BarisHitung({
 }
 
 interface BarisRugiRow {
+  saleItemId: number
+  productUnitId: number | null
+  productId: number
   saleId: number
   tanggal: string
   namaItem: string
@@ -72,11 +78,14 @@ interface BarisRugiRow {
 }
 
 interface SaranLaba {
+  status: 'aktif' | 'riwayat' | 'diperbaiki'
   kode: 'harga_di_bawah_modal' | 'diskon_memakan_margin' | 'satuan_margin_tipis' | 'katalog_di_bawah_margin'
   jumlah: number
   nilai: number
   persen: number
   contoh: string[]
+  produk: { productId: number; namaItem: string; satuan: string }[]
+  saleIds: number[]
 }
 
 /** the wording for each kind of advice; the numbers come from the report itself */
@@ -84,10 +93,10 @@ function isiSaran(saran: SaranLaba): { judul: string; detail: string } {
   switch (saran.kode) {
     case 'harga_di_bawah_modal':
       return {
-        judul: `Perbaiki harga jual ${saran.jumlah} barang`,
-        detail: `Barang ini terjual di bawah modal tanpa diskon sama sekali, rugi ${formatRupiah(
+        judul: saran.status === 'diperbaiki' ? 'Harga katalog sudah memenuhi margin minimal' : `Evaluasi harga jual ${saran.jumlah} barang`,
+        detail: `Pada periode ini ada barang terjual dengan harga di bawah HPP tercatat. Total rugi baris terkait, termasuk diskon, ${formatRupiah(
           Math.abs(saran.nilai),
-        )}. Contoh: ${saran.contoh.join(', ')}. Buka produknya di Inventori - kotak rekomendasi harga di form satuan sudah menghitung angka amannya.`,
+        )}. Contoh: ${saran.contoh.join(', ')}. ${saran.status === 'diperbaiki' ? 'Harga katalog saat ini sudah memenuhi target untuk transaksi berikutnya. Kerugian lama tetap menjadi riwayat.' : 'Periksa harga katalog dan kebenaran HPP transaksi. Jika modalnya salah input, gunakan Koreksi HPP pada baris rugi.'}`,
       }
     case 'diskon_memakan_margin':
       return {
@@ -100,8 +109,8 @@ function isiSaran(saran: SaranLaba): { judul: string; detail: string } {
       }
     case 'satuan_margin_tipis':
       return {
-        judul: `Cek harga beli satuan ${saran.contoh[0] ?? '-'}`,
-        detail: `Margin satuan ini cuma ${saran.persen.toFixed(1)}% dari ${formatQty(
+        judul: `Evaluasi margin historis satuan ${saran.contoh[0] ?? '-'}`,
+        detail: `Margin transaksi satuan ini pada periode terpilih ${saran.persen.toFixed(1)}% dari ${formatQty(
           saran.jumlah,
         )} terjual. Kalau dibeli grosir, catat pembeliannya dalam satuan ${
           saran.contoh[0] ?? 'itu'
@@ -111,7 +120,7 @@ function isiSaran(saran: SaranLaba): { judul: string; detail: string } {
       return {
         judul: `${saran.jumlah} satuan di katalog masih di bawah margin minimal ${saran.persen}%`,
         detail:
-          'Belum tentu terjual periode ini, tapi siap merugi begitu laku. Perbaiki lewat rekomendasi harga di halaman produk, atau ubah target margin minimal di Pengaturan.',
+          'Harga katalog saat ini belum mencapai target laba. Periksa rekomendasi harga di halaman produk atau target margin di Pengaturan. Margin di bawah target belum tentu berarti rugi.',
       }
   }
 }
@@ -207,8 +216,8 @@ const EFISIENSI_HARGA_AKTIF = false
 const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Rekap', href: '/rekap' }]
 
 export function Rekap() {
-  const [from, setFrom] = useState(firstOfMonth)
-  const [to, setTo] = useState(today)
+  const [from, setFrom] = useStickyState('rekap:from', firstOfMonth())
+  const [to, setTo] = useStickyState('rekap:to', today())
   // what the tables below actually reflect right now - only moves when a load lands,
   // so it never gets ahead of the date inputs while a "Terapkan" click is still pending
   const [appliedFrom, setAppliedFrom] = useState(from)
@@ -217,6 +226,10 @@ export function Rekap() {
   const [summary, setSummary] = useState<RekapSummary | null>(null)
   const [penjelasanLaba, setPenjelasanLaba] = useState<PenjelasanLaba | null>(null)
   const [efisiensiOpen, setEfisiensiOpen] = useState(false)
+  const [correctionTarget, setCorrectionTarget] = useState<CorrectionTarget | null>(null)
+  const [correctionHistoryOpen, setCorrectionHistoryOpen] = useState(false)
+  const [correctionMessage, setCorrectionMessage] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [labaPerKategori, setLabaPerKategori] = useState<LabaPerKategoriRow[]>([])
   const [labaPerHari, setLabaPerHari] = useState<LabaPerHariRow[]>([])
   const [labaPerSatuan, setLabaPerSatuan] = useState<LabaPerSatuanRow[]>([])
@@ -231,6 +244,7 @@ export function Rekap() {
 
   function load(rangeFrom: string, rangeTo: string) {
     setLoading(true)
+    setLoadError(null)
     window.api.rekap
       .getRekap({ from: rangeFrom, to: rangeTo })
       .then((result) => {
@@ -247,6 +261,7 @@ export function Rekap() {
         setAppliedFrom(rangeFrom)
         setAppliedTo(rangeTo)
       })
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Gagal memuat Rekap.'))
       .finally(() => setLoading(false))
   }
 
@@ -462,7 +477,10 @@ export function Rekap() {
           <Button type="button" variant="outline" onClick={exportExcel} disabled={exporting}>
             {exporting ? 'Mengekspor...' : 'Export Excel'}
           </Button>
+          <Button type="button" variant="outline" onClick={() => setCorrectionHistoryOpen(true)}>Riwayat koreksi HPP</Button>
         </form>
+        {loadError && <p role="alert" className="text-sm text-destructive">{loadError}</p>}
+        {correctionMessage && <p role="status" className="text-sm text-muted-foreground">{correctionMessage}</p>}
 
         {exportError && (
           <p role="alert" className="text-sm text-destructive">
@@ -576,11 +594,12 @@ export function Rekap() {
                             <th className="py-1 pr-3 font-medium">Item</th>
                             <th className="py-1 pr-3 font-medium">Perhitungan</th>
                             <th className="py-1 text-right font-medium">Laba</th>
+                            <th className="py-1 pl-3 font-medium">Perbaiki</th>
                           </tr>
                         </thead>
                         <tbody>
                           {penjelasanLaba.barisRugi.map((row) => (
-                            <tr key={`${row.saleId}-${row.namaItem}-${row.satuan}`} className="border-b last:border-0">
+                            <tr key={row.saleItemId} className="border-b last:border-0">
                               <td className="py-1.5 pr-3">
                                 {row.namaItem}{' '}
                                 <span className="text-muted-foreground">
@@ -595,6 +614,13 @@ export function Rekap() {
                               <td className="py-1.5 text-right font-medium text-destructive tabular-nums">
                                 {formatRupiah(row.laba)}
                               </td>
+                              <td className="py-1.5 pl-3">
+                                <div className="flex gap-2">
+                                  <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => setCorrectionTarget(row)}>Koreksi HPP</Button>
+                                  <Button asChild variant="outline" size="sm"><Link to={`/inventory/mass-input?ids=${row.productId}`}>Edit produk</Link></Button>
+                                  <Button asChild variant="outline" size="sm"><Link to={`/kasir?edit=${row.saleId}`}>Edit nota</Link></Button>
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -608,9 +634,9 @@ export function Rekap() {
                 )}
 
                 {penjelasanLaba.saran.length > 0 && (
-                  <div className="space-y-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 dark:bg-amber-500/15">
+                  <div className="space-y-2 rounded-xl border bg-muted/30 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">Saran supaya tidak minus</p>
+                      <p className="text-sm font-semibold">Rekomendasi dan evaluasi laba</p>
                       {EFISIENSI_HARGA_AKTIF && (
                         <Button type="button" size="sm" variant="outline" onClick={() => setEfisiensiOpen(true)}>
                           Naikkan Harga
@@ -624,10 +650,16 @@ export function Rekap() {
                         return (
                           <li key={saran.kode} className="flex gap-2 text-sm">
                             <span className="font-semibold tabular-nums text-muted-foreground">{index + 1}.</span>
-                            <span>
-                              <span className="font-medium">{judul}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="mb-1 flex flex-wrap items-center gap-2">
+                                <span className="font-medium">{judul}</span>
+                                <Badge variant="outline" className={saran.status === 'diperbaiki' ? 'border-green-600 text-green-700 dark:text-green-400' : saran.status === 'aktif' ? 'border-amber-500 text-amber-700 dark:text-amber-400' : undefined}>
+                                  {saran.status === 'diperbaiki' ? 'Katalog sudah sesuai' : saran.status === 'riwayat' ? 'Evaluasi riwayat' : 'Perlu ditinjau'}
+                                </Badge>
+                              </div>
                               <span className="block text-xs leading-relaxed text-muted-foreground">{detail}</span>
-                            </span>
+                              <div className="mt-2"><AksiSaran saran={saran} /></div>
+                            </div>
                           </li>
                         )
                       })}
@@ -759,6 +791,16 @@ export function Rekap() {
         </section>
       </Page>
 
+      {correctionTarget && <CostCorrectionDialog
+        target={correctionTarget} from={appliedFrom} to={appliedTo}
+        onClose={() => setCorrectionTarget(null)}
+        onSaved={(count) => {
+          setCorrectionTarget(null)
+          setCorrectionMessage(`HPP ${count} baris transaksi telah dikoreksi. Rekap dihitung ulang.`)
+          load(appliedFrom, appliedTo)
+        }}
+      />}
+      {correctionHistoryOpen && <CostCorrectionHistoryDialog onClose={() => setCorrectionHistoryOpen(false)} />}
       {EFISIENSI_HARGA_AKTIF && (
         <EfisiensiHargaDialog
           open={efisiensiOpen}
@@ -768,5 +810,37 @@ export function Rekap() {
         />
       )}
     </AppShell>
+  )
+}
+
+function AksiSaran({ saran }: { saran: SaranLaba }) {
+  return (
+    <div className="space-y-2">
+      {(saran.produk.length > 0 || saran.saleIds.length > 0) && (
+        <details className="rounded-md border bg-background p-2">
+          <summary className="cursor-pointer font-medium">Lihat item dan edit ({saran.produk.length + saran.saleIds.length})</summary>
+          <div className="mt-2 max-h-64 space-y-2 overflow-y-auto">
+            {saran.produk.map((produk) => (
+              <div key={`${produk.productId}:${produk.satuan}`} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2">
+                <span>{produk.namaItem} ({produk.satuan})</span>
+                <div className="flex gap-2">
+                  <Button asChild size="sm" variant="outline"><Link to={`/inventory/mass-input?ids=${produk.productId}`}>Edit produk</Link></Button>
+                  <Button asChild size="sm" variant="outline"><Link to={`/inventory/${produk.productId}`}>Harga satuan</Link></Button>
+                </div>
+              </div>
+            ))}
+            {saran.saleIds.map((id) => (
+              <div key={id} className="flex items-center justify-between gap-2 border-t pt-2">
+                <span>Nota #{id}</span>
+                <Button asChild size="sm" variant="outline"><Link to={`/kasir?edit=${id}`}>Edit nota / diskon</Link></Button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      {saran.kode === 'satuan_margin_tipis' && <Button asChild size="sm" variant="outline"><Link to="/purchase">Buka pembelian</Link></Button>}
+      {saran.kode === 'katalog_di_bawah_margin' && <Button asChild size="sm" variant="outline"><Link to="/settings">Atur margin minimal</Link></Button>}
+      <p className="text-xs text-muted-foreground">Edit produk memperbarui harga katalog. Salah harga jual atau diskon pada transaksi: gunakan Edit nota. Salah modal: gunakan Koreksi HPP pada baris rugi.</p>
+    </div>
   )
 }

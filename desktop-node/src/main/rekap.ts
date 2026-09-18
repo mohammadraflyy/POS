@@ -86,6 +86,9 @@ export interface SalesHistoryRow {
 
 /** one sold line that lost money, with every number the arithmetic needs shown separately */
 export interface BarisRugiRow {
+  saleItemId: number
+  productUnitId: number | null
+  productId: number
   saleId: number
   tanggal: string
   namaItem: string
@@ -111,6 +114,7 @@ export interface BarisRugiRow {
  * renderer - main deals in sen, and a sentence built here would have to format money twice.
  */
 export interface SaranLaba {
+  status: 'aktif' | 'riwayat' | 'diperbaiki'
   kode: 'harga_di_bawah_modal' | 'diskon_memakan_margin' | 'satuan_margin_tipis' | 'katalog_di_bawah_margin'
   /** how many rows, satuan, or catalog entries this is about */
   jumlah: number
@@ -120,6 +124,8 @@ export interface SaranLaba {
   persen: number
   /** a few names to make the advice concrete */
   contoh: string[]
+  produk: { productId: number; namaItem: string; satuan: string }[]
+  saleIds: number[]
 }
 
 export interface PenjelasanLaba {
@@ -150,6 +156,12 @@ const AMBANG_MARGIN_SATUAN = 5
  * Turns the period's own figures into advice. Every entry has to be earned by the numbers -
  * generic "sell for more" wording would be noise on a report the owner reads every day.
  */
+function unikProduk(rows: SaranLaba['produk']): SaranLaba['produk'] {
+  return [...new Map(rows.map((row) => [`${row.productId}:${row.satuan}`, {
+    productId: row.productId, namaItem: row.namaItem, satuan: row.satuan,
+  }])).values()]
+}
+
 function susunSaran(
   db: BetterSQLite3Database<typeof schema>,
   input: {
@@ -159,9 +171,13 @@ function susunSaran(
     totalDiskon: number
     barisRugi: BarisRugiRow[]
     labaPerSatuan: LabaPerSatuanRow[]
+    barisTerjual: SaranLaba['produk']
+    saleIdsDiskon: number[]
   },
 ): SaranLaba[] {
   const saran: SaranLaba[] = []
+  const marginMinimal = db.select().from(storeSettings).get()?.marginMinimalPersen ?? 10
+  const currentUnits = db.select().from(productUnits).all()
 
   // Priced under cost: no discount involved, the master price itself is wrong. This is the one
   // cause the owner can fix outright, so it leads.
@@ -172,10 +188,17 @@ function susunSaran(
 
     saran.push({
       kode: 'harga_di_bawah_modal',
+      status: rugiKarenaHarga.every((row) => {
+        // A deleted unit must not be mistaken for the product's base unit.
+        const unit = currentUnits.find((unit) => unit.id === row.productUnitId)
+        return unit && unit.hargaJual > 0 && unit.hargaPokok > 0 && unit.hargaJual * (100 - marginMinimal) >= unit.hargaPokok * 100
+      }) ? 'diperbaiki' : 'aktif',
       jumlah: namaUnik.length,
       nilai: rugiKarenaHarga.reduce((sum, row) => sum + row.laba, 0),
       persen: 0,
       contoh: namaUnik.slice(0, 3),
+      produk: unikProduk(rugiKarenaHarga),
+      saleIds: [...new Set(rugiKarenaHarga.map((row) => row.saleId))],
     })
   }
 
@@ -185,11 +208,14 @@ function susunSaran(
   if (input.totalDiskon > 0 && labaSebelumDiskon > 0 && input.labaKotor < labaSebelumDiskon * AMBANG_SISA_MARGIN) {
     saran.push({
       kode: 'diskon_memakan_margin',
+      status: 'riwayat',
       jumlah: 0,
       nilai: input.totalDiskon,
       // the rate the goods can actually carry - a discount above this sells at a loss
       persen: (labaSebelumDiskon / input.penjualanKotor) * 100,
       contoh: [],
+      produk: [],
+      saleIds: input.saleIdsDiskon,
     })
   }
 
@@ -199,32 +225,39 @@ function susunSaran(
   if (satuanTertipis && satuanTertipis.marginPersen < AMBANG_MARGIN_SATUAN) {
     saran.push({
       kode: 'satuan_margin_tipis',
+      status: 'riwayat',
       jumlah: satuanTertipis.qtyTerjual,
       nilai: satuanTertipis.laba,
       persen: satuanTertipis.marginPersen,
       contoh: [satuanTertipis.satuan],
+      produk: unikProduk(input.barisTerjual.filter((row) => row.satuan === satuanTertipis.satuan)),
+      saleIds: [],
     })
   }
 
   // What is still mispriced in the catalog, sold this period or not: margin = (jual - pokok) / jual,
   // so "below m percent" is `jual * (100 - m) < pokok * 100` with no division to round away
-  const marginMinimal = db.select().from(storeSettings).get()?.marginMinimalPersen ?? 10
   const diBawahMargin =
     db
-      .select({ count: sql<number>`count(*)` })
+      .select({ productId: products.id, namaItem: products.namaItem, satuan: units.code })
       .from(productUnits)
+      .innerJoin(products, eq(productUnits.productId, products.id))
+      .innerJoin(units, eq(productUnits.unitId, units.id))
       .where(
         sql`${productUnits.hargaJual} > 0 and ${productUnits.hargaPokok} > 0 and ${productUnits.hargaJual} * ${100 - marginMinimal} < ${productUnits.hargaPokok} * 100`,
       )
-      .get()?.count ?? 0
+      .all()
 
-  if (diBawahMargin > 0) {
+  if (diBawahMargin.length > 0) {
     saran.push({
       kode: 'katalog_di_bawah_margin',
-      jumlah: diBawahMargin,
+      status: 'aktif',
+      jumlah: diBawahMargin.length,
       nilai: 0,
       persen: marginMinimal,
       contoh: [],
+      produk: unikProduk(diBawahMargin),
+      saleIds: [],
     })
   }
 
@@ -378,6 +411,8 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
   // margin has to be counted on exactly the sales the omzet was counted on.
   const saleItemRows = db
     .select({
+      saleItemId: saleItems.id,
+      productUnitId: saleItems.productUnitId,
       saleId: saleItems.saleId,
       categoryName: categories.nama,
       productId: products.id,
@@ -458,6 +493,9 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
 
     if (laba < 0) {
       semuaBarisRugi.push({
+        saleItemId: row.saleItemId,
+        productUnitId: row.productUnitId,
+        productId: row.productId,
         saleId: row.saleId,
         tanggal: diakui.get(row.saleId)!.tanggal,
         namaItem: row.namaItem,
@@ -539,6 +577,8 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     labaKotor,
     totalDiskon: totalDiskonItem + totalDiskonNota,
     barisRugi: semuaBarisRugi,
+    barisTerjual: saleItemRows.map((row) => ({ productId: row.productId, namaItem: row.namaItem, satuan: row.unitCode ?? row.satuanSnapshot ?? 'Tanpa Satuan' })),
+    saleIdsDiskon: [...new Set(saleItemRows.filter((row) => row.diskonBaris > 0 || diakui.get(row.saleId)!.diskon > 0).map((row) => row.saleId))],
     labaPerSatuan,
   })
 

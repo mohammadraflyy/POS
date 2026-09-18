@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { CellKeyboardEvent, CellKeyDownArgs, DataGridHandle, RowsChangeData } from 'react-data-grid'
-import { ShoppingCart, Trash2, UserRound } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, Trash2, UserRound } from 'lucide-react'
 import { Page, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -656,8 +656,9 @@ export function Kasir() {
         actions={
           <>
             {editSaleId !== null && (
-              <Button type="button" variant="outline" onClick={() => navigate('/history')}>
-                Batal
+              <Button type="button" variant="outline" disabled={processing} onClick={() => navigate('/history')}>
+                <ArrowLeft className="size-4" />
+                Kembali
               </Button>
             )}
             <div className="flex items-center gap-1.5">

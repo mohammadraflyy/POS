@@ -5,12 +5,19 @@ import * as schema from '../db/schema'
 import { getRekap, buildRekapWorkbook } from '../rekap'
 import { getMainWindow } from '../index'
 import { requireAdmin } from './auth'
+import { applyCostCorrection, listCostCorrections, previewCostCorrection } from '../cost-correction'
+import type { CostCorrectionApply, CostCorrectionRequest } from '../../shared/cost-correction'
 
 function toRupiah(cents: number): number {
   return cents / 100
 }
 
 export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
+  ipcMain.handle('rekap:previewCostCorrection', (_event, input: CostCorrectionRequest) =>
+    previewCostCorrection(db, requireAdmin(), input))
+  ipcMain.handle('rekap:applyCostCorrection', (_event, input: CostCorrectionApply) =>
+    applyCostCorrection(db, requireAdmin(), input))
+  ipcMain.handle('rekap:listCostCorrections', () => listCostCorrections(db, requireAdmin()))
   ipcMain.handle('rekap:getRekap', (_event, input: { from: string; to: string }) => {
     requireAdmin()
 
@@ -34,6 +41,9 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
         jumlahBarisRugi: result.penjelasanLaba.jumlahBarisRugi,
         totalRugi: toRupiah(result.penjelasanLaba.totalRugi),
         barisRugi: result.penjelasanLaba.barisRugi.map((row) => ({
+          saleItemId: row.saleItemId,
+          productUnitId: row.productUnitId,
+          productId: row.productId,
           saleId: row.saleId,
           tanggal: row.tanggal,
           namaItem: row.namaItem,
@@ -48,6 +58,7 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
           laba: toRupiah(row.laba),
         })),
         saran: result.penjelasanLaba.saran.map((row) => ({
+          status: row.status,
           kode: row.kode,
           // a count, not money
           jumlah: row.jumlah,
@@ -55,6 +66,8 @@ export function registerRekapIpc(db: BetterSQLite3Database<typeof schema>) {
           // a percentage, not money
           persen: row.persen,
           contoh: row.contoh,
+          produk: row.produk,
+          saleIds: row.saleIds,
         })),
       },
       labaPerKategori: result.labaPerKategori.map((row) => ({
