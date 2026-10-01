@@ -45,6 +45,8 @@ export interface CartLine {
    * call sites that build a CartLine keep compiling.
    */
   hargaOverride?: number | null
+  /** Original sale price, exempt from today's cost floor while unchanged. */
+  hargaSnapshot?: number
   /**
    * Whole rupiah taken off this line by hand. Stored as a plain amount even when the
    * cashier typed a percentage: the percentage is resolved the moment it is entered, so
@@ -120,7 +122,7 @@ export function unitHargaPokok(line: CartLine): number {
  * master or tier price the owner set on purpose.
  */
 export function isBelowHargaPokok(line: CartLine): boolean {
-  return line.hargaOverride != null && line.hargaOverride < unitHargaPokok(line)
+  return line.hargaOverride != null && line.hargaOverride !== line.hargaSnapshot && line.hargaOverride < unitHargaPokok(line)
 }
 
 /** what the line is worth before its own discount */
@@ -272,7 +274,7 @@ export function addLine(
 export function changeUnit(cart: CartLine[], line: CartLine, productUnitId: number | null): CartLine[] {
   const newKey = lineKey(line.product.id, productUnitId)
 
-  if (newKey === line.key) {
+  if (productUnitId === line.productUnitId) {
     return cart
   }
 
@@ -286,7 +288,7 @@ export function changeUnit(cart: CartLine[], line: CartLine, productUnitId: numb
 
   return cart.map((i) =>
     i.key === line.key
-      ? { ...i, key: newKey, productUnitId, satuan: unit?.satuan ?? line.product.satuan }
+      ? { ...i, key: newKey, productUnitId, satuan: unit?.satuan ?? line.product.satuan, hargaOverride: undefined, hargaSnapshot: undefined }
       : i,
   )
 }
@@ -356,12 +358,8 @@ export interface EditSaleItem {
  * both cases so the caller can refuse to let the sale be saved from an incomplete
  * cart instead of silently deleting the missing line's stock and total on save.
  *
- * addItemsToSale (main process) plain-inserts a sale_items row rather than merging,
- * so a bon topped up with a product already on it can carry two rows for the same
- * product+unit. Those collapse into one CartLine here (qty summed, last non-null
- * hargaOverride wins) - applyQty/applyHarga key by lineKey and would otherwise edit
- * both rows at once, and React would see duplicate grid keys. Coalescing is not a
- * drop: both rows are represented, just merged into one line.
+ * Keep separate saved rows: additions to a bon can have different historical prices.
+ * Unique keys let each row be edited without changing another row of the same product.
  */
 export interface CartFromSaleResult {
   cart: CartLine[]
@@ -373,7 +371,7 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
   const cart = new Map<string, CartLine>()
   let dropped = 0
 
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     const product = products.find((p) => p.id === item.productId)
 
     if (!product) {
@@ -390,21 +388,9 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
       continue
     }
 
-    const key = lineKey(product.id, productUnitId)
-    const hargaOverride = item.priceSource === 'manual' ? item.hargaJual : null
-    const existing = cart.get(key)
-
-    if (existing) {
-      existing.qty = roundQty(existing.qty + item.qty)
-      // both rows' discounts were really given, so the merged line carries their sum
-      existing.diskon = (existing.diskon ?? 0) + (item.diskon ?? 0)
-
-      if (hargaOverride != null) {
-        existing.hargaOverride = hargaOverride
-      }
-
-      continue
-    }
+    const baseKey = lineKey(product.id, productUnitId)
+    const key = cart.has(baseKey) ? `${baseKey}:saved:${index}` : baseKey
+    const hargaOverride = item.hargaJual
 
     cart.set(key, {
       key,
@@ -413,6 +399,7 @@ export function cartFromSale(items: EditSaleItem[], products: Product[]): CartFr
       satuan: unit?.satuan ?? product.satuan,
       qty: item.qty,
       hargaOverride,
+      hargaSnapshot: item.hargaJual,
       diskon: item.diskon ?? 0,
     })
   }

@@ -88,6 +88,7 @@ export interface ResolveItemsOptions {
    * needs to see the rest of the cart's pricing even when one line can't be filled.
    */
   allowStockShortage?: boolean
+  savedItems?: (typeof saleItems.$inferSelect)[]
 }
 
 /** what a line is worth before any discount - qty may be fractional, prices are integer cents */
@@ -296,7 +297,17 @@ function resolveItems(db: Pick<Db, 'select'>, items: CartItemInput[], opts?: Res
       .filter((row) => row.productUnitId === unit.id)
       .map((row) => ({ minQty: row.minQty, maxQty: row.maxQty, hargaJual: row.hargaJual }))
 
-    const resolved = resolveCartItem(product, unit, tiers, item.qty, item.hargaJual, item.diskon, opts)
+    const saved = opts?.savedItems?.find((row) =>
+      row.productId === product.id && row.productUnitId === unit.id &&
+      (item.hargaJual == null || item.hargaJual === row.hargaJual),
+    )
+    // A saved price is already agreed, even when today's cost has risen above it.
+    const pricingUnit = saved ? { ...unit, hargaPokok: Math.min(saved.hargaPokok, saved.hargaJual) } : unit
+    const resolved = resolveCartItem(product, pricingUnit, tiers, item.qty, item.hargaJual ?? saved?.hargaJual, item.diskon, opts)
+    if (saved) {
+      resolved.hargaPokok = saved.hargaPokok
+      resolved.priceSource = saved.priceSource
+    }
     const previousQtyDasar = qtyDasarByProduct.get(product.id) ?? 0
     const totalQtyDasar = previousQtyDasar + resolved.qtyDasar
     const cukupGabungan = product.stok >= totalQtyDasar
@@ -608,7 +619,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
 
     tx.delete(saleItems).where(eq(saleItems.saleId, saleId)).run()
 
-    const resolvedItems = resolveItems(tx, input.items)
+    const resolvedItems = resolveItems(tx, input.items, { savedItems: oldItems })
     const diskonNota = input.diskon ?? 0
     assertDiskonNota(diskonNota, resolvedItems.reduce((sum, line) => sum + lineSubtotal(line), 0))
 
@@ -631,7 +642,8 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
           baseQuantity: line.qtyDasar,
           satuan: line.satuan,
           hargaJual: line.hargaJual,
-          hargaPokok: hargaPokokLama.get(`${line.productId}:${line.productUnitId}`) ?? line.hargaPokok,
+          hargaPokok: oldItems.find((item) => item.productId === line.productId && item.productUnitId === line.productUnitId && item.hargaJual === line.hargaJual)?.hargaPokok
+            ?? hargaPokokLama.get(`${line.productId}:${line.productUnitId}`) ?? line.hargaPokok,
           priceSource: line.priceSource,
           diskon: line.diskon,
           subtotal,

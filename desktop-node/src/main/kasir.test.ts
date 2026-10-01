@@ -2195,6 +2195,27 @@ describe('listCustomers', () => {
 })
 
 describe('updateSale', () => {
+  it.each([null, 10000_00])('preserves bon prices through catalog changes, edits and payment (input %s)', (hargaJual) => {
+    const db = seedDb()
+    db.update(productUnits).set({ hargaJual: 10000_00 }).where(eq(productUnits.id, 102)).run()
+    const { saleId } = checkout(db, {
+      metodePembayaran: 'bon', namaPelanggan: 'Bu Siti', dibayar: null, userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+    db.update(productUnits).set({ hargaJual: 9000_00, hargaPokok: 11000_00 }).where(eq(productUnits.id, 102)).run()
+    expect(getSaleDetail(db, saleId).items[0].hargaJual).toBe(10000_00)
+    updateSale(db, saleId, {
+      metodePembayaran: 'bon', namaPelanggan: 'Bu Siti', dibayar: 0,
+      tanggal: '2026-08-15T09:00', userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1, hargaJual }],
+    })
+    recordBonPayment(db, saleId, 10000_00, null)
+    const detail = getSaleDetail(db, saleId)
+    expect(detail.total).toBe(10000_00)
+    expect(detail.items[0].hargaJual).toBe(10000_00)
+    expect(db.select().from(saleItems).where(eq(saleItems.saleId, saleId)).get()?.priceSource).toBe('normal')
+  })
+
   function seedBaseSale() {
     const db = seedDb()
     const { saleId } = checkout(db, {
