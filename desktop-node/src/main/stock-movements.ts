@@ -17,6 +17,9 @@ export interface StockMovementRow {
   quantity: number
   /** the same change expressed in the product's base unit */
   baseQuantity: number
+  baseUnit: string | null
+  stockBefore: number
+  stockAfter: number
   movementType: StockMovementType
   /** id of the sale/purchase/adjustment that caused this row - not a foreign key here, just context */
   referenceId: number
@@ -78,6 +81,12 @@ export function listStockMovements(
   const total = totalRow?.count ?? 0
   const lastPage = Math.max(1, Math.ceil(total / pageSize))
 
+  // Compute against the complete ledger, before applying filters or pagination.
+  const stockAfter = sql<number>`${products.stok} - COALESCE((
+    SELECT SUM(later.base_quantity) FROM stock_movements later
+    WHERE later.product_id = ${stockMovements.productId}
+      AND later.id > ${stockMovements.id}
+  ), 0)`
   const data: StockMovementRow[] = db
     .select({
       id: stockMovements.id,
@@ -88,6 +97,11 @@ export function listStockMovements(
       satuan: units.code,
       quantity: stockMovements.quantity,
       baseQuantity: stockMovements.baseQuantity,
+      baseUnit: sql<string | null>`(SELECT u.code FROM product_units pu
+        JOIN units u ON u.id = pu.unit_id
+        WHERE pu.product_id = ${products.id} AND pu.is_base_unit = 1 LIMIT 1)`,
+      stockAfter,
+      stockBefore: sql<number>`${stockAfter} - ${stockMovements.baseQuantity}`,
       movementType: stockMovements.movementType,
       referenceId: stockMovements.referenceId,
     })

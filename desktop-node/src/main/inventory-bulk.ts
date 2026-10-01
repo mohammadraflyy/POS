@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import XLSX from 'xlsx'
 import * as schema from './db/schema'
-import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments, units } from './db/schema'
+import { categories, products, productPriceHistories, productUnits, productPriceTiers, stockAdjustments, stockMovements, units } from './db/schema'
 import { getBaseUnitCode, syncBaseProductUnit, syncUnitCostsFromBase } from './inventory-units'
 import { resolveOrCreateUnit } from './master-satuan'
 import { bulatkanQty, isQtyValid } from './qty'
@@ -269,7 +269,7 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
       }
 
       if (options.updateStok && existingProduct.stok !== stok) {
-        db.insert(stockAdjustments)
+        const adjustment = db.insert(stockAdjustments)
           .values({
             productId: row.id,
             userId: options.userId,
@@ -281,7 +281,18 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
             createdAt: now,
             updatedAt: now,
           })
-          .run()
+          .returning()
+          .get()
+        db.insert(stockMovements).values({
+          productId: row.id,
+          productUnitId: null,
+          quantity: adjustment.selisih,
+          conversionFactor: 1,
+          baseQuantity: adjustment.selisih,
+          movementType: 'stock_adjustment',
+          referenceId: adjustment.id,
+          createdAt: now,
+        }).run()
       }
     } else {
       const createdProduct = db
@@ -304,6 +315,20 @@ export function saveProductRows(db: DbOrTx, rows: BulkSaveRow[], options: SavePr
       // a product is not usable without its base unit row - checkout, purchase
       // and every report resolve their satuan through it
       syncBaseProductUnit(db, createdProduct.id, row.satuan, row.hargaJual)
+      if (stok !== 0) {
+        const adjustment = db.insert(stockAdjustments).values({
+          productId: createdProduct.id, userId: options.userId,
+          stokSebelum: 0, stokSesudah: stok, selisih: stok,
+          alasan: 'Stok awal', tanggal: now.toISOString().slice(0, 10),
+          createdAt: now, updatedAt: now,
+        }).returning().get()
+        db.insert(stockMovements).values({
+          productId: createdProduct.id, productUnitId: null,
+          quantity: stok, conversionFactor: 1, baseQuantity: stok,
+          movementType: 'stock_adjustment', referenceId: adjustment.id, createdAt: now,
+        }).run()
+      }
+
 
       created++
     }

@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { createDb } from './db/migrate'
 import { users, products, productUnits, units } from './db/schema'
-import { checkout } from './kasir'
+import { checkout, cancelSale } from './kasir'
 import { recordPurchase } from './purchase'
 import { recordStockAdjustment } from './stock-opname'
 import { listStockMovements } from './stock-movements'
+import { saveProductRows } from './inventory-bulk'
 
 const migrationsFolder = path.resolve(__dirname, '../../drizzle')
 
@@ -131,5 +132,64 @@ describe('listStockMovements', () => {
     expect(result.data).toHaveLength(10)
     expect(result.total).toBe(12)
     expect(result.lastPage).toBe(2)
+  })
+})
+
+
+describe('stock card balances', () => {
+  it('keeps product balances across filters and pagination, including cancellations', () => {
+    const db = seedDb()
+    recordPurchase(db, { supplierId: null, tanggal: '2026-08-01', catatan: null, items: [{ productId: 1, productUnitId: null, qty: 5, hargaBeli: 60000_00 }], userId: 1 })
+    const sale = checkout(db, { metodePembayaran: 'tunai', namaPelanggan: null, dibayar: 130000_00, userId: 1, items: [{ productId: 1, productUnitId: null, qty: 2 }] })
+    const purchase = listStockMovements(db, { page: 1, movementType: 'purchase' }).data[0]
+    expect(purchase.stockBefore).toBe(10)
+    expect(purchase.stockAfter).toBe(15)
+    expect(purchase.baseUnit).toBe('PCS')
+    cancelSale(db, sale.saleId)
+    const reversal = listStockMovements(db, { page: 1, movementType: 'sale_cancel' }).data[0]
+    expect(reversal.stockBefore).toBe(13)
+    expect(reversal.stockAfter).toBe(15)
+    for (let i = 0; i < 12; i++) {
+      recordStockAdjustment(db, { productId: 2, stokSesudah: i, alasan: null, userId: 1 })
+    }
+    const older = listStockMovements(db, { page: 2, pageSize: 10 }).data.find(row => row.movementType === 'purchase')
+    expect(older?.stockBefore).toBe(10)
+    expect(older?.stockAfter).toBe(15)
+  })
+})
+
+
+
+describe('stock card imports', () => {
+  it('records initial stock and subsequent Excel stock changes', () => {
+    const db = seedDb()
+    const row = { key: 'new', id: null, kodeItem: 'BARU', barcode: null, namaItem: 'Produk Baru', kategori: null, satuan: 'PCS', hargaPokok: 100, hargaJual: 200, stok: 8 }
+    saveProductRows(db, [row], { updateStok: true, userId: 1 })
+    const initial = listStockMovements(db, { page: 1, q: 'BARU' }).data[0]
+    expect(initial.baseQuantity).toBe(8)
+    expect(initial.stockBefore).toBe(0)
+    expect(initial.stockAfter).toBe(8)
+    saveProductRows(db, [{ ...row, id: initial.productId, stok: 3 }], { updateStok: true, userId: 1 })
+    const result = listStockMovements(db, { page: 1, q: 'BARU' })
+    expect(result.total).toBe(2)
+    expect(result.data[0].baseQuantity).toBe(-5)
+    expect(result.data[0].stockBefore).toBe(8)
+    expect(result.data[0].stockAfter).toBe(3)
+    expect(result.data[1].stockAfter).toBe(8)
+  })
+
+  it('uses base quantities for transactions in larger packaging units', () => {
+    const db = seedDb()
+    const now = new Date()
+    db.insert(units).values({ id: 2, code: 'DUS', name: 'Dus', symbol: 'dus', createdAt: now, updatedAt: now }).run()
+    db.insert(productUnits).values({ id: 103, productId: 1, unitId: 2, jumlahKemasan: 12, conversionFactor: 12, hargaJual: 780000_00, hargaPokok: 720000_00, isBaseUnit: false, createdAt: now, updatedAt: now }).run()
+    recordPurchase(db, { supplierId: null, tanggal: '2026-08-01', catatan: null, items: [{ productId: 1, productUnitId: 103, qty: 2, hargaBeli: 720000_00 }], userId: 1 })
+    const row = listStockMovements(db, { page: 1 }).data[0]
+    expect(row.quantity).toBe(2)
+    expect(row.satuan).toBe('DUS')
+    expect(row.baseUnit).toBe('PCS')
+    expect(row.baseQuantity).toBe(24)
+    expect(row.stockBefore).toBe(10)
+    expect(row.stockAfter).toBe(34)
   })
 })

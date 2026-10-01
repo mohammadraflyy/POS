@@ -36,8 +36,8 @@ const pembelianNavItems: NavItem[] = [
   { title: 'Supplier', href: '/supplier', icon: Building2 },
   { title: 'Katalog Produk', href: '/inventory', icon: Boxes },
   { title: 'Master Satuan', href: '/master-satuan', icon: Ruler },
-  { title: 'Stock Opname', href: '/stock-opname', icon: ClipboardCheck },
-  { title: 'Riwayat Stok', href: '/stock-movements', icon: ArrowLeftRight },
+  { title: 'Stok Barang', href: '/stock-opname', icon: ClipboardCheck },
+  { title: 'Kartu Stok', href: '/stock-movements', icon: ArrowLeftRight },
 ]
 
 const laporanNavItems: NavItem[] = [{ title: 'Rekap', href: '/rekap', icon: ClipboardList }]

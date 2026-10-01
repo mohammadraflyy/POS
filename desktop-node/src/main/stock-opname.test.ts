@@ -341,3 +341,42 @@ describe('recordStockAdjustment', () => {
     expect(adjustment?.tanggal).toBe(expected)
   })
 })
+
+
+describe('opname concurrency guard', () => {
+  it('rejects a count when stock changed, without writing an adjustment', () => {
+    const db = seedDb()
+    const before = searchProductsForOpname(db, { q: 'KOPI1', categoryIds: [] })[0]
+    db.update(products).set({ stok: 9 }).where(eq(products.id, 1)).run()
+    expect(() => recordStockAdjustment(db, {
+      productId: 1, stokSesudah: 10, alasan: null, userId: 1,
+      expectedStock: before.stok, expectedRevision: before.stockRevision,
+    })).toThrow('Stok berubah')
+    expect(db.select().from(stockAdjustments).all()).toHaveLength(0)
+    expect(db.select().from(products).where(eq(products.id, 1)).get()?.stok).toBe(9)
+  })
+
+  it('rejects an old count even when stock returns to its original quantity', () => {
+    const db = seedDb()
+    const before = searchProductsForOpname(db, { q: 'KOPI1', categoryIds: [] })[0]
+    recordStockAdjustment(db, { productId: 1, stokSesudah: 9, alasan: null, userId: 1 })
+    recordStockAdjustment(db, { productId: 1, stokSesudah: 10, alasan: null, userId: 1 })
+    expect(() => recordStockAdjustment(db, {
+      productId: 1, stokSesudah: 8, alasan: null, userId: 1,
+      expectedStock: before.stok, expectedRevision: before.stockRevision,
+    })).toThrow('Stok berubah')
+    expect(db.select().from(stockAdjustments).all()).toHaveLength(2)
+  })
+
+  it('accepts a current count and returns a new revision on refresh', () => {
+    const db = seedDb()
+    const before = searchProductsForOpname(db, { q: 'KOPI1', categoryIds: [] })[0]
+    recordStockAdjustment(db, {
+      productId: 1, stokSesudah: 8.5, alasan: null, userId: 1,
+      expectedStock: before.stok, expectedRevision: before.stockRevision,
+    })
+    const after = searchProductsForOpname(db, { q: 'KOPI1', categoryIds: [] })[0]
+    expect(after.stok).toBe(8.5)
+    expect(after.stockRevision).toBeGreaterThan(before.stockRevision)
+  })
+})

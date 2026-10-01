@@ -212,7 +212,7 @@ const api = {
   stockOpname: {
     listCategories: () => invoke('stock-opname:listCategories'),
     searchProducts: (input: { q: string; categoryIds: number[] }) => invoke('stock-opname:searchProducts', input),
-    recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null }) =>
+    recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null; expectedStock?: number; expectedRevision?: number }) =>
       invoke('stock-opname:recordAdjustment', input),
   },
   stockMovements: {

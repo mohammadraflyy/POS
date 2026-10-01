@@ -586,10 +586,11 @@ declare global {
             namaItem: string
             categoryName: string | null
             satuan: string
+            stockRevision: number
             stok: number
           }[]
         >
-        recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null }) => Promise<{ id: number }>
+        recordAdjustment: (input: { productId: number; stokSesudah: number; alasan: string | null; expectedStock?: number; expectedRevision?: number }) => Promise<{ id: number }>
       }
       stockMovements: {
         list: (input: {
@@ -609,6 +610,9 @@ declare global {
             satuan: string | null
             quantity: number
             baseQuantity: number
+            baseUnit: string | null
+            stockBefore: number
+            stockAfter: number
             movementType: 'sale' | 'sale_cancel' | 'purchase' | 'stock_adjustment'
             referenceId: number
           }[]

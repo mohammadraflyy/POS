@@ -4,6 +4,8 @@ import { listCategories, searchProductsForOpname, recordStockAdjustment } from '
 import { withAuth, type HttpRequest, type HttpResponse } from '../context'
 
 interface AdjustmentBody {
+  expectedStock?: number
+  expectedRevision?: number
   productId: number
   stokSesudah: number
   alasan: string | null
@@ -45,6 +47,8 @@ export async function handleOpnameRoutes(
         stokSesudah: input.stokSesudah,
         alasan: input.alasan ?? null,
         userId: user.id,
+        expectedStock: input.expectedStock,
+        expectedRevision: input.expectedRevision,
       })
 
       return { status: 200, body: result }

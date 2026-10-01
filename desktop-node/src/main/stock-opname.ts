@@ -1,4 +1,4 @@
-import { and, eq, inArray, like, or } from 'drizzle-orm'
+import { and, eq, inArray, like, or, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import * as schema from './db/schema'
 import { categories, products, productUnits, stockAdjustments, stockMovements, units } from './db/schema'
@@ -21,6 +21,7 @@ export interface ProductOpnameRow {
   categoryName: string | null
   satuan: string
   stok: number
+  stockRevision: number
 }
 
 export function searchProductsForOpname(
@@ -57,6 +58,7 @@ export function searchProductsForOpname(
       categoryName: categories.nama,
       satuan: units.code,
       stok: products.stok,
+      stockRevision: sql<number>`coalesce((select max(id) from stock_movements where product_id = ${products.id}), 0)`,
     })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
@@ -77,6 +79,8 @@ export interface RecordStockAdjustmentInput {
   stokSesudah: number
   alasan: string | null
   userId: number | null
+  expectedStock?: number
+  expectedRevision?: number
 }
 
 export interface RecordStockAdjustmentResult {
@@ -104,6 +108,13 @@ export function recordStockAdjustment(
 
     if (!product) {
       throw new Error('Produk tidak ditemukan.')
+    }
+
+    const revision = tx.select({ value: sql<number>`coalesce(max(${stockMovements.id}), 0)` })
+      .from(stockMovements).where(eq(stockMovements.productId, input.productId)).get()!.value
+    if ((input.expectedStock !== undefined && input.expectedStock !== product.stok) ||
+        (input.expectedRevision !== undefined && input.expectedRevision !== revision)) {
+      throw new Error('Stok berubah sejak penghitungan. Refresh lalu hitung ulang sebelum menyimpan.')
     }
 
     const stokSebelum = product.stok

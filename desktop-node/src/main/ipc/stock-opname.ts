@@ -19,7 +19,7 @@ export function registerStockOpnameIpc(db: BetterSQLite3Database<typeof schema>)
 
   ipcMain.handle(
     'stock-opname:recordAdjustment',
-    (_event, input: { productId: number; stokSesudah: number; alasan: string | null }) => {
+    (_event, input: { productId: number; stokSesudah: number; alasan: string | null; expectedStock?: number; expectedRevision?: number }) => {
       const user = requireUser()
 
       return recordStockAdjustment(db, {
@@ -27,6 +27,8 @@ export function registerStockOpnameIpc(db: BetterSQLite3Database<typeof schema>)
         stokSesudah: input.stokSesudah,
         alasan: input.alasan,
         userId: user.id,
+        expectedStock: input.expectedStock,
+        expectedRevision: input.expectedRevision,
       })
     },
   )

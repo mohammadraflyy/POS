@@ -22,6 +22,9 @@ interface MovementRow {
   satuan: string | null
   quantity: number
   baseQuantity: number
+  baseUnit: string | null
+  stockBefore: number
+  stockAfter: number
   movementType: MovementType
   referenceId: number
 }
@@ -33,7 +36,7 @@ const MOVEMENT_LABEL: Record<MovementType, string> = {
   stock_adjustment: 'Penyesuaian (Opname)',
 }
 
-const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Riwayat Stok', href: '/stock-movements' }]
+const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Kartu Stok', href: '/stock-movements' }]
 
 export function StockMovements() {
   const [q, setQ] = useState('')
@@ -63,7 +66,7 @@ export function StockMovements() {
         setTotal(result.total)
         setError(null)
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat riwayat stok.'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat kartu stok.'))
   }
 
   useEffect(() => {
@@ -73,6 +76,10 @@ export function StockMovements() {
 
   function submitFilters(e: FormEvent) {
     e.preventDefault()
+    if (dari && sampai && dari > sampai) {
+      setError('Tanggal Dari tidak boleh melewati tanggal Sampai.')
+      return
+    }
     loadPage(1)
   }
 
@@ -86,7 +93,8 @@ export function StockMovements() {
       setCurrentPage(result.currentPage)
       setLastPage(result.lastPage)
       setTotal(result.total)
-    })
+      setError(null)
+    }).catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat kartu stok.'))
   }
 
   const columns: Column<MovementRow>[] = [
@@ -105,33 +113,24 @@ export function StockMovements() {
         </span>
       ),
     },
-    { key: 'satuan', name: 'Satuan', width: 90, renderCell: ({ row }) => row.satuan ?? '-' },
+    { key: 'quantity', name: 'Qty Transaksi', width: 130, renderCell: ({ row }) => `${formatQty(row.quantity)} ${row.satuan ?? row.baseUnit ?? ''}` },
     {
       key: 'movementType',
       name: 'Tipe',
       width: 180,
       renderCell: ({ row }) => MOVEMENT_LABEL[row.movementType],
     },
+    { key: 'baseUnit', name: 'Satuan Dasar', width: 110, renderCell: ({ row }) => row.baseUnit ?? '-' },
+    { key: 'stockBefore', name: 'Saldo Sebelum', width: 125, renderCell: ({ row }) => formatQty(row.stockBefore) },
     {
-      key: 'quantity',
-      name: 'Qty',
-      width: 130,
-      renderCell: ({ row }) => {
-        // negative = keluar dari stok, positive = masuk ke stok - same sign convention
-        // stock_movements has always used, just made visible here
-        const masuk = row.quantity > 0
-        const keluar = row.quantity < 0
-
-        return (
-          <span
-            className={`w-full text-right font-medium ${masuk ? 'text-green-600 dark:text-green-400' : keluar ? 'text-destructive' : ''}`}
-          >
-            {masuk ? '+' : ''}
-            {formatQty(row.quantity)} {row.satuan ?? ''}
-          </span>
-        )
-      },
+      key: 'masuk', name: 'Masuk', width: 110,
+      renderCell: ({ row }) => <span className="text-green-600 dark:text-green-400">{row.baseQuantity > 0 ? formatQty(row.baseQuantity) : '-'}</span>,
     },
+    {
+      key: 'keluar', name: 'Keluar', width: 110,
+      renderCell: ({ row }) => <span className="text-destructive">{row.baseQuantity < 0 ? formatQty(-row.baseQuantity) : '-'}</span>,
+    },
+    { key: 'stockAfter', name: 'Saldo Sesudah', width: 125, renderCell: ({ row }) => formatQty(row.stockAfter) },
     {
       key: 'referensi',
       name: 'Referensi',
@@ -143,7 +142,7 @@ export function StockMovements() {
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
       <Page>
-        <PageHeader title="Riwayat Stok" description="Semua pergantian stok - penjualan, pembelian, dan penyesuaian opname, dalam satu daftar." />
+        <PageHeader title="Kartu Stok" description="Stok masuk dan keluar dari pembelian, penjualan, pembatalan, dan opname. Masuk, keluar, dan saldo ditampilkan dalam satuan dasar." />
 
         {error && (
           <p role="alert" className="text-sm text-destructive">
@@ -189,10 +188,10 @@ export function StockMovements() {
         </form>
 
         <ReportTable<MovementRow>
-          title="Riwayat Stok"
+          title="Kartu Stok"
           rows={rows}
           rowKey={(row) => row.id}
-          emptyMessage="Belum ada pergantian stok."
+          emptyMessage="Belum ada pergerakan stok."
           columns={columns}
         />
 
@@ -208,7 +207,7 @@ export function StockMovements() {
               Berikutnya
             </Button>
           </div>
-          <span className="text-sm text-muted-foreground">dari {total} pergantian stok</span>
+          <span className="text-sm text-muted-foreground">dari {total} pergerakan stok</span>
         </div>
       </Page>
     </AppShell>

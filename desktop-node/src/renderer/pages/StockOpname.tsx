@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Check, ChevronsUpDown } from 'lucide-react'
-import type { Column, RowsChangeData } from 'react-data-grid'
-import { DataGrid, renderTextEditor } from 'react-data-grid'
+import type { Column } from 'react-data-grid'
+import { DataGrid } from 'react-data-grid'
 import 'react-data-grid/lib/styles.css'
 import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,9 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useAppearance } from '@/hooks/use-appearance'
 import { useDraftState, useStickyState } from '@/hooks/use-sticky-state'
 import { useAvailableHeight } from '@/hooks/use-available-height'
@@ -30,6 +32,7 @@ interface ProductOpnameRowDTO {
   namaItem: string
   categoryName: string | null
   satuan: string
+  stockRevision: number
   stok: number
 }
 
@@ -40,6 +43,7 @@ interface DraftRow {
   namaItem: string
   categoryName: string
   satuan: string
+  stockRevision: number
   stokSistem: number
   stokFisik: string
   alasan: string
@@ -47,13 +51,10 @@ interface DraftRow {
 
 /** one product's typed count, kept between visits until the row is saved */
 interface CountDraft {
+  expectedStock?: number
+  expectedRevision?: number
   stokFisik: string
   alasan: string
-}
-
-/** true once the row says something the seeded default did not */
-function isCounted(row: DraftRow): boolean {
-  return row.stokFisik !== formatQty(row.stokSistem) || row.alasan.trim() !== ''
 }
 
 function toDraftRow(p: ProductOpnameRowDTO): DraftRow {
@@ -64,18 +65,28 @@ function toDraftRow(p: ProductOpnameRowDTO): DraftRow {
     namaItem: p.namaItem,
     categoryName: p.categoryName ?? '-',
     satuan: p.satuan,
+    stockRevision: p.stockRevision,
     stokSistem: p.stok,
-    stokFisik: formatQty(p.stok),
+    stokFisik: '',
     alasan: '',
   }
 }
 
-const OTHER_COLUMNS_WIDTH = 110 + 130 + 80 + 100 + 100 + 90 + 200
+const OTHER_COLUMNS_WIDTH = 110 + 130 + 80 + 130 + 120 + 150
 const MIN_NAMA_WIDTH = 200
 
-const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Stock Opname', href: '/stock-opname' }]
+const BREADCRUMBS: BreadcrumbItem[] = [{ title: 'Stok Barang', href: '/stock-opname' }]
 
 export function StockOpname() {
+  const { confirm, ConfirmDialog } = useConfirm()
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [correctionId, setCorrectionId] = useState<number | null>(null)
+  const requestId = useRef(0)
+  const editingCell = useRef(false)
+  const activeFilter = useRef({ q: '', categoryIds: [] as number[] })
   const { resolvedAppearance } = useAppearance()
   const [widthRef, gridWidth] = useElementWidth<HTMLDivElement>()
   const [heightRef, gridHeight] = useAvailableHeight<HTMLDivElement>(80)
@@ -96,74 +107,64 @@ export function StockOpname() {
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const [hasSearched, setHasSearched] = useState(false)
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
-  /**
-   * Counts already typed, keyed by productId, surviving a restart - a stocktake takes an
-   * hour, and losing it means walking the shelves again.
-   *
-   * Only counts somebody actually entered go in here. `stokFisik` starts out equal to the
-   * system stock, so storing every row would restore yesterday's system figure today and
-   * pass it off as a count that was made. `stokSistem` is never stored either; it is
-   * always read fresh, because a stale one becomes a wrong shrinkage figure.
-   */
+  // Only entered counts are persisted; their original stock version survives refreshes.
   const [counts, setCounts] = useDraftState<Record<string, CountDraft>>('opname.counts', {})
+  const countsRef = useRef(counts)
+  countsRef.current = counts
+
+  function updateCounts(next: Record<string, CountDraft>) {
+    countsRef.current = next
+    setCounts(next)
+  }
 
   useEffect(() => {
-    window.api.stockOpname.listCategories().then(setCategories)
-  }, [])
-
-  // a filter restored from a previous visit has to refetch its rows
-  useEffect(() => {
+    window.api.stockOpname.listCategories().then(setCategories).catch(() => setLoadError('Gagal memuat kategori.'))
     runSearch(search, selectedCategoryIds)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const refresh = () => {
+      if (document.visibilityState !== 'hidden' && !editingCell.current) {
+        const { q, categoryIds } = activeFilter.current
+        runSearch(q, categoryIds)
+      }
+    }
+    const timer = window.setInterval(refresh, 5000)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      ++requestId.current
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
   }, [])
 
-  /**
-   * Mirrors what is on screen into the stored counts: an entered count is written, and a
-   * row that is back to matching the system stock - which is what a successful save leaves
-   * behind - drops out again. Only products currently listed are touched, so counts made
-   * under another category filter survive.
-   */
-  useEffect(() => {
-    if (rows.length === 0) {
-      return
-    }
-
-    setCounts((prev) => {
-      const next = { ...prev }
-
-      for (const row of rows) {
-        if (isCounted(row)) {
-          next[String(row.productId)] = { stokFisik: row.stokFisik, alasan: row.alasan }
-        } else {
-          delete next[String(row.productId)]
-        }
-      }
-
-      return next
-    })
-  }, [rows, setCounts])
-
-  function runSearch(q: string, categoryIds: number[]) {
-    setRowErrors({})
-
+  async function runSearch(q: string, categoryIds: number[]) {
+    activeFilter.current = { q, categoryIds }
+    const id = ++requestId.current
     if (q.trim() === '' && categoryIds.length === 0) {
       setRows([])
       setHasSearched(false)
+      setRefreshing(false)
+      setLastUpdated(null)
       return
     }
-
     setHasSearched(true)
-    window.api.stockOpname.searchProducts({ q, categoryIds }).then((results) => {
-      // fresh rows from the database, with any count already typed laid back on top
-      setRows(
-        results.map((p) => {
-          const row = toDraftRow(p)
-          const typed = counts[String(p.id)]
-
-          return typed ? { ...row, stokFisik: typed.stokFisik, alasan: typed.alasan } : row
-        }),
-      )
-    })
+    setRefreshing(true)
+    try {
+      const results = await window.api.stockOpname.searchProducts({ q, categoryIds })
+      // Replacing a row closes react-data-grid's editor, losing uncommitted input.
+      if (id !== requestId.current || editingCell.current) return
+      setRows(results.map((p) => {
+        const row = toDraftRow(p)
+        const typed = countsRef.current[String(p.id)]
+        return typed ? { ...row, stokFisik: typed.stokFisik, alasan: typed.alasan } : row
+      }))
+      setLastUpdated(new Date())
+      setLoadError(null)
+    } catch (err) {
+      if (id === requestId.current) setLoadError(err instanceof Error ? err.message : 'Gagal memperbarui stok.')
+    } finally {
+      if (id === requestId.current) setRefreshing(false)
+    }
   }
 
   function submitSearch(e: FormEvent) {
@@ -194,67 +195,61 @@ export function StockOpname() {
         ? selectedNames.join(', ')
         : `${selectedNames.length} kategori`
 
-  function saveRow(row: DraftRow) {
-    setRowErrors((prev) => {
-      const next = { ...prev }
-      delete next[row.key]
-      return next
-    })
-
-    // a counted stock level may be fractional - "5,5" and "5.5" both mean 5,5 KG
-    const stokFisikNum = parseQty(row.stokFisik)
-
-    if (row.stokFisik.trim() === '' || !Number.isFinite(stokFisikNum) || stokFisikNum < 0) {
-      setRowErrors((prev) => ({ ...prev, [row.key]: 'Stok fisik harus berupa angka, minimal 0.' }))
+  async function saveRow(row: DraftRow) {
+    const draft = countsRef.current[String(row.productId)]
+    if (!draft || saving) return
+    const qty = parseQty(draft.stokFisik)
+    if (!draft.stokFisik.trim() || !Number.isFinite(qty) || qty < 0) {
+      setRowErrors((prev) => ({ ...prev, [row.key]: 'Masukkan jumlah barang dengan angka, minimal 0.' }))
       return
     }
-
-    window.api.stockOpname
-      .recordAdjustment({ productId: row.productId, stokSesudah: stokFisikNum, alasan: row.alasan || null })
-      .then(() => {
-        setRows((prev) =>
-          prev.map((r) =>
-            r.key === row.key ? { ...r, stokSistem: Math.round(stokFisikNum * 1000) / 1000 } : r,
-          ),
-        )
-        setSavedKeys((prev) => new Set(prev).add(row.key))
-        setTimeout(() => {
-          setSavedKeys((prev) => {
-            const next = new Set(prev)
-            next.delete(row.key)
-            return next
-          })
-        }, 2000)
-      })
-      .catch((err) => {
-        setRowErrors((prev) => ({ ...prev, [row.key]: err instanceof Error ? err.message : 'Gagal menyimpan' }))
-      })
+    if (draft.expectedStock !== row.stokSistem || draft.expectedRevision !== row.stockRevision) {
+      setRowErrors((prev) => ({ ...prev, [row.key]: 'Stok berubah atau draf lama belum memiliki acuan. Masukkan jumlah terbaru sebelum menyimpan.' }))
+      return
+    }
+    setSaving(true)
+    try {
+      if (!await confirm({ title: 'Simpan koreksi stok?', description: row.namaItem + ': stok saat ini ' + formatQty(row.stokSistem) + ', jumlah sebenarnya ' + formatQty(qty) + '. Stok saat ini akan diubah menjadi ' + formatQty(qty) + ' sesuai hasil hitungan Anda.', confirmLabel: 'Simpan' })) return
+      ++requestId.current
+      await window.api.stockOpname.recordAdjustment({ productId: row.productId, stokSesudah: qty, alasan: draft.alasan || null, expectedStock: draft.expectedStock, expectedRevision: draft.expectedRevision })
+      const next = { ...countsRef.current }
+      delete next[String(row.productId)]
+      updateCounts(next)
+      setRowErrors((prev) => { const next = { ...prev }; delete next[row.key]; return next })
+      setSavedKeys(new Set([row.key]))
+      setCorrectionId(null)
+    } catch (err) {
+      setRowErrors((prev) => ({ ...prev, [row.key]: err instanceof Error ? err.message : 'Gagal menyimpan' }))
+    } finally {
+      setSaving(false)
+      const { q, categoryIds } = activeFilter.current
+      void runSearch(q, categoryIds)
+    }
   }
 
-  function handleRowsChange(newRows: DraftRow[], data: RowsChangeData<DraftRow>) {
-    setRows(newRows)
-    if (data.column.key !== 'stokFisik') {
-      return
+  function editCorrection(row: DraftRow, field: 'stokFisik' | 'alasan', value: string) {
+    const existing = countsRef.current[String(row.productId)]
+    updateCounts({ ...countsRef.current, [String(row.productId)]: {
+      ...(existing ?? {
+        expectedStock: row.stokSistem, expectedRevision: row.stockRevision,
+        stokFisik: '', alasan: '',
+      }),
+      [field]: value,
+    } })
+  }
+
+  function recount(row: DraftRow) {
+    const next = { ...countsRef.current }
+    next[String(row.productId)] = {
+      stokFisik: '', alasan: '',
+      expectedStock: row.stokSistem, expectedRevision: row.stockRevision,
     }
-    const row = newRows[data.indexes[0]]
-    // compared as numbers: "5,5" and "5.5" are the same count, only a real change saves
-    if (parseQty(row.stokFisik) !== row.stokSistem) {
-      saveRow(row)
-    }
+    updateCounts(next)
+    setRows((prev) => prev.map((r) => r.key === row.key ? { ...r, stokFisik: '', alasan: '' } : r))
+    setRowErrors((prev) => { const next = { ...prev }; delete next[row.key]; return next })
   }
 
   const namaWidth = Math.max(MIN_NAMA_WIDTH, gridWidth - OTHER_COLUMNS_WIDTH - 2)
-
-  function textColumn(key: keyof DraftRow, name: string, width?: number): Column<DraftRow> {
-    return {
-      key,
-      name,
-      width,
-      editable: true,
-      renderEditCell: renderTextEditor,
-      cellClass: (row) => (rowErrors[row.key] ? 'bg-red-100 dark:bg-red-950' : undefined),
-    }
-  }
 
   const columns: Column<DraftRow>[] = [
     { key: 'kodeItem', name: 'Kode', width: 110 },
@@ -263,42 +258,31 @@ export function StockOpname() {
     { key: 'satuan', name: 'Satuan', width: 80 },
     {
       key: 'stokSistem',
-      name: 'Stok Sistem',
-      width: 100,
+      name: 'Stok Saat Ini',
+      width: 130,
       renderCell: ({ row }) => <span className="text-muted-foreground">{formatQty(row.stokSistem)}</span>,
     },
-    textColumn('stokFisik', 'Stok Fisik', 100),
     {
-      key: 'selisih',
-      name: 'Selisih',
-      width: 90,
-      renderCell: ({ row }) => {
-        const stokFisikNum = parseQty(row.stokFisik)
-        if (row.stokFisik.trim() === '' || !Number.isFinite(stokFisikNum)) {
-          return <span className="text-muted-foreground">-</span>
-        }
-        const selisih = Math.round((stokFisikNum - row.stokSistem) * 1000) / 1000
-        const colorClass = selisih > 0 ? 'text-green-600' : selisih < 0 ? 'text-destructive' : 'text-muted-foreground'
-        return (
-          <span className={colorClass}>
-            {selisih > 0 ? `+${formatQty(selisih)}` : formatQty(selisih)}
-            {savedKeys.has(row.key) && <span className="text-xs text-muted-foreground"> · Tersimpan</span>}
-          </span>
-        )
-      },
+      key: 'status', name: 'Status', width: 120,
+      renderCell: ({ row }) => <span className={row.stokSistem <= 0 ? 'text-destructive font-medium' : 'text-green-600'}>{row.stokSistem <= 0 ? 'Habis' : 'Tersedia'}</span>,
     },
-    textColumn('alasan', 'Alasan', 200),
+    {
+      key: 'actions', name: '', width: 150,
+      renderCell: ({ row }) => <Button size="sm" variant="outline" onClick={() => setCorrectionId(row.productId)}>Koreksi stok</Button>,
+    },
   ]
 
-  const errorSummary = Object.entries(rowErrors).map(([key, message]) => {
-    const row = rows.find((r) => r.key === key)
-    return `${row?.namaItem ?? 'Baris'}: ${message}`
-  })
+  const correction = rows.find((row) => row.productId === correctionId)
+  const draft = correction ? counts[String(correction.productId)] : undefined
+  const stale = !!correction && !!draft && (draft.expectedStock !== correction.stokSistem || draft.expectedRevision !== correction.stockRevision)
+  const correctedQty = parseQty(draft?.stokFisik ?? '')
+  const validCorrection = !!draft?.stokFisik.trim() && Number.isFinite(correctedQty) && correctedQty >= 0
 
   return (
     <AppShell breadcrumbs={BREADCRUMBS}>
       <Page>
-        <PageHeader title="Stok Opname" />
+        <PageHeader title="Stok Barang" />
+        <p className="text-sm text-muted-foreground">Stok otomatis mengikuti penjualan dan pembelian. Koreksi hanya jika jumlah barang sebenarnya berbeda.</p>
 
         <div className="flex flex-wrap items-center gap-2">
           <form onSubmit={submitSearch} className="flex gap-2">
@@ -319,29 +303,33 @@ export function StockOpname() {
           </Button>
         </div>
 
-        {errorSummary.length > 0 && (
-          <div className="space-y-1 text-sm text-destructive">
-            {errorSummary.map((message, i) => (
-              <p key={i}>{message}</p>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <Button variant="outline" disabled={refreshing || saving || !hasSearched} onClick={() => void runSearch(activeFilter.current.q, activeFilter.current.categoryIds)}>Refresh</Button>
+          <span>{refreshing ? 'Memperbarui stok...' : lastUpdated ? 'Terakhir diperbarui: ' + lastUpdated.toLocaleTimeString('id-ID') : ''} / Otomatis setiap 5 detik</span>
+        </div>
+        {loadError && <p className="text-sm text-destructive">{loadError}</p>}
+        {savedKeys.size > 0 && <p role="status" className="text-sm text-green-600">Koreksi stok tersimpan. Transaksi berikutnya otomatis memperbarui stok.</p>}
+        {hasSearched && <p className="text-xs text-muted-foreground">{rows.length} produk ditampilkan{selectedCategoryIds.length === 0 || search.trim() ? '. Maksimal 20 hasil, persempit pencarian atau pilih kategori untuk melihat lebih banyak.' : ''}</p>}
 
         {!hasSearched && (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Cari produk atau pilih kategori untuk mulai stok opname.
+            Cari nama / barcode atau pilih kategori untuk melihat stok terkini.
           </div>
         )}
 
         {hasSearched && (
-          <div ref={gridContainerRef} className="overflow-x-auto">
+          <div
+            ref={gridContainerRef}
+            className="overflow-x-auto"
+            onFocusCapture={(event) => { editingCell.current = event.target instanceof HTMLInputElement }}
+            onBlurCapture={() => { editingCell.current = false }}
+          >
             {gridWidth > 0 && (
               <DataGrid
                 className={resolvedAppearance === 'dark' ? 'rdg-dark' : 'rdg-light'}
                 columns={columns}
                 rows={rows}
                 rowKeyGetter={(row) => row.key}
-                onRowsChange={handleRowsChange}
                 renderers={{
                   noRowsFallback: (
                     <div className="col-span-full p-6 text-center text-sm text-muted-foreground">
@@ -356,6 +344,39 @@ export function StockOpname() {
         )}
       </Page>
 
+      <Dialog open={correctionId !== null} onOpenChange={(open) => { if (!open && !saving) setCorrectionId(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Koreksi stok</DialogTitle>
+            <DialogDescription>Gunakan saat ada selisih barang. Penjualan dan pembelian sudah memperbarui stok secara otomatis.</DialogDescription>
+          </DialogHeader>
+          {correction && <div className="space-y-4">
+            <div className="rounded-lg border bg-muted/40 p-4">
+              <p className="font-medium">{correction.namaItem}</p>
+              <p className="text-sm text-muted-foreground">{correction.kodeItem}</p>
+              <p className="mt-2 text-2xl font-semibold">{formatQty(correction.stokSistem)} <span className="text-sm font-normal">{correction.satuan}</span></p>
+              <p className="text-xs text-muted-foreground">Stok saat ini</p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="corrected-stock" className="text-sm font-medium">Jumlah barang sebenarnya ({correction.satuan})</label>
+              <Input id="corrected-stock" inputMode="decimal" placeholder="Masukkan jumlah terbaru" value={draft?.stokFisik ?? ''} disabled={saving} onChange={(event) => editCorrection(correction, 'stokFisik', event.target.value)} />
+              <p className="text-xs text-muted-foreground">Isi jumlah akhir, bukan jumlah yang ditambah atau dikurangi. Isi 0 jika habis.</p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="correction-reason" className="text-sm font-medium">Catatan (opsional)</label>
+              <Input id="correction-reason" maxLength={255} placeholder="Contoh: barang rusak atau selisih pencatatan" value={draft?.alasan ?? ''} disabled={saving} onChange={(event) => editCorrection(correction, 'alasan', event.target.value)} />
+            </div>
+            {validCorrection && <p className="text-sm">Perubahan: {formatQty(correction.stokSistem)} &rarr; {formatQty(correctedQty)} {correction.satuan}</p>}
+            {stale && <div role="alert" className="space-y-2 text-sm text-destructive"><p>Ada perubahan stok sejak koreksi dimulai. Periksa jumlah terbaru sebelum menyimpan.</p><Button variant="outline" disabled={saving} onClick={() => recount(correction)}>Masukkan jumlah terbaru</Button></div>}
+            {rowErrors[correction.key] && <p role="alert" className="text-sm text-destructive">{rowErrors[correction.key]}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" disabled={saving} onClick={() => setCorrectionId(null)}>Tutup</Button>
+              <Button disabled={saving || stale || !validCorrection} onClick={() => void saveRow(correction)}>{saving ? 'Menyimpan...' : 'Simpan koreksi'}</Button>
+            </div>
+          </div>}
+        </DialogContent>
+      </Dialog>
+      {ConfirmDialog}
       <CommandDialog
         open={categoryPickerOpen}
         onOpenChange={setCategoryPickerOpen}
