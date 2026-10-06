@@ -50,6 +50,7 @@ interface SaleDetailData {
   namaPelanggan: string | null
   metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
   status: 'selesai' | 'dibatalkan'
+  biayaLain: number
   /** bill-wide discount, already taken off `total` */
   diskon: number
   total: number
@@ -294,6 +295,7 @@ export function SaleDetail() {
               {/* only takes a slot when there was one - an ordinary sale keeps the
                   three-field row it always had */}
               {sale.diskon > 0 && <Field label="Diskon Nota" value={`-${formatRupiah(sale.diskon)}`} />}
+              {sale.biayaLain > 0 && <Field label="Lain-lain" value={formatRupiah(sale.biayaLain)} />}
               <Field label="Total" value={formatRupiah(sale.total)} />
               <Field label="Dibayar" value={formatRupiah(sale.dibayar)} />
               <Field

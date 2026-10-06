@@ -220,6 +220,8 @@ export function parseTanggalTransaksi(tanggal: string): Date {
 }
 
 export interface CheckoutInput {
+  /** Additional charge in cents, included in total. */
+  biayaLain?: number | null
   metodePembayaran: MetodePembayaran
   namaPelanggan: string | null
   dibayar: number | null
@@ -374,6 +376,13 @@ export function previewCart(db: BetterSQLite3Database<typeof schema>, input: Pre
   return { lines, subtotal, diskon: diskonNota, total: subtotal - diskonNota }
 }
 
+function validateBiayaLain(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error('Biaya lain-lain harus berupa nominal yang valid, minimal 0.')
+  }
+  return value
+}
+
 export function checkout(db: BetterSQLite3Database<typeof schema>, input: CheckoutInput): CheckoutResult {
   if (input.items.length < 1) {
     throw new Error('Keranjang tidak boleh kosong.')
@@ -389,6 +398,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
     throw new Error('Nama pelanggan wajib diisi untuk transaksi bon.')
   }
 
+  const biayaLain = validateBiayaLain(input.biayaLain ?? 0)
   const resolvedItems = resolveItems(db, input.items)
   const diskonNota = input.diskon ?? 0
   assertDiskonNota(diskonNota, resolvedItems.reduce((sum, line) => sum + lineSubtotal(line), 0))
@@ -396,7 +406,14 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
   const now = input.tanggal ? parseTanggalTransaksi(input.tanggal) : new Date()
 
   return db.transaction((tx) => {
-    const dibayarAwal = input.metodePembayaran === 'tunai' ? (input.dibayar ?? 0) : 0
+    // bon can take a partial payment up front, same field tunai uses - the rest
+    // becomes the debt, collected later through recordBonPayment
+    const dibayarAwal =
+      input.metodePembayaran === 'tunai' || input.metodePembayaran === 'bon' ? (input.dibayar ?? 0) : 0
+
+    if (dibayarAwal < 0) {
+      throw new Error('Jumlah bayar tidak boleh negatif.')
+    }
 
     const sale = tx
       .insert(sales)
@@ -407,6 +424,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         metodePembayaran: input.metodePembayaran,
         status: 'selesai',
         diskon: diskonNota,
+        biayaLain,
         keterangan: input.keterangan?.trim() || null,
         total: 0,
         dibayar: dibayarAwal,
@@ -461,7 +479,7 @@ export function checkout(db: BetterSQLite3Database<typeof schema>, input: Checko
         .run()
     }
 
-    total -= diskonNota
+    total += biayaLain - diskonNota
 
     // qris and transfer settle the exact amount at checkout - nothing owed, no change given
     const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
@@ -536,6 +554,7 @@ export function cancelSale(db: Db, saleId: number): void {
 }
 
 export interface UpdateSaleInput {
+  biayaLain?: number | null
   metodePembayaran: MetodePembayaran
   namaPelanggan: string | null
   /** whole cents; ignored for qris and transfer, which always settle in full */
@@ -604,6 +623,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
 
   return db.transaction((tx) => {
     const oldItems = tx.select().from(saleItems).where(eq(saleItems.saleId, saleId)).all()
+    const biayaLain = validateBiayaLain(input.biayaLain ?? sale.biayaLain)
     const totalSebelum = sale.total
 
     restoreStockForItems(
@@ -671,7 +691,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
         .run()
     }
 
-    total -= diskonNota
+    total += biayaLain - diskonNota
 
     const lunasNonTunai = (METODE_NON_TUNAI as readonly string[]).includes(input.metodePembayaran)
     // for bon, dibayar is allowed to sit above the sum of recorded bon_payments - deliberate,
@@ -693,6 +713,7 @@ export function updateSale(db: Db, saleId: number, input: UpdateSaleInput): { to
         namaPelanggan: input.namaPelanggan,
         metodePembayaran: input.metodePembayaran,
         diskon: diskonNota,
+        biayaLain,
         keterangan: input.keterangan?.trim() || null,
         total,
         dibayar: dibayarBaru,
@@ -1154,6 +1175,8 @@ export function searchCatalogForSale(
 }
 
 export interface ReceiptData {
+  biayaLain: number
+  keterangan: string | null
   saleId: number
   diskon: number
   total: number
@@ -1188,6 +1211,8 @@ export function getReceipt(
 
   return {
     saleId: sale.id,
+    keterangan: sale.keterangan,
+    biayaLain: toRupiah(sale.biayaLain),
     diskon: toRupiah(sale.diskon),
     total: toRupiah(sale.total),
     dibayar: toRupiah(sale.dibayar),
@@ -1325,6 +1350,7 @@ export interface SaleDetailItem {
 }
 
 export interface SaleDetailResult {
+  biayaLain: number
   id: number
   namaPelanggan: string | null
   metodePembayaran: MetodePembayaran
@@ -1396,6 +1422,7 @@ export function getSaleDetail(db: BetterSQLite3Database<typeof schema>, saleId: 
     namaPelanggan: sale.namaPelanggan,
     metodePembayaran: sale.metodePembayaran,
     status: sale.status,
+    biayaLain: sale.biayaLain,
     diskon: sale.diskon,
     total: sale.total,
     dibayar: sale.dibayar,

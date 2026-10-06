@@ -5,6 +5,7 @@ import { toCents, toRupiah } from '../../money'
 import { withAuth, matchPath, type HttpRequest, type HttpResponse, type RouterDeps } from '../context'
 
 interface CheckoutBody {
+  biayaLain?: number | null
   metodePembayaran: MetodePembayaran
   namaPelanggan: string | null
   dibayar: number | null
@@ -33,6 +34,7 @@ export async function handleSalesRoutes(
         dibayar: input.dibayar == null ? null : toCents(input.dibayar),
         userId: user.id,
         tanggal: input.tanggal ?? null,
+        biayaLain: input.biayaLain == null ? undefined : toCents(input.biayaLain),
         diskon: input.diskon == null ? null : toCents(input.diskon),
         keterangan: input.keterangan ?? null,
         items: input.items.map((item) => ({
@@ -128,6 +130,7 @@ export async function handleSalesRoutes(
           namaPelanggan: detail.namaPelanggan,
           metodePembayaran: detail.metodePembayaran,
           status: detail.status,
+          biayaLain: toRupiah(detail.biayaLain),
           diskon: toRupiah(detail.diskon),
           total: toRupiah(detail.total),
           dibayar: toRupiah(detail.dibayar),

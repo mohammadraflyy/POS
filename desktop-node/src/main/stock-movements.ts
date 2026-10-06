@@ -82,12 +82,14 @@ export function listStockMovements(
   const lastPage = Math.max(1, Math.ceil(total / pageSize))
 
   // Compute against the complete ledger, before applying filters or pagination.
+  // stockBefore is derived in JS below (stockAfter - baseQuantity) rather than
+  // with a second copy of this subquery - same number, half the correlated scans.
   const stockAfter = sql<number>`${products.stok} - COALESCE((
     SELECT SUM(later.base_quantity) FROM stock_movements later
     WHERE later.product_id = ${stockMovements.productId}
       AND later.id > ${stockMovements.id}
   ), 0)`
-  const data: StockMovementRow[] = db
+  const rows = db
     .select({
       id: stockMovements.id,
       createdAt: stockMovements.createdAt,
@@ -101,7 +103,6 @@ export function listStockMovements(
         JOIN units u ON u.id = pu.unit_id
         WHERE pu.product_id = ${products.id} AND pu.is_base_unit = 1 LIMIT 1)`,
       stockAfter,
-      stockBefore: sql<number>`${stockAfter} - ${stockMovements.baseQuantity}`,
       movementType: stockMovements.movementType,
       referenceId: stockMovements.referenceId,
     })
@@ -116,6 +117,8 @@ export function listStockMovements(
     .limit(pageSize)
     .offset((page - 1) * pageSize)
     .all()
+
+  const data: StockMovementRow[] = rows.map((row) => ({ ...row, stockBefore: row.stockAfter - row.baseQuantity }))
 
   return { data, currentPage: page, lastPage, total }
 }

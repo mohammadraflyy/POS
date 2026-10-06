@@ -3,6 +3,7 @@ import { lineSubtotal, priceForQty, resolveCartItem, type ProductRow, type Produ
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { createDb } from './db/migrate'
+import { getRekap } from './rekap'
 import { users, products, productUnits, productPriceTiers, units, customers, sales, saleItems, saleEdits, bonPayments, stockMovements, storeSettings } from './db/schema'
 import {
   checkout,
@@ -11,6 +12,7 @@ import {
   cancelSale,
   deleteSale,
   getSaleDetail,
+  getReceipt,
   listCustomers,
   listSalesHistory,
   previewCart,
@@ -772,6 +774,51 @@ describe('checkout', () => {
     expect(sale?.metodePembayaran).toBe('bon')
     expect(sale?.namaPelanggan).toBe('Bu Siti')
     expect(sale?.dibayar).toBe(0)
+  })
+
+  it('lets a bon take a partial payment up front, leaving the rest as debt', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Siti',
+      dibayar: 4000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 3 }], // total 9000_00
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.total).toBe(9000_00)
+    expect(sale?.dibayar).toBe(4000_00)
+  })
+
+  it('lets a bon be paid in full at checkout', () => {
+    const db = seedDb()
+
+    const result = checkout(db, {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Siti',
+      dibayar: 9000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 3 }], // total 9000_00
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, result.saleId)).get()
+    expect(sale?.dibayar).toBe(9000_00)
+  })
+
+  it('rejects a negative bon payment', () => {
+    const db = seedDb()
+
+    const input: CheckoutInput = {
+      metodePembayaran: 'bon',
+      namaPelanggan: 'Bu Siti',
+      dibayar: -1000_00,
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 3 }],
+    }
+
+    expect(() => checkout(db, input)).toThrow('Jumlah bayar tidak boleh negatif.')
   })
 
   // This case throws during the pre-transaction resolve loop (proving the
@@ -2770,5 +2817,57 @@ describe('previewCart', () => {
     expect(() =>
       previewCart(db, { items: [{ productId: 1, productUnitId: null, qty: 1 }], diskon: 999999_00 }),
     ).toThrow('Diskon nota melebihi total belanja.')
+  })
+})
+
+
+describe('additional receipt charges', () => {
+  it.each(['tunai', 'bon', 'qris', 'transfer'] as const)('includes charges and notes in %s receipts', (metodePembayaran) => {
+    const db = seedDb()
+    // bon now keeps whatever dibayar it is given (a partial payment up front), so
+    // it is kept unpaid here to exercise the same "still owes everything" path
+    // the assertions below expect.
+    const { saleId, total } = checkout(db, {
+      metodePembayaran, namaPelanggan: 'Bu Siti', dibayar: metodePembayaran === 'bon' ? 0 : 10000_00, userId: 1,
+      biayaLain: 2000_00, diskon: 500_00, keterangan: 'Ongkir antar rumah',
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+    expect(total).toBe(4500_00)
+    expect(getReceipt(db, saleId, 'Admin')).toMatchObject({ biayaLain: 2000, total: 4500, keterangan: 'Ongkir antar rumah' })
+    const report = getRekap(db, { from: '2020-01-01', to: '2099-12-31' })
+    if (metodePembayaran === 'bon') {
+      expect(report.summary.piutangBeredar).toBe(4500_00)
+      expect(report.summary.labaKotor).toBe(0)
+    } else {
+      expect(report.summary.labaKotor).toBe(getSaleDetail(db, saleId).laba)
+      expect(report.labaPerKategori.find(row => row.categoryName === 'Lain-lain')?.omzet).toBe(2000_00)
+      expect(report.labaPerHari.reduce((sum, row) => sum + row.omzet, 0)).toBe(4500_00)
+    }
+    if (metodePembayaran === 'bon') {
+      addItemsToSale(db, saleId, [{ productId: 2, productUnitId: null, qty: 1 }])
+      expect(getSaleDetail(db, saleId).total).toBe(7500_00)
+      recordBonPayment(db, saleId, 7500_00, null)
+    }
+    if (metodePembayaran === 'qris' || metodePembayaran === 'transfer') {
+      expect(getSaleDetail(db, saleId).dibayar).toBe(4500_00)
+    }
+  })
+
+  it('preserves charges on edit when omitted, and allows explicitly clearing them', () => {
+    const db = seedDb()
+    const input = { metodePembayaran: 'bon' as const, namaPelanggan: 'Bu Siti', dibayar: 0, userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }] }
+    const { saleId } = checkout(db, { ...input, biayaLain: 2000_00 })
+    updateSale(db, saleId, { ...input, tanggal: '2026-08-15T09:00' })
+    expect(getSaleDetail(db, saleId)).toMatchObject({ biayaLain: 2000_00, total: 5000_00 })
+    updateSale(db, saleId, { ...input, tanggal: '2026-08-15T09:00', biayaLain: 0 })
+    expect(getSaleDetail(db, saleId)).toMatchObject({ biayaLain: 0, total: 3000_00 })
+  })
+
+  it.each([-1, NaN, Infinity, 0.5])('rejects invalid additional charge %s', (biayaLain) => {
+    const db = seedDb()
+    expect(() => checkout(db, { metodePembayaran: 'bon', namaPelanggan: 'Bu Siti', dibayar: 0, userId: 1,
+      biayaLain, items: [{ productId: 2, productUnitId: null, qty: 1 }] })).toThrow('Biaya lain-lain')
+    expect(db.select().from(sales).all()).toHaveLength(0)
   })
 })

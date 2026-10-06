@@ -38,6 +38,15 @@ describe('buildReceiptEscPos', () => {
     items: [{ namaItem: 'Beras 5kg', qty: 1, satuan: 'PCS', hargaJual: 65000, diskon: 0, subtotal: 65000 }],
   }
 
+  it.each(['58mm', '80mm'] as const)('prints additional charges and wrapped notes on %s paper', (width) => {
+    const text = buildReceiptEscPos({ ...tunaiSale, biayaLain: 2000, total: 67000,
+      keterangan: 'Antar rumah\n' + 'a'.repeat(80) }, storeSettings, width).toString('ascii')
+    expect(text).toContain(padLine('Lain-lain', 'Rp 2.000', width === '58mm' ? 32 : 48))
+    expect(text).toContain('Keterangan:\nAntar rumah\n')
+    expect(text).toContain('Rp 67.000')
+    expect(text.split('\n').filter(line => line.startsWith('a')).every(line => line.length <= (width === '58mm' ? 32 : 48))).toBe(true)
+  })
+
   it('prints a discounted line at its full price and gives the discount back below it', () => {
     const text = buildReceiptEscPos(
       {

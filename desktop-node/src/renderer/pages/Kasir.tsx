@@ -53,6 +53,7 @@ interface KasirDraft {
   dibayar: string
   jumlah: string
   /** kept as typed ("5000" or "10%") so the cashier sees back what they entered */
+  biayaLain: string
   diskonNota: string
   /** free note on the sale, typed before it is ever saved */
   keterangan: string
@@ -64,6 +65,7 @@ const EMPTY_DRAFT: KasirDraft = {
   namaPelanggan: DEFAULT_PELANGGAN,
   dibayar: '',
   jumlah: '1.00',
+  biayaLain: '',
   diskonNota: '',
   keterangan: '',
 }
@@ -105,6 +107,7 @@ function readStoredDraft(): KasirDraft {
       namaPelanggan: typeof parsed.namaPelanggan === 'string' ? parsed.namaPelanggan : DEFAULT_PELANGGAN,
       dibayar: typeof parsed.dibayar === 'string' ? parsed.dibayar : '',
       jumlah: typeof parsed.jumlah === 'string' ? parsed.jumlah : EMPTY_DRAFT.jumlah,
+      biayaLain: typeof parsed.biayaLain === 'string' ? parsed.biayaLain : '',
       diskonNota: typeof parsed.diskonNota === 'string' ? parsed.diskonNota : '',
       keterangan: typeof parsed.keterangan === 'string' ? parsed.keterangan : '',
     }
@@ -129,6 +132,7 @@ export function Kasir() {
   const [metode, setMetode] = useState<'tunai' | 'bon' | 'qris' | 'transfer'>(initialDraft.metode)
   const [namaPelanggan, setNamaPelanggan] = useState(initialDraft.namaPelanggan)
   const [dibayar, setDibayar] = useState(initialDraft.dibayar)
+  const [biayaLain, setBiayaLain] = useState(initialDraft.biayaLain)
   const [diskonNota, setDiskonNota] = useState(initialDraft.diskonNota)
   // edit mode only, and deliberately never persisted to the draft - a reason belongs to
   // the one save it explains
@@ -202,6 +206,7 @@ export function Kasir() {
         // the percentage is not stored, and re-deriving it would change the sale's total
         setDiskonNota(sale.diskon > 0 ? String(sale.diskon) : '')
         setKeterangan(sale.keterangan ?? '')
+        setBiayaLain(sale.biayaLain ? String(sale.biayaLain) : '')
         setTanggal(
           `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}T${pad(created.getHours())}:${pad(created.getMinutes())}`,
         )
@@ -237,11 +242,12 @@ export function Kasir() {
       dibayar,
       jumlah,
       diskonNota,
+      biayaLain,
       keterangan,
     }
 
     localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft))
-  }, [cart, metode, namaPelanggan, dibayar, jumlah, diskonNota, keterangan, editSaleId])
+  }, [cart, metode, namaPelanggan, dibayar, jumlah, diskonNota, biayaLain, keterangan, editSaleId])
 
   function refreshProducts() {
     window.api.kasir
@@ -289,7 +295,8 @@ export function Kasir() {
   const subtotalBarang = useMemo(() => cart.reduce((sum, line) => sum + lineSubtotal(line), 0), [cart])
   const diskonItem = subtotalKotor - subtotalBarang
   const diskonNotaValue = useMemo(() => parseDiskon(diskonNota, subtotalBarang), [diskonNota, subtotalBarang])
-  const total = subtotalBarang - diskonNotaValue
+  const biayaLainValue = Number(biayaLain || 0)
+  const total = subtotalBarang - diskonNotaValue + (Number.isFinite(biayaLainValue) ? biayaLainValue : 0)
   // what the goods in the cart cost, so the payment dialog can show the margin the bill
   // leaves - and warn when a discount has taken it under
   const modal = useMemo(() => cartModal(cart), [cart])
@@ -525,6 +532,7 @@ export function Kasir() {
     setDiskonNota('')
     // likewise the note - it described that sale, not the next one
     setKeterangan('')
+    setBiayaLain('')
     setTanggal(nowForInput())
     // the next sale starts on the clock again, not on the last one's time
     setTanggalDirty(false)
@@ -548,9 +556,10 @@ export function Kasir() {
         // bon must not, or an unnamed debt would silently be filed under it and
         // the main process could never reject it
         namaPelanggan: metode === 'bon' ? namaPelanggan.trim() || null : namaPelanggan.trim() || DEFAULT_PELANGGAN,
-        dibayar: metode === 'tunai' ? Number(dibayar || 0) : null,
+        dibayar: metode === 'tunai' || metode === 'bon' ? Number(dibayar || 0) : null,
         tanggal,
         diskon: diskonNotaValue,
+        biayaLain: biayaLainValue,
         keterangan: keterangan.trim() || null,
         items: cart.map((line) => ({
           productId: line.product.id,
@@ -629,6 +638,7 @@ export function Kasir() {
         dibayar: metode === 'qris' || metode === 'transfer' ? null : Number(dibayar || 0),
         tanggal,
         diskon: diskonNotaValue,
+        biayaLain: biayaLainValue,
         keterangan: keterangan.trim() || null,
         items: cart.map((line) => ({
           productId: line.product.id,
@@ -797,7 +807,7 @@ export function Kasir() {
 
               {/* only shown once something has actually been given away - an untouched
                   sale keeps the single big number it had before */}
-              {(diskonItem > 0 || diskonNotaValue > 0) && (
+              {(diskonItem > 0 || diskonNotaValue > 0 || biayaLainValue > 0) && (
                 <div className="mt-2 space-y-0.5 text-xs tabular-nums text-muted-foreground">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
@@ -809,6 +819,7 @@ export function Kasir() {
                       <span className="text-destructive">-{formatRupiah(diskonItem)}</span>
                     </div>
                   )}
+                  {biayaLainValue > 0 && <div className="flex justify-between"><span>Lain-lain</span><span>{formatRupiah(biayaLainValue)}</span></div>}
                   {diskonNotaValue > 0 && (
                     <div className="flex justify-between">
                       <span>Diskon nota</span>
@@ -955,6 +966,8 @@ export function Kasir() {
         onSubmit={editSaleId === null ? handleCheckout : handleSaveEdit}
         editMode={editSaleId !== null}
         editReady={editReady}
+        biayaLain={biayaLain}
+        setBiayaLain={setBiayaLain}
         keterangan={keterangan}
         setKeterangan={setKeterangan}
       />

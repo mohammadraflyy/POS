@@ -1,0 +1,1 @@
+CREATE INDEX `stock_movements_product_id_id_idx` ON `stock_movements` (`product_id`,`id`);

@@ -1,0 +1,1 @@
+ALTER TABLE `sales` ADD `biaya_lain` integer DEFAULT 0 NOT NULL;

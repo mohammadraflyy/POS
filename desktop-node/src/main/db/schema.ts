@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 
 function timestamps() {
@@ -170,6 +170,7 @@ export const sales = sqliteTable('sales', {
    * know this column exists.
    */
   diskon: integer('diskon').notNull().default(0),
+  biayaLain: integer('biaya_lain').notNull().default(0),
   total: integer('total').notNull().default(0),
   dibayar: integer('dibayar').notNull().default(0),
   /**
@@ -312,7 +313,12 @@ export const stockMovements = sqliteTable('stock_movements', {
   movementType: text('movement_type', { enum: ['sale', 'sale_cancel', 'purchase', 'stock_adjustment'] }).notNull(),
   referenceId: integer('reference_id').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-})
+}, (table) => ({
+  // Kartu Stok's stockBefore/stockAfter columns sum "later" rows for the same
+  // product on every page of results - without this, that's a full table scan
+  // per row once the ledger grows past a few thousand movements.
+  productIdIdx: index('stock_movements_product_id_id_idx').on(table.productId, table.id),
+}))
 
 /**
  * Long-lived credentials for a paired phone, issued once a device successfully

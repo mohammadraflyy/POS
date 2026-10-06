@@ -30,6 +30,7 @@ const api = {
     listSalesToday: () => invoke('kasir:listSalesToday'),
     listCustomers: () => invoke<string[]>('kasir:listCustomers'),
     checkout: (input: {
+      biayaLain?: number | null
       metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
       namaPelanggan: string | null
       dibayar: number | null
@@ -40,6 +41,7 @@ const api = {
     deleteSale: (saleId: number) => invoke('kasir:deleteSale', saleId),
     getSaleForEdit: (saleId: number) => invoke('kasir:getSaleForEdit', saleId),
     updateSale: (input: {
+      biayaLain?: number | null
       saleId: number
       metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
       namaPelanggan: string | null

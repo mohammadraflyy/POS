@@ -48,6 +48,7 @@ declare global {
           }[]
         >
         checkout: (input: {
+          biayaLain?: number | null
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           namaPelanggan: string | null
           dibayar: number | null
@@ -57,6 +58,8 @@ declare global {
           items: { productId: number; productUnitId: number | null; qty: number; diskon?: number | null }[]
         }) => Promise<{
           saleId: number
+          biayaLain: number
+          keterangan: string | null
           diskon: number
           total: number
           dibayar: number
@@ -76,6 +79,7 @@ declare global {
         cancelSale: (saleId: number) => Promise<void>
         deleteSale: (saleId: number) => Promise<void>
         getSaleForEdit: (saleId: number) => Promise<{
+          biayaLain: number
           id: number
           namaPelanggan: string | null
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
@@ -94,6 +98,7 @@ declare global {
           }[]
         }>
         updateSale: (input: {
+          biayaLain?: number | null
           saleId: number
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           namaPelanggan: string | null
@@ -151,6 +156,7 @@ declare global {
           namaPelanggan: string | null
           metodePembayaran: 'tunai' | 'bon' | 'qris' | 'transfer'
           status: 'selesai' | 'dibatalkan'
+          biayaLain: number
           diskon: number
           total: number
           dibayar: number

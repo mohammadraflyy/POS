@@ -14,6 +14,8 @@ export interface EscPosReceiptItem {
 }
 
 export interface EscPosReceiptSale {
+  biayaLain?: number
+  keterangan?: string | null
   saleId: number
   /** bill-wide discount, already taken off `total` */
   diskon: number
@@ -150,6 +152,21 @@ export function buildReceiptEscPos(sale: EscPosReceiptSale, storeSettings: EscPo
   if (sale.diskon > 0) {
     out.push(...textLine(padLine('Subtotal', formatRupiah(subtotalBarang), width)))
     out.push(...textLine(padLine('Diskon', `-${formatRupiah(sale.diskon)}`, width)))
+  }
+
+  if ((sale.biayaLain ?? 0) > 0) {
+    out.push(...textLine(padLine('Lain-lain', formatRupiah(sale.biayaLain!), width)))
+  }
+
+  if (sale.keterangan?.trim()) {
+    out.push(...textLine('Keterangan:'))
+    // Wrap long notes to the paper width and exclude printer control characters.
+    for (const paragraph of sale.keterangan.replace(/[\x00-\x09\x0b-\x1f\x7f]/g, ' ').split(/\r?\n/)) {
+      for (let offset = 0; offset < paragraph.length; offset += width) {
+        out.push(...textLine(paragraph.slice(offset, offset + width)))
+      }
+    }
+    out.push(...textLine(dashLine))
   }
 
   out.push(...setBold(true))

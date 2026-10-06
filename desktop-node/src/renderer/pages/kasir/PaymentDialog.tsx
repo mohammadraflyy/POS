@@ -14,6 +14,8 @@ const actions = ['simpan', 'batal'] as const
 type Action = (typeof actions)[number]
 
 export interface PaymentDialogProps {
+  biayaLain: string
+  setBiayaLain: (value: string) => void
   open: boolean
   onOpenChange: (open: boolean) => void
   total: number
@@ -74,23 +76,25 @@ export function PaymentDialog({
   onSubmit,
   editMode,
   editReady,
+  biayaLain,
+  setBiayaLain,
   keterangan,
   setKeterangan,
 }: PaymentDialogProps) {
-  // qris/transfer land on the exact total; only cash can overpay and only bon can
-  // underpay. A bon's dibayar is only ever hand-set in edit mode (see the amount
-  // field below) - a new bon is always forced to 0 by the main process.
-  const totalBayar =
-    metode === 'tunai' || (editMode && metode === 'bon') ? Number(dibayar || 0) : metode === 'bon' ? 0 : total
+  // qris/transfer land on the exact total; cash and bon both take whatever the
+  // cashier types - cash can overpay for change, bon can underpay and leave the
+  // rest as debt, collected later through the bon payment screen.
+  const totalBayar = metode === 'tunai' || metode === 'bon' ? Number(dibayar || 0) : total
   const selisih = total - totalBayar
   // Same arithmetic rekap.ts does per sale: what the bill takes in after every discount,
   // less what the goods cost. Negative means the discounts ate the margin - the till lets
   // that through on purpose (a discount is a concession, not a mispricing), so this is a
   // warning at the point of commit, not a block.
+  const invalidBiayaLain = !Number.isFinite(Number(biayaLain || 0)) || Number(biayaLain || 0) < 0
   const laba = total - modal
   const rugi = laba < 0
   // qris and transfer arrive for the exact amount, so they are settled the moment they are chosen
-  const isLunas = (metode === 'tunai' && selisih <= 0) || metode === 'qris' || metode === 'transfer'
+  const isLunas = ((metode === 'tunai' || metode === 'bon') && selisih <= 0) || metode === 'qris' || metode === 'transfer'
   // Bon debt is collected per person, so it must never be filed under the
   // walk-in name - that debt would be uncollectable.
   const bonNeedsCustomer =
@@ -124,6 +128,7 @@ export function PaymentDialog({
     }
 
     if (action === 'simpan') {
+      if (invalidBiayaLain) return
       onSubmit()
     } else {
       onOpenChange(false)
@@ -305,9 +310,11 @@ export function PaymentDialog({
               )}
             </div>
 
-            {(metode === 'tunai' || (editMode && metode === 'bon')) && (
+            {(metode === 'tunai' || metode === 'bon') && (
               <div className="grid gap-2">
-                <Label htmlFor="dibayar">{metode === 'tunai' ? 'Uang Tunai' : 'Sudah Dibayar'}</Label>
+                <Label htmlFor="dibayar">
+                  {metode === 'tunai' ? 'Uang Tunai' : editMode ? 'Sudah Dibayar' : 'Dibayar Sekarang'}
+                </Label>
                 <Input
                   id="dibayar"
                   autoFocus
@@ -318,6 +325,12 @@ export function PaymentDialog({
                   onChange={(e) => setDibayar(e.target.value)}
                   className="h-12 text-right text-xl font-semibold tabular-nums"
                 />
+                {metode === 'bon' && !editMode && (
+                  <p className="text-xs text-muted-foreground">
+                    Kosongkan atau isi 0 kalau belum dibayar sama sekali. Sisanya tercatat sebagai piutang dan bisa
+                    dibayar bertahap lewat Pending Payment.
+                  </p>
+                )}
               </div>
             )}
 
@@ -353,13 +366,7 @@ export function PaymentDialog({
             <div className="space-y-2">
               <div className="flex items-center justify-between rounded-xl bg-green-500/15 px-4 py-2.5 dark:bg-green-500/20">
                 <span className="text-sm font-semibold text-green-700 dark:text-green-400">
-                  {metode === 'bon'
-                    ? 'Bon'
-                    : metode === 'qris'
-                      ? 'QRIS'
-                      : metode === 'transfer'
-                        ? 'Transfer'
-                        : 'Dibayar'}
+                  {metode === 'qris' ? 'QRIS' : metode === 'transfer' ? 'Transfer' : 'Dibayar'}
                 </span>
                 <span className="text-xl font-bold text-green-700 tabular-nums dark:text-green-400">
                   {formatRupiah(totalBayar)}
@@ -389,6 +396,14 @@ export function PaymentDialog({
                   {formatRupiah(Math.abs(selisih))}
                 </span>
               </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="biaya-lain">Biaya lain-lain (Rp)</Label>
+              <Input id="biaya-lain" type="number" min="0" step="0.01" value={biayaLain}
+                disabled={processing} onChange={(e) => setBiayaLain(e.target.value)} placeholder="0" />
+              {invalidBiayaLain && <p role="alert" className="text-sm text-destructive">Biaya lain-lain harus berupa angka, minimal 0.</p>}
+              <p className="text-xs text-muted-foreground">Ditambahkan ke total tagihan dan dicetak di struk.</p>
             </div>
 
             <div className="grid gap-1.5">
@@ -422,7 +437,7 @@ export function PaymentDialog({
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="submit"
-                disabled={processing || bonNeedsCustomer || (editMode && !editReady)}
+                disabled={processing || invalidBiayaLain || bonNeedsCustomer || (editMode && !editReady)}
                 className={cn(
                   selectedAction === 'simpan' && 'ring-2 ring-yellow-500 ring-offset-2 ring-offset-background',
                 )}

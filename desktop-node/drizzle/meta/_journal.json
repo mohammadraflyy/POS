@@ -162,6 +162,20 @@
       "when": 1789751848039,
       "tag": "0022_parallel_dormammu",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1790865439117,
+      "tag": "0023_fancy_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1791277090761,
+      "tag": "0024_careless_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }

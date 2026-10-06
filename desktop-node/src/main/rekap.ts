@@ -297,13 +297,14 @@ function pengakuanPenjualan(
   db: BetterSQLite3Database<typeof schema>,
   rangeStart: Date,
   rangeEnd: Date,
-): Map<number, { tanggal: string; metodePembayaran: MetodePembayaran; total: number; diskon: number }> {
+): Map<number, { tanggal: string; metodePembayaran: MetodePembayaran; total: number; diskon: number; biayaLain: number }> {
   const saleRows = db
     .select({
       id: sales.id,
       metodePembayaran: sales.metodePembayaran,
       total: sales.total,
       diskon: sales.diskon,
+      biayaLain: sales.biayaLain,
       dibayar: sales.dibayar,
       createdAt: sales.createdAt,
     })
@@ -330,7 +331,7 @@ function pengakuanPenjualan(
   const to = tanggalLokal(rangeEnd)
   const diakui = new Map<
     number,
-    { tanggal: string; metodePembayaran: MetodePembayaran; total: number; diskon: number }
+    { tanggal: string; metodePembayaran: MetodePembayaran; total: number; diskon: number; biayaLain: number }
   >()
 
   for (const sale of saleRows) {
@@ -353,6 +354,7 @@ function pengakuanPenjualan(
       metodePembayaran: sale.metodePembayaran,
       total: sale.total,
       diskon: sale.diskon,
+      biayaLain: sale.biayaLain,
     })
   }
 
@@ -535,6 +537,24 @@ export function getRekap(db: BetterSQLite3Database<typeof schema>, input: { from
     produkEntry.qtyTerjual += row.qty
     produkEntry.totalPenjualan += omzet
     produkTerlarisMap.set(row.productId, produkEntry)
+  }
+
+  // Additional charges are income without product cost or stock quantity.
+  for (const sale of diakui.values()) {
+    if (sale.biayaLain === 0) continue
+    labaKotor += sale.biayaLain
+    const category = labaPerKategoriMap.get('Lain-lain') ?? { omzet: 0, laba: 0 }
+    category.omzet += sale.biayaLain
+    category.laba += sale.biayaLain
+    labaPerKategoriMap.set('Lain-lain', category)
+    const day = labaPerHariMap.get(sale.tanggal) ?? { omzet: 0, laba: 0 }
+    day.omzet += sale.biayaLain
+    day.laba += sale.biayaLain
+    labaPerHariMap.set(sale.tanggal, day)
+    const unit = labaPerSatuanMap.get('Lain-lain') ?? { qtyTerjual: 0, omzet: 0, laba: 0 }
+    unit.omzet += sale.biayaLain
+    unit.laba += sale.biayaLain
+    labaPerSatuanMap.set('Lain-lain', unit)
   }
 
   const labaPerKategori: LabaPerKategoriRow[] = Array.from(labaPerKategoriMap.entries())

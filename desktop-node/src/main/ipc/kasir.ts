@@ -31,6 +31,7 @@ interface CheckoutRendererInput {
   namaPelanggan: string | null
   dibayar: number | null
   tanggal?: string | null
+  biayaLain?: number | null
   /** rupiah off the whole bill */
   diskon?: number | null
   /** free note on the sale; optional from the first ring-up */
@@ -147,6 +148,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       userId: user.id,
       tanggal: input.tanggal ?? null,
       diskon: input.diskon == null ? null : toCents(input.diskon),
+      biayaLain: input.biayaLain == null ? undefined : toCents(input.biayaLain),
       keterangan: input.keterangan ?? null,
       items: input.items.map((item) => ({
         productId: item.productId,
@@ -192,6 +194,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       metodePembayaran: sale.metodePembayaran,
       status: sale.status,
       diskon: toRupiah(sale.diskon),
+      biayaLain: toRupiah(sale.biayaLain),
       dibayar: toRupiah(sale.dibayar),
       keterangan: sale.keterangan,
       createdAt: sale.createdAt.toISOString(),
@@ -216,6 +219,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         namaPelanggan: string | null
         dibayar: number | null
         tanggal: string
+        biayaLain?: number | null
         diskon?: number | null
         keterangan?: string | null
         items: {
@@ -235,6 +239,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
         dibayar: input.dibayar === null ? null : toCents(input.dibayar),
         tanggal: input.tanggal,
         diskon: input.diskon == null ? null : toCents(input.diskon),
+        biayaLain: input.biayaLain == null ? undefined : toCents(input.biayaLain),
         keterangan: input.keterangan ?? null,
         userId: admin.id,
         items: input.items.map((item) => ({
@@ -354,6 +359,7 @@ export function registerKasirIpc(db: BetterSQLite3Database<typeof schema>) {
       metodePembayaran: detail.metodePembayaran,
       status: detail.status,
       diskon: toRupiah(detail.diskon),
+      biayaLain: toRupiah(detail.biayaLain),
       total: toRupiah(detail.total),
       dibayar: toRupiah(detail.dibayar),
       keterangan: detail.keterangan,
