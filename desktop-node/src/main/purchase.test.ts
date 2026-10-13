@@ -28,6 +28,9 @@ import {
   recordSupplierPayment,
   listSupplierDebts,
   listSupplierPayments,
+  updateSupplierPayment,
+  deleteSupplierPayment,
+  updatePurchaseSisaHutang,
   type PurchaseItemInput,
 } from './purchase'
 
@@ -857,6 +860,78 @@ describe('purchase debt', () => {
     expect(() =>
       recordSupplierPayment(db, { supplierId: 99, jumlah: 1000_00, tanggal: '2026-08-10', keterangan: null, userId: 1 }),
     ).toThrow('Supplier tidak ditemukan.')
+  })
+
+  it('corrects an instalment and moves the invoice\'s dibayar by the difference', () => {
+    const db = seedDb()
+    const { purchaseId } = buyOnCredit(db, { dibayar: 0 })
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 4000_00, tanggal: '2026-08-09', keterangan: 'salah', userId: 1 })
+    const [payment] = listSupplierPayments(db, 1)
+
+    updateSupplierPayment(db, payment.id, { jumlah: 5000_00, tanggal: '2026-08-10', keterangan: ' benar ' })
+
+    expect(listSupplierPayments(db, 1)).toEqual([
+      { id: payment.id, purchaseId, jumlah: 5000_00, tanggal: '2026-08-10', keterangan: 'benar' },
+    ])
+    expect(db.select().from(purchases).where(eq(purchases.id, purchaseId)).get()?.dibayar).toBe(5000_00)
+  })
+
+  it('refuses an instalment correction that would pay the invoice past its total', () => {
+    const db = seedDb()
+    const { purchaseId } = buyOnCredit(db, { dibayar: 4000_00 })
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 3000_00, tanggal: '2026-08-09', keterangan: null, userId: 1 })
+    const [payment] = listSupplierPayments(db, 1)
+
+    expect(() =>
+      updateSupplierPayment(db, payment.id, { jumlah: 10000_01, tanggal: '2026-08-09', keterangan: null }),
+    ).toThrow('Jumlah bayar melebihi sisa hutang faktur.')
+    expect(() => updateSupplierPayment(db, payment.id, { jumlah: 0, tanggal: '2026-08-09', keterangan: null })).toThrow(
+      'Jumlah bayar harus lebih dari 0.',
+    )
+
+    // paying it off exactly is fine
+    updateSupplierPayment(db, payment.id, { jumlah: 10000_00, tanggal: '2026-08-09', keterangan: null })
+    expect(db.select().from(purchases).where(eq(purchases.id, purchaseId)).get()?.dibayar).toBe(14000_00)
+    expect(listSupplierDebts(db)).toEqual([])
+  })
+
+  it('deletes an instalment and puts its amount back on the debt', () => {
+    const db = seedDb()
+    const { purchaseId } = buyOnCredit(db, { dibayar: 1000_00 })
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 13000_00, tanggal: '2026-08-09', keterangan: null, userId: 1 })
+    const [payment] = listSupplierPayments(db, 1)
+
+    deleteSupplierPayment(db, payment.id)
+
+    expect(db.select().from(purchasePayments).all()).toEqual([])
+    expect(listSupplierDebts(db)).toEqual([expect.objectContaining({ purchaseId, dibayar: 1000_00, sisa: 13000_00 })])
+    expect(() => deleteSupplierPayment(db, payment.id)).toThrow('Pembayaran tidak ditemukan.')
+  })
+
+  it('sets an invoice\'s remaining debt directly, keeping its instalments', () => {
+    const db = seedDb()
+    const { purchaseId } = buyOnCredit(db, { dibayar: 0 })
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 4000_00, tanggal: '2026-08-09', keterangan: null, userId: 1 })
+
+    updatePurchaseSisaHutang(db, purchaseId, 2500_00)
+
+    expect(listSupplierDebts(db)).toEqual([expect.objectContaining({ purchaseId, dibayar: 11500_00, sisa: 2500_00 })])
+    expect(getPurchaseDetail(db, purchaseId)).toMatchObject({ uangMuka: 7500_00, cicilan: 4000_00 })
+
+    updatePurchaseSisaHutang(db, purchaseId, 0)
+    expect(listSupplierDebts(db)).toEqual([])
+  })
+
+  it('refuses a remaining debt above the total less instalments, or below zero', () => {
+    const db = seedDb()
+    const { purchaseId } = buyOnCredit(db, { dibayar: 0 })
+    recordSupplierPayment(db, { supplierId: 1, jumlah: 4000_00, tanggal: '2026-08-09', keterangan: null, userId: 1 })
+
+    expect(() => updatePurchaseSisaHutang(db, purchaseId, 10000_01)).toThrow(
+      'Sisa hutang tidak boleh melebihi total faktur dikurangi cicilan yang sudah dibayar.',
+    )
+    expect(() => updatePurchaseSisaHutang(db, purchaseId, -1)).toThrow('Sisa hutang tidak boleh negatif.')
+    expect(() => updatePurchaseSisaHutang(db, 999, 0)).toThrow('Pembelian tidak ditemukan.')
   })
 
   it('lists a supplier\'s payments, newest first', () => {

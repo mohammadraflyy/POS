@@ -898,6 +898,25 @@ export interface SupplierPaymentInput {
   userId: number | null
 }
 
+/** shared by recording and correcting an instalment; returns the trimmed keterangan */
+function assertPaymentFields(input: { jumlah: number; tanggal: string; keterangan: string | null }): string | null {
+  if (!Number.isInteger(input.jumlah) || input.jumlah <= 0) {
+    throw new Error('Jumlah bayar harus lebih dari 0.')
+  }
+
+  if (!input.tanggal.trim()) {
+    throw new Error('Tanggal wajib diisi.')
+  }
+
+  const keterangan = input.keterangan?.trim() || null
+
+  if (keterangan && keterangan.length > 500) {
+    throw new Error('Keterangan maksimal 500 karakter.')
+  }
+
+  return keterangan
+}
+
 export interface SupplierPaymentResult {
   alokasi: { purchaseId: number; jumlah: number }[]
 }
@@ -918,20 +937,7 @@ export function recordSupplierPayment(
     throw new Error('Supplier tidak ditemukan.')
   }
 
-  if (!Number.isInteger(input.jumlah) || input.jumlah <= 0) {
-    throw new Error('Jumlah bayar harus lebih dari 0.')
-  }
-
-  if (!input.tanggal.trim()) {
-    throw new Error('Tanggal wajib diisi.')
-  }
-
-  const keterangan = input.keterangan?.trim() || null
-
-  if (keterangan && keterangan.length > 500) {
-    throw new Error('Keterangan maksimal 500 karakter.')
-  }
-
+  const keterangan = assertPaymentFields(input)
   const debts = listSupplierDebts(db, input.supplierId)
   const totalHutang = debts.reduce((sum, debt) => sum + debt.sisa, 0)
 
@@ -1004,4 +1010,109 @@ export function listSupplierPayments(
     .orderBy(desc(purchasePayments.tanggal), desc(purchasePayments.id))
     .limit(limit)
     .all()
+}
+
+export interface UpdateSupplierPaymentInput {
+  jumlah: number
+  tanggal: string
+  keterangan: string | null
+}
+
+/**
+ * Corrects one recorded instalment - a mistyped amount, date or note. The row stays on
+ * the invoice it was allocated to, and that invoice's `dibayar` moves by the difference,
+ * so the new amount may not pay the invoice past its total.
+ */
+export function updateSupplierPayment(
+  db: BetterSQLite3Database<typeof schema>,
+  paymentId: number,
+  input: UpdateSupplierPaymentInput,
+): void {
+  const payment = db.select().from(purchasePayments).where(eq(purchasePayments.id, paymentId)).get()
+
+  if (!payment) {
+    throw new Error('Pembayaran tidak ditemukan.')
+  }
+
+  const keterangan = assertPaymentFields(input)
+  const purchase = db.select().from(purchases).where(eq(purchases.id, payment.purchaseId)).get()
+
+  if (!purchase) {
+    throw new Error('Pembelian tidak ditemukan.')
+  }
+
+  const dibayarTanpaPembayaranIni = purchase.dibayar - payment.jumlah
+
+  if (input.jumlah > purchase.total - dibayarTanpaPembayaranIni) {
+    throw new Error('Jumlah bayar melebihi sisa hutang faktur.')
+  }
+
+  db.transaction((tx) => {
+    const now = new Date()
+
+    tx.update(purchasePayments)
+      .set({ jumlah: input.jumlah, tanggal: input.tanggal, keterangan, updatedAt: now })
+      .where(eq(purchasePayments.id, paymentId))
+      .run()
+
+    tx.update(purchases)
+      .set({ dibayar: dibayarTanpaPembayaranIni + input.jumlah, updatedAt: now })
+      .where(eq(purchases.id, purchase.id))
+      .run()
+  })
+}
+
+/** Removes an instalment that was never really paid; its amount goes back onto the invoice's debt. */
+export function deleteSupplierPayment(db: BetterSQLite3Database<typeof schema>, paymentId: number): void {
+  const payment = db.select().from(purchasePayments).where(eq(purchasePayments.id, paymentId)).get()
+
+  if (!payment) {
+    throw new Error('Pembayaran tidak ditemukan.')
+  }
+
+  db.transaction((tx) => {
+    tx.update(purchases)
+      .set({ dibayar: sql`${purchases.dibayar} - ${payment.jumlah}`, updatedAt: new Date() })
+      .where(eq(purchases.id, payment.purchaseId))
+      .run()
+
+    tx.delete(purchasePayments).where(eq(purchasePayments.id, paymentId)).run()
+  })
+}
+
+/**
+ * Sets what is still owed on one invoice directly, for a debt that was entered wrong at
+ * purchase time. Instalments are real money and stay as they are, so this rewrites the
+ * down payment: the debt can range from 0 up to the total less those instalments.
+ */
+export function updatePurchaseSisaHutang(
+  db: BetterSQLite3Database<typeof schema>,
+  purchaseId: number,
+  sisa: number,
+): void {
+  const purchase = db.select().from(purchases).where(eq(purchases.id, purchaseId)).get()
+
+  if (!purchase) {
+    throw new Error('Pembelian tidak ditemukan.')
+  }
+
+  if (!Number.isInteger(sisa) || sisa < 0) {
+    throw new Error('Sisa hutang tidak boleh negatif.')
+  }
+
+  const cicilan = db
+    .select()
+    .from(purchasePayments)
+    .where(eq(purchasePayments.purchaseId, purchaseId))
+    .all()
+    .reduce((sum, row) => sum + row.jumlah, 0)
+
+  if (sisa > purchase.total - cicilan) {
+    throw new Error('Sisa hutang tidak boleh melebihi total faktur dikurangi cicilan yang sudah dibayar.')
+  }
+
+  db.update(purchases)
+    .set({ dibayar: purchase.total - sisa, updatedAt: new Date() })
+    .where(eq(purchases.id, purchaseId))
+    .run()
 }

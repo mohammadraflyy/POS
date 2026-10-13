@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { ReportTable } from '@/components/report-table'
 import { Page, PageHeader } from '@/components/page'
 import { Button } from '@/components/ui/button'
@@ -179,6 +180,21 @@ export function Purchase() {
     loadSuppliers()
     loadPurchases(1)
   }, [])
+
+  // Hutang Supplier links here as /purchase?edit=<id> to correct an invoice's total, which
+  // can only be changed through its lines. The param is dropped once read so a reload or
+  // a later visit does not reopen the same invoice.
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    const editParam = Number(searchParams.get('edit'))
+
+    if (Number.isInteger(editParam) && editParam > 0) {
+      startEdit(editParam)
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   useEffect(() => {
     if (!paletteOpen) {

@@ -535,6 +535,12 @@ declare global {
         listSupplierPayments: (supplierId: number) => Promise<
           { id: number; purchaseId: number; jumlah: number; tanggal: string; keterangan: string | null }[]
         >
+        updateSupplierPayment: (
+          paymentId: number,
+          input: { jumlah: number; tanggal: string; keterangan: string | null },
+        ) => Promise<void>
+        deleteSupplierPayment: (paymentId: number) => Promise<void>
+        updatePurchaseSisaHutang: (purchaseId: number, sisa: number) => Promise<void>
         searchProducts: (q: string) => Promise<
           {
             id: number

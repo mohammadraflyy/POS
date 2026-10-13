@@ -12,6 +12,9 @@ import {
   recordSupplierPayment,
   listSupplierDebts,
   listSupplierPayments,
+  updateSupplierPayment,
+  deleteSupplierPayment,
+  updatePurchaseSisaHutang,
   type PurchaseItemInput,
 } from '../purchase'
 import { requireUser } from './auth'
@@ -166,6 +169,31 @@ export function registerPurchaseIpc(db: BetterSQLite3Database<typeof schema>) {
       tanggal: payment.tanggal,
       keterangan: payment.keterangan,
     }))
+  })
+
+  ipcMain.handle(
+    'purchase:updateSupplierPayment',
+    (_event, paymentId: number, input: { jumlah: number; tanggal: string; keterangan: string | null }) => {
+      requireUser()
+
+      updateSupplierPayment(db, paymentId, {
+        jumlah: toCents(input.jumlah),
+        tanggal: input.tanggal,
+        keterangan: input.keterangan,
+      })
+    },
+  )
+
+  ipcMain.handle('purchase:deleteSupplierPayment', (_event, paymentId: number) => {
+    requireUser()
+
+    deleteSupplierPayment(db, paymentId)
+  })
+
+  ipcMain.handle('purchase:updatePurchaseSisaHutang', (_event, purchaseId: number, sisa: number) => {
+    requireUser()
+
+    updatePurchaseSisaHutang(db, purchaseId, toCents(sisa))
   })
 
   ipcMain.handle('purchase:searchProducts', (_event, q: string) => {

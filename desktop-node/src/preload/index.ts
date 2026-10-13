@@ -200,6 +200,11 @@ const api = {
     recordSupplierPayment: (input: { supplierId: number; jumlah: number; tanggal: string; keterangan: string | null }) =>
       invoke('purchase:recordSupplierPayment', input),
     listSupplierPayments: (supplierId: number) => invoke('purchase:listSupplierPayments', supplierId),
+    updateSupplierPayment: (paymentId: number, input: { jumlah: number; tanggal: string; keterangan: string | null }) =>
+      invoke('purchase:updateSupplierPayment', paymentId, input),
+    deleteSupplierPayment: (paymentId: number) => invoke('purchase:deleteSupplierPayment', paymentId),
+    updatePurchaseSisaHutang: (purchaseId: number, sisa: number) =>
+      invoke('purchase:updatePurchaseSisaHutang', purchaseId, sisa),
   },
   expense: {
     recordExpense: (input: { tanggal: string; kategori: string; jumlah: number; keterangan: string | null }) =>
