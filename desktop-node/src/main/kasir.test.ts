@@ -973,24 +973,21 @@ describe('checkout', () => {
     expect(db.select().from(stockMovements).get()?.createdAt.toISOString()).toBe(expected)
   })
 
-  it('rejects a sale dated in the future', () => {
+  it('accepts a sale dated in the future', () => {
     const db = seedDb()
     // 24h buffer keeps this in the future regardless of the machine's timezone offset
     const besok = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
 
-    expect(() =>
-      checkout(db, {
-        metodePembayaran: 'tunai',
-        namaPelanggan: null,
-        dibayar: 3000_00,
-        userId: 1,
-        tanggal: besok,
-        items: [{ productId: 2, productUnitId: null, qty: 1 }],
-      }),
-    ).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
-    expect(db.select().from(sales).all()).toHaveLength(0)
-    expect(db.select().from(saleItems).all()).toHaveLength(0)
-    expect(db.select().from(stockMovements).all()).toHaveLength(0)
+    checkout(db, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 3000_00,
+      userId: 1,
+      tanggal: besok,
+      items: [{ productId: 2, productUnitId: null, qty: 1 }],
+    })
+
+    expect(db.select().from(sales).get()?.createdAt.toISOString()).toBe(new Date(besok).toISOString())
   })
 
   it('rejects a tanggal that is not a date at all', () => {
@@ -2380,20 +2377,21 @@ describe('updateSale', () => {
     expect(sale?.createdAt.toISOString()).toBe(new Date('2026-07-04T14:05').toISOString())
   })
 
-  it('rejects a future date', () => {
+  it('moves a sale to a future date', () => {
     const { db, saleId } = seedBaseSale()
 
-    expect(() =>
-      updateSale(db, saleId, {
-        metodePembayaran: 'tunai',
-        namaPelanggan: null,
-        dibayar: 6000_00,
-        tanggal: '2099-01-01T00:00',
-        keterangan: 'edit test',
-        userId: 1,
-        items: [{ productId: 2, productUnitId: null, qty: 2 }],
-      }),
-    ).toThrow('Tanggal transaksi tidak boleh melewati waktu sekarang.')
+    updateSale(db, saleId, {
+      metodePembayaran: 'tunai',
+      namaPelanggan: null,
+      dibayar: 6000_00,
+      tanggal: '2099-01-01T00:00',
+      keterangan: 'edit test',
+      userId: 1,
+      items: [{ productId: 2, productUnitId: null, qty: 2 }],
+    })
+
+    const sale = db.select().from(sales).where(eq(sales.id, saleId)).get()
+    expect(sale?.createdAt.toISOString()).toBe(new Date('2099-01-01T00:00').toISOString())
   })
 
   it('charges a manual price and records it as such', () => {

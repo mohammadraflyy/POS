@@ -782,7 +782,7 @@ export function Kasir() {
                 next morning, and an edited sale carries its own date. The field
                 lives on the page rather than inside the payment dialog so the
                 cashier can see and set the time before committing to anything.
-                The main process rejects a future date. */}
+                A future date is allowed too. */}
             <div className="rounded-lg border px-3 py-2">
               <label htmlFor="tanggal-transaksi" className="block text-[11px] leading-tight text-muted-foreground">
                 Tanggal &amp; Jam

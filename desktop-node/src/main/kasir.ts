@@ -202,18 +202,14 @@ export type MetodePembayaran = 'tunai' | 'bon' | 'qris' | 'transfer'
 
 /**
  * Parses the local `YYYY-MM-DDTHH:mm` string a `datetime-local` input produces.
- * A future-dated sale would land in a rekap period that has not happened yet, so it is
- * rejected. Backdating has no limit - entering yesterday's sale this morning is normal.
+ * Any date is allowed, past or future: entering yesterday's sale this morning is normal,
+ * and the owner also files a bon under the day it is meant for, even if that is tomorrow.
  */
 export function parseTanggalTransaksi(tanggal: string): Date {
   const parsed = new Date(tanggal)
 
   if (Number.isNaN(parsed.getTime())) {
     throw new Error('Tanggal transaksi tidak valid.')
-  }
-
-  if (parsed.getTime() > Date.now()) {
-    throw new Error('Tanggal transaksi tidak boleh melewati waktu sekarang.')
   }
 
   return parsed
