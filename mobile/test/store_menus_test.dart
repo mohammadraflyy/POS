@@ -92,8 +92,8 @@ void main() {
     // a bon in the history still owes money, and says so
     await tester.tap(find.text('Riwayat').last);
     await settle(tester);
-    expect(find.textContaining('belum lunas'), findsOneWidget);
-    expect(find.text('Nota #7'), findsOneWidget);
+    expect(find.textContaining('Belum lunas'), findsOneWidget);
+    expect(find.text('#7'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

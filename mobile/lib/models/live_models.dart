@@ -20,7 +20,8 @@ int idNumber(Object? value) {
 }
 String rupiah(Object? value) {
   final n = number(value);
-  return n == null ? '—' : money((n * 100).round());
+  // whole rupiah: a shop counts no sen, and a pro-rata discount must not print ',28'
+  return n == null ? '—' : money(n.round() * 100);
 }
 num inputRupiah(String text) => moneyInput(text) / 100;
 num inputQty(String text, {bool zero = false}) => qtyInput(text, allowZero: zero) / 1000;

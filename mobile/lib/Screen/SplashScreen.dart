@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import '../Widgets/ui.dart';
+
+/// While the app (and on a PC, its server) starts: the mark and the name on the ground.
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
   @override
-  Widget build(BuildContext context) => const Scaffold(backgroundColor: wine, body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-    Icon(Icons.storefront_rounded, size: 86, color: Colors.white), SizedBox(height: Space.xl),
-    Text('Point of Sales', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w600)),
-    SizedBox(height: 32), CircularProgressIndicator(color: Colors.white),
+  Widget build(BuildContext context) => const Scaffold(backgroundColor: canvas, body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+    BrandMark(size: 44), SizedBox(height: Space.lg),
+    Text('Point of Sales', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+    SizedBox(height: Space.xl),
+    SizedBox(width: 120, child: LinearProgressIndicator(minHeight: 2)),
   ])));
 }

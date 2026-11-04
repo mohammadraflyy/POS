@@ -163,4 +163,31 @@ void main() {
     expect((dashboard['stokMenipis'] as List).single, {'id': 1, 'kodeItem': 'BRS5', 'namaItem': 'Beras 5kg', 'satuan': 'PCS', 'stok': 4});
     expect(((dashboard['transaksiTerbaru'] as List).single as Map)['itemSummary'], 'Beras 5kg x6');
   });
+
+  test('the dashboard splits today by the hour against last week, and names unpaid bon', () {
+    final db = seedDb();
+    final now = DateTime(2026, 11, 4, 15);
+    jual(db, [const CartItemInput(productId: 2, qty: 2)], tanggal: '2026-11-04T08:15');
+    jual(db, [const CartItemInput(productId: 2, qty: 1)], tanggal: '2026-11-04T08:40');
+    jual(db, [const CartItemInput(productId: 1, qty: 1)], tanggal: '2026-11-04T13:05', metode: MetodePembayaran.bon, dibayar: 1000000);
+    jual(db, [const CartItemInput(productId: 2, qty: 3)], tanggal: '2026-10-28T09:00');
+
+    final dashboard = getDashboard(db, now: now);
+    final perJam = dashboard['perJam'] as Map;
+
+    expect(perJam['hariIni'], [
+      {'jam': 8, 'nilai': 9000, 'nota': 2},
+      {'jam': 13, 'nilai': 65000, 'nota': 1},
+    ]);
+    expect(perJam['pembanding'], [
+      {'jam': 9, 'nilai': 9000, 'nota': 1},
+    ]);
+    expect(perJam['tanggalPembanding'], '2026-10-28');
+    // the 65.000 bon took 10.000 up front
+    expect(dashboard['bonBaruBelumDibayar'], 55000);
+    // nothing is low (10 and 94 left), yet the thinnest lines are still listed
+    expect([for (final r in dashboard['stokTerendah'] as List) (r as Map)['kodeItem']], ['BRS5', 'MIE1']);
+    expect(dashboard['stokMenipis'], isEmpty);
+  });
 }
+

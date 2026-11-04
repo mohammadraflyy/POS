@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../Widgets/admin.dart' show isDesktop;
 import '../../models/live_models.dart';
 import '../../state/live_store.dart';
 import '../../core/theme.dart';
@@ -22,7 +23,7 @@ class LiveCartPanel extends StatelessWidget {
     if (value != null) store.setDiscount(value);
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([store, store.guard]), builder: (context, _) => CartLayout(
-    header: Row(children: [Expanded(child: Text('Keranjang', style: Theme.of(context).textTheme.titleLarge)),
+    header: Row(children: [Expanded(child: Text(store.items.isEmpty ? 'Keranjang' : 'Keranjang · ${store.items.length} barang', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
       IconButton(tooltip: 'Kosongkan keranjang (Alt+K)', onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
         icon: const Icon(Icons.delete_outline)),
     ]),
@@ -44,10 +45,17 @@ class LiveCartPanel extends StatelessWidget {
     footer: Column(mainAxisSize: MainAxisSize.min, children: [
       if (store.pricing) const LinearProgressIndicator(minHeight: 2),
       if (store.priceError != null) TextButton(onPressed: store.reprice, child: const Text('Coba hitung harga lagi')),
-      SummaryRow('Subtotal', rupiah(store.price?.subtotal)),
-      Row(children: [const Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))), Flexible(child: TextButton(onPressed: store.items.isEmpty || !store.editable ? null : () => discount(context), child: Text(rupiah(store.discount))))]),
-      SummaryRow('Total', rupiah(store.price?.total), strong: true), const SizedBox(height: Space.lg),
-      SizedBox(width: double.infinity, child: FilledButton(onPressed: store.canCheckout ? () => openPayment(context, store) : null, child: const Text('Lanjut bayar'))),
+      SummaryRow('Subtotal', store.items.isEmpty ? rupiah(0) : rupiah(store.price?.subtotal)),
+      Row(children: [
+        const Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))),
+        // tappable, but the figure still ends on the totals' right edge
+        TextButton(onPressed: store.items.isEmpty || !store.editable ? null : () => discount(context),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: const Size(0, 32)),
+          child: Text(store.discount == 0 ? 'Tambah' : '-${rupiah(store.discount)}', style: amountStyle.copyWith(fontSize: 14, decoration: TextDecoration.underline, decorationColor: controlBorder))),
+      ]),
+      // the answer figure: the bill, in the shop's one hue; an empty cart is a real Rp0, not a dash
+      SummaryRow('Total', store.items.isEmpty ? rupiah(0) : rupiah(store.price?.total), strong: true, color: store.items.isEmpty ? muted : dataHue), const SizedBox(height: Space.lg),
+      SizedBox(width: double.infinity, child: FilledButton(onPressed: store.canCheckout ? () => openPayment(context, store) : null, style: FilledButton.styleFrom(minimumSize: const Size(44, 44)), child: Text(isDesktop ? 'Bayar  ·  End' : 'Bayar'))),
     ]),
   ));
 }

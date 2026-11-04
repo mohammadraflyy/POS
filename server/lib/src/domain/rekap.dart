@@ -449,8 +449,31 @@ Map<String, Object?> getStockValue(Db db) {
 const _lowStockThreshold = 5;
 
 /// Today's rekap figures plus what needs attention: low stock and the latest sales.
-Map<String, Object?> getDashboard(Db db) {
-  final today = tanggalLokal(DateTime.now());
+/// Completed sales on one local day, by the hour they were rung up: the bill's value
+/// (bon included, whether paid or not), so the hours add up to the day's notes.
+List<Map<String, Object?>> _salesByHour(Db db, DateTime day) {
+  final start = toEpochSeconds(DateTime(day.year, day.month, day.day));
+  final end = toEpochSeconds(DateTime(day.year, day.month, day.day + 1));
+  final byHour = <int, ({int nilai, int nota})>{};
+
+  for (final sale in db.select("SELECT total, created_at FROM sales WHERE status = 'selesai' AND created_at >= ? AND created_at < ?", [start, end])) {
+    final hour = fromEpochSeconds(sale['created_at'] as int).hour;
+    final current = byHour[hour] ?? (nilai: 0, nota: 0);
+    byHour[hour] = (nilai: current.nilai + (sale['total'] as int), nota: current.nota + 1);
+  }
+
+  return [
+    for (final hour in byHour.keys.toList()..sort()) {'jam': hour, 'nilai': rupiahJson(byHour[hour]!.nilai), 'nota': byHour[hour]!.nota},
+  ];
+}
+
+/// [now] is for tests; the shop's own clock otherwise.
+Map<String, Object?> getDashboard(Db db, {DateTime? now}) {
+  final clock = now ?? DateTime.now();
+  final today = tanggalLokal(clock);
+  final dayStart = toEpochSeconds(DateTime(clock.year, clock.month, clock.day));
+  final dayEnd = toEpochSeconds(DateTime(clock.year, clock.month, clock.day + 1));
+  final lastWeek = DateTime(clock.year, clock.month, clock.day - 7);
   final rekap = getRekap(db, from: today, to: today);
   final latest = db.select('SELECT * FROM sales ORDER BY created_at DESC LIMIT 5');
   final ids = [for (final sale in latest) sale['id']];
@@ -464,12 +487,33 @@ Map<String, Object?> getDashboard(Db db) {
 
   return {
     'summary': rekap['summary'],
+    // today's notes by the hour against the same weekday a week ago
+    'perJam': {
+      'hariIni': _salesByHour(db, clock),
+      'pembanding': _salesByHour(db, lastWeek),
+      'tanggalPembanding': tanggalLokal(lastWeek),
+    },
+    // bon rung up today that no money has come in for yet: sold, but not in the drawer
+    'bonBaruBelumDibayar': rupiahJson(db.scalar<int>(
+          "SELECT coalesce(sum(total - dibayar), 0) FROM sales WHERE metode_pembayaran = 'bon' AND status = 'selesai' AND created_at >= ? AND created_at < ?",
+          [dayStart, dayEnd],
+        ) ??
+        0),
     'stokMenipis': [
       for (final row in db.select(
         'SELECT p.id, p.kode_item, p.nama_item, u.code AS satuan, p.stok FROM products p '
         'LEFT JOIN product_units pu ON pu.product_id = p.id AND pu.is_base_unit = 1 LEFT JOIN units u ON u.id = pu.unit_id '
         'WHERE p.is_active = 1 AND p.stok <= ? ORDER BY p.stok LIMIT 10',
         [_lowStockThreshold],
+      ))
+        {'id': row['id'], 'kodeItem': row['kode_item'], 'namaItem': row['nama_item'], 'satuan': row['satuan'] ?? '', 'stok': row['stok']},
+    ],
+    // the shelf's thinnest lines even when none is low yet, so the card is never empty
+    'stokTerendah': [
+      for (final row in db.select(
+        'SELECT p.id, p.kode_item, p.nama_item, u.code AS satuan, p.stok FROM products p '
+        'LEFT JOIN product_units pu ON pu.product_id = p.id AND pu.is_base_unit = 1 LEFT JOIN units u ON u.id = pu.unit_id '
+        'WHERE p.is_active = 1 ORDER BY p.stok, p.nama_item LIMIT 6',
       ))
         {'id': row['id'], 'kodeItem': row['kode_item'], 'namaItem': row['nama_item'], 'satuan': row['satuan'] ?? '', 'stok': row['stok']},
     ],

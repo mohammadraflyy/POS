@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+
+/// The phone's four destinations and "Lainnya", each with a short label. The active one
+/// is ink with a neutral pill behind its icon; the rest are grey. No brand colour.
 class BottomNavBar extends StatelessWidget {
   const BottomNavBar({super.key, required this.selectedIndex, required this.onDestinationSelected,
     this.labels = const ['Kasir', 'Pembelian', 'Opname', 'Riwayat'],
@@ -15,12 +18,14 @@ class BottomNavBar extends StatelessWidget {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [for (var i = 0; i < labels.length; i++) Expanded(
         child: Semantics(selected: selectedIndex == i, button: true, label: labels[i],
           child: InkWell(onTap: () => onDestinationSelected(i), child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: Space.md, horizontal: Space.xs),
+            padding: const EdgeInsets.fromLTRB(Space.xs, Space.sm, Space.xs, Space.sm),
             child: ExcludeSemantics(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icons[i], color: selectedIndex == i ? wine : muted, size: 22),
-              const SizedBox(height: Space.xs),
-              Text(labels[i], textAlign: TextAlign.center, style: TextStyle(fontSize: 12,
-                color: selectedIndex == i ? wine : muted, fontWeight: selectedIndex == i ? FontWeight.w700 : FontWeight.w500)),
+              Container(width: 48, height: 28, alignment: Alignment.center,
+                decoration: BoxDecoration(color: selectedIndex == i ? activePill : Colors.transparent, borderRadius: BorderRadius.circular(14)),
+                child: Icon(icons[i], color: selectedIndex == i ? ink : muted, size: 20)),
+              const SizedBox(height: 4),
+              Text(labels[i], textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12,
+                color: selectedIndex == i ? ink : muted, fontWeight: selectedIndex == i ? FontWeight.w500 : FontWeight.w400)),
             ])),
           ))),
       )]),

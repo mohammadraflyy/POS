@@ -5,6 +5,7 @@ import '../../services/store_api.dart';
 import '../../services/mutation_guard.dart';
 import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
+import '../../Widgets/admin.dart' show PageTabs;
 import '../menus.dart';
 import '../Toko/DashboardScreen.dart';
 import '../Toko/ProductsScreen.dart';
@@ -48,14 +49,14 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
     return switch (menu) {
       Menu.kasir => LiveKasirScreen(store: store, active: widget.menu == Menu.kasir),
       Menu.pembelian => DefaultTabController(length: 2, child: Column(children: [
-        const Material(color: surface, child: TabBar(tabs: [Tab(text: 'Catat pembelian'), Tab(text: 'Daftar pembelian')])),
+        const PageTabs(tabs: ['Catat pembelian', 'Daftar pembelian']),
         Expanded(child: TabBarView(children: [
           WorkArea(child: LivePurchaseScreen(api: api, guard: guard, onSaved: store.stockChanged, active: widget.menu == Menu.pembelian)),
           PurchaseListScreen(api: api, onChanged: store.stockChanged),
         ])),
       ])),
       Menu.opname => WorkArea(child: LiveOpnameScreen(api: api, guard: guard, onSaved: store.stockChanged)),
-      Menu.riwayat => WorkArea(child: LiveHistoryScreen(api: api, isAdmin: admin)),
+      Menu.riwayat => LiveHistoryScreen(api: api, isAdmin: admin),
       Menu.dashboard => DashboardScreen(api: api),
       Menu.produk => ProductsHub(api: api, isAdmin: admin, active: widget.menu == Menu.produk),
       Menu.hutang => SupplierDebtScreen(api: api),
@@ -75,7 +76,7 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
         child: Column(children: [
     if (!guard.ready || (guard.pending != null && !guard.busy) || guard.error != null)
       Container(color: const Color(0xFFFFE4D8), padding: const EdgeInsets.all(12), child: Row(children: [
-        Expanded(child: Text(guard.error ?? (guard.pending != null ? 'Ada transaksi yang perlu diperiksa hasilnya di PC.' : 'Memeriksa status transaksi perangkat…'), style: const TextStyle(color: wine, fontSize: 13))),
+        Expanded(child: Text(guard.error ?? (guard.pending != null ? 'Ada transaksi yang perlu diperiksa hasilnya di PC.' : 'Memeriksa status transaksi perangkat…'), style: const TextStyle(color: muted, fontSize: 13))),
         if (!guard.ready) TextButton(onPressed: guard.load, child: const Text('Coba lagi')),
         if (guard.pending != null && !guard.busy) TextButton(onPressed: _review, child: const Text('Periksa')),
       ])),

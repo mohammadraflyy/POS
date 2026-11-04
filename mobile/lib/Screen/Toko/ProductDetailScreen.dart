@@ -76,7 +76,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     String unitName(Object? unitRowId) => units.firstWhere((u) => u['id'] == unitRowId, orElse: () => {'satuan': '—'})['satuan'].toString();
     return Scaffold(appBar: AppBar(title: Text(detail?['namaItem']?.toString() ?? 'Produk')), body: ScreenBody(onRefresh: load, maxWidth: 1000, children: [
       LoadSwitch(loading: loading, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        ScreenHeader('Satuan', 'Kode ${detail?['kodeItem'] ?? ''}. Harga pokok tiap satuan ikut bergerak saat pembelian.', actions: [
+        ScreenHeader(section: true, 'Satuan', 'Kode ${detail?['kodeItem'] ?? ''}. Harga pokok tiap satuan ikut bergerak saat pembelian.', actions: [
           if (widget.isAdmin) FilledButton.icon(onPressed: () => editUnit(), icon: const Icon(Icons.add), label: const Text('Tambah satuan')),
         ]),
         DataView<Map<String, dynamic>>(rows: units, onTap: widget.isAdmin ? editUnit : null,
@@ -88,7 +88,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             DataCol('Harga jual', (u) => rupiah(u['hargaJual']), numeric: true, flex: 2),
           ]),
         const SizedBox(height: Space.xl),
-        ScreenHeader('Harga bertingkat', 'Harga khusus saat membeli dalam jumlah tertentu.', actions: [
+        ScreenHeader(section: true, 'Harga bertingkat', 'Harga khusus saat membeli dalam jumlah tertentu.', actions: [
           if (widget.isAdmin && units.isNotEmpty) OutlinedButton.icon(onPressed: addTier, icon: const Icon(Icons.add), label: const Text('Tambah harga')),
         ]),
         DataView<Map<String, dynamic>>(rows: tiers, emptyTitle: 'Belum ada harga bertingkat',

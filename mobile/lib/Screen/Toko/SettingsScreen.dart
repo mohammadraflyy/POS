@@ -119,13 +119,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SummaryRow('Margin minimal', '${settings['marginMinimalPersen'] ?? 10}%'),
         const SizedBox(height: Space.md),
         Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
-          if (widget.isAdmin) FilledButton.icon(onPressed: editStore, icon: const Icon(Icons.edit_outlined), label: const Text('Ubah')),
+          if (widget.isAdmin) OutlinedButton.icon(onPressed: editStore, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Ubah data toko')),
           OutlinedButton.icon(onPressed: testing ? null : testPrint, icon: const Icon(Icons.print_outlined), label: Text(testing ? 'Mencetak…' : 'Tes cetak')),
         ]),
       ])),
       if (widget.isAdmin) ...[
         const SizedBox(height: Space.xl),
-        ScreenHeader('Perangkat terhubung', 'HP dan PC yang bisa mengakses server ini.', actions: [
+        ScreenHeader('Perangkat terhubung', 'HP dan PC yang bisa mengakses server ini.', section: true, actions: [
           FilledButton.icon(onPressed: showPairing, icon: const Icon(Icons.qr_code_2), label: const Text('Hubungkan HP baru')),
         ]),
         DataView<Map<String, dynamic>>(rows: devices, emptyTitle: 'Belum ada perangkat',
@@ -137,7 +137,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             DataCol('Status', (d) => d['revokedAt'] == null ? 'Aktif' : 'Dicabut'),
           ]),
         const SizedBox(height: Space.xl),
-        const ScreenHeader('Zona berbahaya', 'Tindakan permanen yang tidak bisa dibatalkan.'),
+        const ScreenHeader('Zona berbahaya', 'Tindakan permanen yang tidak bisa dibatalkan.', section: true),
         Container(
           padding: const EdgeInsets.all(Space.lg),
           decoration: BoxDecoration(color: surface, border: Border.all(color: errorColor.withValues(alpha: 0.5)), borderRadius: BorderRadius.circular(Corners.panel)),

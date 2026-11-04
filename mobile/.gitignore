@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# taste-skill working files (dealt style sheet, inspections)
+/.taste-skill/

@@ -59,7 +59,7 @@ class _PairingScreenState extends State<PairingScreen> {
   Widget build(BuildContext context) => Scaffold(body: SafeArea(child: LayoutBuilder(builder: (context, box) {
     final form = Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: SingleChildScrollView(
       padding: const EdgeInsets.all(Space.xl), child: AutofillGroup(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('POINT OF SALES', style: TextStyle(color: wine, fontWeight: FontWeight.w600, letterSpacing: 1)), const SizedBox(height: Space.xl),
+        const Row(children: [BrandMark(size: 28), SizedBox(width: Space.md), Text('Point of Sales', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500))]), const SizedBox(height: Space.xxl),
         Text(_login ? 'Masuk ke toko' : 'Hubungkan ke toko', style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 12), Text(_login
           ? 'Masuk dengan akun toko. Di PC kasir, alamat server biasanya 127.0.0.1:48950.'
@@ -77,7 +77,7 @@ class _PairingScreenState extends State<PairingScreen> {
         const SizedBox(height: Space.lg), TextField(controller: _username, textInputAction: TextInputAction.next, enabled: !widget.app.busy, autofillHints: const [AutofillHints.username], decoration: InputDecoration(labelText: _login ? 'Username' : 'Username kasir', prefixIcon: const Icon(Icons.person_outline))),
         const SizedBox(height: Space.lg), TextField(controller: _password, autofillHints: const [AutofillHints.password], textInputAction: TextInputAction.next, enabled: !widget.app.busy, obscureText: _obscure, autocorrect: false, enableSuggestions: false, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(tooltip: _obscure ? 'Tampilkan password' : 'Sembunyikan password', onPressed: () => setState(() => _obscure = !_obscure), icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
         const SizedBox(height: Space.lg), TextField(controller: _name, textInputAction: TextInputAction.done, onSubmitted: (_) { if (!widget.app.busy) { _login ? _signIn() : _connect(); } }, enabled: !widget.app.busy, decoration: const InputDecoration(labelText: 'Nama perangkat')),
-        if (_error != null || widget.app.notice != null) Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error ?? widget.app.notice!, style: const TextStyle(color: wine))),
+        if (_error != null || widget.app.notice != null) Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error ?? widget.app.notice!, style: const TextStyle(color: errorColor))),
         const SizedBox(height: Space.xl), SizedBox(width: double.infinity, child: FilledButton(onPressed: widget.app.busy ? null : (_login ? _signIn : _connect), child: widget.app.busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_login ? 'Masuk' : 'Hubungkan perangkat'))),
         SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : () => setState(() { _login = !_login; _error = null; }),
           child: Text(_login ? 'Hubungkan dengan kode pairing' : 'Masuk dengan akun (tanpa kode pairing)'))),

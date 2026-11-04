@@ -53,7 +53,7 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
     Row(children: [Expanded(child: TextField(controller: query, onSubmitted: (_) => search(), decoration: const InputDecoration(labelText: 'Pencarian', hintText: 'Cari produk', prefixIcon: Icon(Icons.search)))),
       IconButton(onPressed: loading ? null : search, tooltip: 'Cari produk', icon: const Icon(Icons.arrow_forward)), if (!isDesktop) IconButton(onPressed: loading ? null : scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner))]),
     const SizedBox(height: Space.lg), if (loading) const Center(child: CircularProgressIndicator()),
-    if (error != null) Text(error!, style: const TextStyle(color: wine)),
+    if (error != null) Text(error!, style: const TextStyle(color: errorColor)),
     if (!loading && products.isEmpty && error == null) const EmptyPanel(icon: Icons.inventory_2_outlined, title: 'Cari barang masuk', message: 'Masukkan nama atau scan barcode dari produk.'),
     for (final product in products) ListTile(title: Text(product.name), subtitle: Text('${product.code} • Stok ${quantityText(product.stock)}'), trailing: const Icon(Icons.add), onTap: loading ? null : () => select(product)),
   ])));
@@ -73,7 +73,7 @@ class _PurchaseFieldsState extends State<_PurchaseFields> {
     DropdownButtonFormField<LiveUnit>(value: unit, isExpanded: true, decoration: const InputDecoration(labelText: 'Satuan pembelian'), items: widget.product.units.map((u) => DropdownMenuItem(value: u, child: Text(u.name))).toList(), onChanged: (u) => setState(() => unit = u!)),
     const SizedBox(height: Space.lg), TextField(controller: quantity, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Jumlah masuk')),
     const SizedBox(height: Space.lg), TextField(controller: price, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Harga beli per satuan (Rp)')),
-    if (error != null) Text(error!, style: const TextStyle(color: wine)), const SizedBox(height: Space.lg),
+    if (error != null) Text(error!, style: const TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
     SizedBox(width: double.infinity, child: FilledButton(onPressed: () { try { Navigator.pop(context, PurchaseDraftItem(widget.product, unit, inputQty(quantity.text), inputRupiah(price.text))); } catch (_) { setState(() => error = 'Isi jumlah positif dan harga beli yang valid.'); showError(context, error!); } }, child: const Text('Tambah ke pembelian'))),
   ])));
 }

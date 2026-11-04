@@ -32,14 +32,14 @@ class ReceiptScreen extends StatelessWidget {
       const SizedBox(height: Space.lg), Center(child: Text('Pesanan berhasil dicatat', style: Theme.of(context).textTheme.titleLarge)),
       const SizedBox(height: 8), const Center(child: Pill('STRUK DEMO • BUKAN BUKTI BAYAR')), const SizedBox(height: Space.xl),
       WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Center(child: Icon(Icons.storefront_rounded, size: 36, color: wine)), const SizedBox(height: 8),
+        const Center(child: Icon(Icons.storefront_outlined, size: 32, color: muted)), const SizedBox(height: 8),
         const Center(child: Text('TOKO CONTOH', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: 2))),
         const SizedBox(height: Space.lg), SummaryRow('Nomor', receipt.id), SummaryRow('Tanggal', '${dateText(receipt.date)} ${timeText(receipt.date)}'),
         SummaryRow('Pelanggan', receipt.customer.isEmpty ? 'Umum' : receipt.customer), const Divider(height: 28),
         for (final line in receipt.lines) Padding(padding: const EdgeInsets.only(bottom: 14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(line.name, style: const TextStyle(fontWeight: FontWeight.w700)),
           SummaryRow('${qty(line.quantity)} ${line.unit} × ${money(line.price)}', money(line.total)),
-          if (line.discount > 0) Text('Diskon barang: ${money(line.discount)}', style: const TextStyle(color: wine, fontSize: 13)),
+          if (line.discount > 0) Text('Diskon barang: ${money(line.discount)}', style: const TextStyle(color: muted, fontSize: 13)),
         ])), const Divider(), SummaryRow('Subtotal', money(receipt.subtotal)), SummaryRow('Diskon nota', '− ${money(receipt.discount)}'),
         SummaryRow('Total', money(receipt.total), strong: true), const Divider(),
         SummaryRow('Metode', receipt.method.name.toUpperCase()), SummaryRow('Dibayar', money(receipt.paid)),

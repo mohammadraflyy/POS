@@ -197,7 +197,7 @@ class _SupplierDebtScreenState extends State<SupplierDebtScreen> {
           ]),
         if (supplierId != null) ...[
           const SizedBox(height: Space.xl),
-          ScreenHeader(supplierName, 'Sisa ${rupiah(grouped[supplierId]?.sisa ?? 0)}', actions: [
+          ScreenHeader(section: true, supplierName, 'Sisa ${rupiah(grouped[supplierId]?.sisa ?? 0)}', actions: [
             if ((grouped[supplierId]?.sisa ?? 0) > 0) FilledButton.icon(onPressed: pay, icon: const Icon(Icons.payments_outlined), label: const Text('Bayar')),
             TextButton(onPressed: () => setState(() => supplierId = null), child: const Text('Tutup')),
           ]),

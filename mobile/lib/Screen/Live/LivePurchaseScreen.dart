@@ -73,7 +73,7 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
     final enabled = !saving && !widget.guard.busy && widget.guard.pending == null;
     return ListView(padding: const EdgeInsets.all(Space.lg), children: [
       const PageIntro('Pembelian baru', 'Barang yang disimpan akan menambah stok toko.'),
-      WhitePanel(child: Column(children: [ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.local_shipping_outlined, color: wine), title: Text(supplier == null ? 'Pilih supplier (opsional)' : (supplier!['nama'] ?? supplier!['name']).toString()), trailing: const Icon(Icons.chevron_right), onTap: !enabled ? null : () async {
+      WhitePanel(child: Column(children: [ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.local_shipping_outlined, color: muted), title: Text(supplier == null ? 'Pilih supplier (opsional)' : (supplier!['nama'] ?? supplier!['name']).toString()), trailing: const Icon(Icons.chevron_right), onTap: !enabled ? null : () async {
         final result = await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(builder: (_) => LiveSupplierScreen(api: widget.api, guard: widget.guard)));
         if (mounted && result != null) setState(() => supplier = result);
       }), if (supplier != null) TextButton(onPressed: enabled ? () => setState(() => supplier = null) : null, child: const Text('Tanpa supplier')),
@@ -84,7 +84,7 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
       const SizedBox(height: Space.lg), TextField(controller: paid, enabled: enabled, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Uang muka (opsional, Rp)', helperText: 'Kosong = lunas. Isi 0 untuk utang penuh.')),
       const SizedBox(height: Space.lg), TextField(controller: note, enabled: enabled, decoration: const InputDecoration(labelText: 'Catatan (opsional)')),
       const SizedBox(height: 16), const Text('Jumlah akhir dihitung oleh PC saat penyimpanan.', style: TextStyle(color: muted, fontSize: 13)),
-      if (error != null) Text(error!, style: const TextStyle(color: wine)), if (success != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(success!, style: const TextStyle(color: Color(0xFF357361)))),
+      if (error != null) Text(error!, style: const TextStyle(color: errorColor)), if (success != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(success!, style: const TextStyle(color: Color(0xFF357361)))),
       const SizedBox(height: Space.lg), FilledButton.icon(onPressed: enabled && items.isNotEmpty && widget.guard.ready ? save : null, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Menyimpan…' : 'Simpan pembelian ke PC')),
     ]);
   });

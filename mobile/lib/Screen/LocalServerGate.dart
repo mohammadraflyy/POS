@@ -34,7 +34,7 @@ class _LocalServerGateState extends State<LocalServerGate> {
       body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: Padding(
         padding: const EdgeInsets.all(Space.xl),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.dns_outlined, size: 48, color: wine), const SizedBox(height: Space.lg),
+          const Icon(Icons.dns_outlined, size: 32, color: muted), const SizedBox(height: Space.lg),
           Text('Server toko belum bisa dinyalakan', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: Space.md), Text(message, style: const TextStyle(color: muted)),
           const SizedBox(height: Space.xl),

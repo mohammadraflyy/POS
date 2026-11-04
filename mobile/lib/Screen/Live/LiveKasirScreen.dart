@@ -127,41 +127,61 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([widget.store, widget.store.guard]), builder: (context, _) => LayoutBuilder(builder: (context, box) {
     final wide = usesSplitCart(context, box);
-    final catalog = Column(children: [
-      Expanded(child: CustomScrollView(slivers: [SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        
-        Row(children: [Expanded(child: TextField(controller: search, textInputAction: TextInputAction.search, onChanged: (_) {
-          serial++; timer?.cancel(); setState(() { loading = true; error = null; });
-          timer = Timer(const Duration(milliseconds: 350), () => load());
-        }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(), decoration: InputDecoration(labelText: 'Cari barang', hintText: isDesktop ? 'Nama, kode, atau scan barcode  ·  F2 cari · End bayar · F3 ubah jumlah · Alt+K kosongkan' : 'Nama, kode, atau barcode', prefixIcon: const Icon(Icons.search)))),
-          if (!isDesktop) ...[const SizedBox(width: 8), IconButton.filled(onPressed: scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner), style: IconButton.styleFrom(backgroundColor: wine))],
-          IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh)),
-        ]),
-        const SizedBox(height: 12), Text('Halaman $page / $lastPage', style: const TextStyle(color: muted, fontSize: 13)),
-      ]))),
-        if (loading) const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),
-        if (error != null) SliverToBoxAdapter(child: EmptyPanel(icon: Icons.wifi_off, title: 'Katalog belum dimuat', message: error!, action: OutlinedButton(onPressed: () => load(), child: const Text('Coba lagi'))))
-        else if (products.isEmpty && !loading) const SliverToBoxAdapter(child: EmptyPanel(icon: Icons.search_off, title: 'Tidak ada produk', message: 'Coba kata pencarian lain.'))
-        else SliverList(delegate: SliverChildBuilderDelegate((context, index) {
-          final p = products[index];
-          return ProductRow(name: p.name, code: p.code, stock: quantityText(p.stock),
-            price: rupiah(p.units.first.price), unit: p.units.first.name,
-            inCart: widget.store.items.any((item) => item.product.id == p.id),
-            onConfigure: !loading && widget.store.editable ? () => configure(p) : null,
-            onAdd: loading || !widget.store.editable ? null : () => addOne(p));
-        }, childCount: products.length)),
-        SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          OutlinedButton(onPressed: !loading && page > 1 ? () => load(target: page - 1) : null, child: const Text('Sebelumnya')),
-          const SizedBox(width: 12), OutlinedButton(onPressed: !loading && page < lastPage ? () => load(target: page + 1) : null, child: const Text('Berikutnya')),
-        ]))),
-      ])),
-      if (!wide) CartAction(count: widget.store.items.length,
-        total: widget.store.pricing ? 'Menghitung...' : rupiah(widget.store.price?.total),
-        onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => Scaffold(
-          appBar: AppBar(title: const Text('Keranjang')), body: SafeArea(child: LiveCartPanel(store: widget.store)))))),
+    final searchRow = Row(children: [
+      Expanded(child: TextField(controller: search, textInputAction: TextInputAction.search, onChanged: (_) {
+        serial++; timer?.cancel(); setState(() { loading = true; error = null; });
+        timer = Timer(const Duration(milliseconds: 350), () => load());
+      }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(),
+        decoration: InputDecoration(hintText: isDesktop ? 'Cari nama, kode, atau scan barcode' : 'Cari barang', prefixIcon: const Icon(Icons.search, size: 20)))),
+      if (!isDesktop) ...[const SizedBox(width: Space.sm), IconButton.filled(onPressed: scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner, size: 20),
+        style: IconButton.styleFrom(backgroundColor: primaryInk, foregroundColor: Colors.white, minimumSize: const Size(44, 44)))],
+      const SizedBox(width: Space.xs),
+      IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
     ]);
-    final body = wide ? Row(children: [Expanded(child: catalog), SizedBox(width: 380, child: Padding(padding: const EdgeInsets.fromLTRB(0, 18, 18, 18), child: LiveCartPanel(store: widget.store)))]) : catalog;
+    final keys = isDesktop && wide ? const Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('F2 cari · End bayar · F3 ubah jumlah · Alt+K kosongkan · scan di mana saja',
+      style: TextStyle(color: muted, fontSize: 12))) : const SizedBox.shrink();
+    final list = CustomScrollView(slivers: [
+      if (loading) const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),
+      if (error != null) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: EmptyPanel(icon: Icons.wifi_off, title: 'Katalog belum dimuat', message: error!, action: OutlinedButton(onPressed: () => load(), child: const Text('Coba lagi')))))
+      else if (products.isEmpty && !loading) const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(Space.lg), child: Text('Tidak ada barang yang cocok. Coba kata lain atau scan barcodenya.', style: TextStyle(color: muted))))
+      else SliverList(delegate: SliverChildBuilderDelegate((context, index) {
+        final p = products[index];
+        return ProductRow(name: p.name, code: p.code, stock: quantityText(p.stock),
+          price: rupiah(p.units.first.price), unit: p.units.first.name,
+          inCart: widget.store.items.any((item) => item.product.id == p.id),
+          onConfigure: !loading && widget.store.editable ? () => configure(p) : null,
+          onAdd: loading || !widget.store.editable ? null : () => addOne(p));
+      }, childCount: products.length)),
+      if (lastPage > 1) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Row(children: [
+        Text('Halaman $page dari $lastPage', style: const TextStyle(color: muted, fontSize: 13)),
+        const Spacer(),
+        OutlinedButton(onPressed: !loading && page > 1 ? () => load(target: page - 1) : null, child: const Text('Sebelumnya')),
+        const SizedBox(width: Space.sm), OutlinedButton(onPressed: !loading && page < lastPage ? () => load(target: page + 1) : null, child: const Text('Berikutnya')),
+      ]))),
+    ]);
+    if (!wide) {
+      return Focus(autofocus: !isDesktop, child: Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: searchRow),
+        const Divider(),
+        Expanded(child: ColoredBox(color: surface, child: list)),
+        CartAction(count: widget.store.items.length,
+          total: widget.store.pricing ? 'Menghitung…' : rupiah(widget.store.price?.total ?? 0),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('Keranjang')), body: SafeArea(child: Padding(padding: const EdgeInsets.all(Space.md), child: LiveCartPanel(store: widget.store))))))),
+      ]));
+    }
+    // the catalog and the cart are two cards on one 24px frame, so their edges line up
+    final catalog = Container(
+      decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [searchRow, keys])),
+        const Divider(),
+        Expanded(child: list),
+      ]));
     // the till is driven from the keyboard on a PC - see handleKey
-    return Focus(autofocus: !isDesktop, child: body);
+    return Focus(autofocus: !isDesktop, child: Padding(padding: const EdgeInsets.all(Space.xl), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(child: catalog), const SizedBox(width: Space.gap), SizedBox(width: 380, child: LiveCartPanel(store: widget.store)),
+    ])));
   }));
 }

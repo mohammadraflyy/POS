@@ -3,50 +3,80 @@ import '../core/theme.dart';
 import '../core/format.dart';
 import 'notifications.dart';
 export 'notifications.dart';
+
 void showError(BuildContext context, Object error) {
   showNotice(context, errorText(error), kind: NoticeKind.error);
 }
+
+/// A status mark inside a row or beside a value: a pale tint with dark text of the same
+/// hue. [color] picks the pair (success, error, warning); anything else is neutral.
 class Pill extends StatelessWidget {
-  const Pill(this.label, {super.key, this.color = wine, this.icon});
+  const Pill(this.label, {super.key, this.color = muted, this.icon});
   final String label;
   final Color color;
   final IconData? icon;
+  (Color, Color) get _pair => switch (color) {
+    successColor => (pillPositiveBg, pillPositiveInk),
+    errorColor => (pillNegativeBg, pillNegativeInk),
+    warningColor => (pillWarningBg, pillWarningInk),
+    _ => (pillNeutralBg, pillNeutralInk),
+  };
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(color: color.withAlpha(14), borderRadius: BorderRadius.circular(6)),
-    child: Wrap(spacing: Space.xs, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      if (icon != null) ...[Icon(icon, size: 13, color: color), const SizedBox(width: 5)],
-      Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
-    ]),
-  );
+  Widget build(BuildContext context) {
+    final (bg, fg) = _pair;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Corners.chip)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[Icon(icon, size: 13, color: fg), const SizedBox(width: 4)],
+        Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w500))),
+      ]),
+    );
+  }
 }
+
+/// An empty block keeps its frame: one quiet sentence where the rows would be, and the
+/// next step if there is one. No illustration.
 class EmptyPanel extends StatelessWidget {
   const EmptyPanel({super.key, required this.icon, required this.title, required this.message, this.action});
   final IconData icon;
   final String title, message;
   final Widget? action;
   @override
-  Widget build(BuildContext context) => Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(
-    mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, size: 28, color: muted),
-      const SizedBox(height: Space.lg), Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-      const SizedBox(height: 8), ConstrainedBox(constraints: const BoxConstraints(maxWidth: 390), child: Text(message, textAlign: TextAlign.center, style: const TextStyle(color: muted))),
-      if (action != null) ...[const SizedBox(height: 20), action!],
-    ],
-  )));
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.lg),
+    decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(padding: const EdgeInsets.only(top: 2), child: Icon(icon, size: 16, color: muted)),
+      const SizedBox(width: Space.md),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 2),
+        Text(message, style: const TextStyle(color: muted, fontSize: 14)),
+        if (action != null) ...[const SizedBox(height: Space.md), action!],
+      ])),
+    ]),
+  );
 }
+
+/// A label and its figure on one line, the figure right-aligned in tabular digits.
 class SummaryRow extends StatelessWidget {
   const SummaryRow(this.label, this.value, {super.key, this.strong = false, this.color});
   final String label, value;
   final bool strong;
   final Color? color;
   @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
-    Expanded(child: Text(label, style: TextStyle(color: strong ? ink : muted, fontSize: strong ? 18 : 14, fontWeight: strong ? FontWeight.w700 : FontWeight.normal))),
-    const SizedBox(width: 12), Flexible(child: Text(value, textAlign: TextAlign.end, style: amountStyle.copyWith(color: color ?? ink, fontSize: strong ? 24 : 14))),
-  ]));
+  Widget build(BuildContext context) => Padding(padding: EdgeInsets.symmetric(vertical: strong ? 8 : 5), child: LayoutBuilder(builder: (context, box) => Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+    Expanded(child: Text(label, style: TextStyle(color: strong ? ink : muted, fontSize: strong ? 16 : 14, fontWeight: strong ? FontWeight.w500 : FontWeight.w400))),
+    const SizedBox(width: 12),
+    // the figure sits on the row's right edge and shrinks rather than wrap
+    ConstrainedBox(constraints: BoxConstraints(maxWidth: box.maxWidth * 0.6), child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight,
+      child: Text(value, textAlign: TextAlign.end, style: (strong ? moneyStyle : amountStyle).copyWith(color: color ?? ink, fontSize: strong ? 24 : 14)))),
+  ])));
 }
+
+/// A white card on the stone ground: 1px edge, 8px corners, no shadow.
 class WhitePanel extends StatelessWidget {
   const WhitePanel({super.key, required this.child, this.padding = const EdgeInsets.all(Space.lg)});
   final Widget child;
@@ -58,6 +88,93 @@ class WhitePanel extends StatelessWidget {
     child: Padding(padding: padding, child: child));
 }
 
+/// One figure in a [KpiStrip].
+class Kpi {
+  const Kpi(this.label, this.value, {this.caption, this.color, this.lead = false});
+  final String label, value;
+
+  /// One grey line under the figure: its window, or the next step for a zero.
+  final String? caption;
+  final Color? color;
+
+  /// The figure that answers the screen's question: larger and bold.
+  final bool lead;
+}
+
+/// Headline figures as type in one container split by 1px dividers - no tile per figure,
+/// no icon. Four across on a PC; on a phone a two-column grid, the last cell taking the
+/// full width when the count is odd.
+class KpiStrip extends StatelessWidget {
+  const KpiStrip(this.items, {super.key});
+  final List<Kpi> items;
+
+  Widget _cell(BuildContext context, Kpi kpi) => Padding(
+    padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.md),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Text(kpi.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 13)),
+      const SizedBox(height: 6),
+      FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(kpi.value,
+        style: (kpi.lead ? moneyStyle : amountStyle).copyWith(fontSize: kpi.lead ? 30 : 22, color: kpi.color ?? ink, height: 1.15))),
+      if (kpi.caption != null) ...[const SizedBox(height: 4), Text(kpi.caption!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 12))],
+    ]),
+  );
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+    final narrow = box.maxWidth < 600;
+    final decoration = BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel));
+    if (!narrow) {
+      return Container(decoration: decoration, child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) const VerticalDivider(width: 1),
+          Expanded(flex: items[i].lead ? 4 : 3, child: _cell(context, items[i])),
+        ],
+      ])));
+    }
+    final rows = <Widget>[];
+    for (var i = 0; i < items.length; i += 2) {
+      final pair = items.skip(i).take(2).toList();
+      if (i > 0) rows.add(const Divider());
+      rows.add(IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: _cell(context, pair[0])),
+        if (pair.length == 2) ...[const VerticalDivider(width: 1), Expanded(child: _cell(context, pair[1]))],
+      ])));
+    }
+    return Container(decoration: decoration, child: Column(children: rows));
+  });
+}
+
+/// The app's mark: a till receipt (struk) with a torn edge, drawn in the shop's wine.
+class BrandMark extends StatelessWidget {
+  const BrandMark({super.key, this.size = 24});
+  final double size;
+  @override
+  Widget build(BuildContext context) => SizedBox(width: size, height: size, child: CustomPaint(painter: _ReceiptPainter()));
+}
+
+class _ReceiptPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final left = w * 0.2, right = w * 0.8, top = h * 0.08, bottom = h * 0.9;
+    final teeth = 4;
+    final step = (right - left) / teeth;
+    final paper = Path()..moveTo(left, top)..lineTo(right, top)..lineTo(right, bottom);
+    for (var i = teeth; i > 0; i--) {
+      paper.lineTo(left + step * (i - 0.5), bottom - h * 0.08);
+      paper.lineTo(left + step * (i - 1), bottom);
+    }
+    paper.close();
+    canvas.drawPath(paper, Paint()..color = dataHue);
+    final line = Paint()..color = Colors.white..strokeWidth = h * 0.07..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(left + w * 0.1, h * 0.3), Offset(right - w * 0.1, h * 0.3), line);
+    canvas.drawLine(Offset(left + w * 0.1, h * 0.46), Offset(right - w * 0.22, h * 0.46), line);
+    canvas.drawLine(Offset(left + w * 0.1, h * 0.62), Offset(right - w * 0.1, h * 0.62), line);
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class PageIntro extends StatelessWidget {
   const PageIntro(this.title, this.description, {super.key});
   final String title, description;
@@ -66,7 +183,7 @@ class PageIntro extends StatelessWidget {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(title, style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: Space.xs),
-      Text(description, style: Theme.of(context).textTheme.bodySmall),
+      Text(description, style: const TextStyle(color: muted, fontSize: 14)),
     ]),
   );
 }
@@ -80,17 +197,20 @@ class WorkArea extends StatelessWidget {
     child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child));
 }
 
+/// The phone's cart bar: the count and the total, one tap to the cart.
 class CartAction extends StatelessWidget {
   const CartAction({super.key, required this.count, required this.total, required this.onPressed});
   final int count;
   final String total;
   final VoidCallback onPressed;
   @override Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(Space.md),
+    padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.md),
     decoration: const BoxDecoration(color: surface, border: Border(top: BorderSide(color: lineColor))),
-    child: SizedBox(width: double.infinity, child: FilledButton(onPressed: onPressed,
-      child: Wrap(alignment: WrapAlignment.spaceBetween, spacing: Space.lg, runSpacing: Space.xs, children: [
-        Text('Keranjang ($count)'), Text(total, style: amountStyle.copyWith(color: Colors.white)),
+    child: SizedBox(width: double.infinity, height: 48, child: FilledButton(onPressed: onPressed,
+      child: Row(children: [
+        Expanded(child: Text('Keranjang · $count barang', maxLines: 1, overflow: TextOverflow.ellipsis)),
+        const SizedBox(width: Space.sm),
+        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 160), child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: Text(total, style: moneyStyle.copyWith(color: Colors.white, fontSize: 16)))),
       ]))),
   );
 }
@@ -101,11 +221,12 @@ class CartLayout extends StatelessWidget {
   final List<Widget> items;
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
     final compact = box.maxHeight < 560 || MediaQuery.textScalerOf(context).scale(14) > 20;
-    final contents = items.isEmpty ? <Widget>[const EmptyPanel(icon: Icons.shopping_basket_outlined,
-      title: 'Keranjang kosong', message: 'Tambahkan barang dari katalog.')] : items;
-    return Material(color: surface, child: compact
+    final contents = items.isEmpty ? <Widget>[const Padding(padding: EdgeInsets.symmetric(vertical: Space.xl),
+      child: Text('Keranjang masih kosong. Scan barang atau pilih dari katalog.', style: TextStyle(color: muted)))] : items;
+    return Material(color: surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.panel), side: const BorderSide(color: lineColor)),
+      clipBehavior: Clip.antiAlias, child: compact
       ? ListView(padding: const EdgeInsets.all(Space.lg), children: [header, const Divider(), ...contents, const Divider(), footer])
-      : Column(children: [Padding(padding: const EdgeInsets.all(Space.lg), child: header), const Divider(),
+      : Column(children: [Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: header), const Divider(),
           Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: Space.lg), children: contents)),
           const Divider(), Padding(padding: const EdgeInsets.all(Space.lg), child: footer),
         ]));
@@ -120,18 +241,15 @@ class RecordRow extends StatelessWidget {
   final VoidCallback? onTap;
   @override Widget build(BuildContext context) => Material(color: surface,
     child: InkWell(onTap: onTap, child: Container(
-      padding: const EdgeInsets.all(Space.lg),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: Space.xs), Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-        if (value != null || onTap != null) ...[
-          const SizedBox(height: Space.sm),
-          Wrap(spacing: Space.lg, runSpacing: Space.sm, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            if (value != null) Text(value!, style: amountStyle.copyWith(fontSize: 16)),
-            if (onTap != null) Text(actionLabel, style: const TextStyle(color: wine, fontSize: 14, fontWeight: FontWeight.w500)),
-          ]),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: ruleColor))),
+      child: Row(children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 2), Text(subtitle, style: const TextStyle(color: muted, fontSize: 13)),
+        ])),
+        if (value != null) Text(value!, style: amountStyle.copyWith(fontSize: 14)),
+        if (onTap != null) const Padding(padding: EdgeInsets.only(left: Space.sm), child: Icon(Icons.chevron_right, size: 18, color: muted)),
       ]),
     )),
   );
@@ -141,10 +259,10 @@ class PaymentTotal extends StatelessWidget {
   const PaymentTotal({super.key, required this.total, required this.description});
   final String total, description;
   @override Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('Total pembayaran', style: TextStyle(color: muted)),
-    const SizedBox(height: Space.sm),
-    Text(total, style: amountStyle.copyWith(fontSize: 32, color: ink)),
-    const SizedBox(height: Space.xs), Text(description, style: Theme.of(context).textTheme.bodySmall),
-    const SizedBox(height: Space.xl), const Divider(), const SizedBox(height: Space.xl),
+    const Text('Total yang dibayar', style: TextStyle(color: muted, fontSize: 14)),
+    const SizedBox(height: Space.xs),
+    FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(total, style: moneyStyle.copyWith(fontSize: 30, color: dataHue))),
+    const SizedBox(height: Space.xs), Text(description, style: const TextStyle(color: muted, fontSize: 12)),
+    const SizedBox(height: Space.xl),
   ]);
 }

@@ -76,7 +76,7 @@ void main() {
         expect(tester.takeException(), isNull, reason: label);
       }
       if (scenario.$3 != 'tablet') {
-        await tester.tap(find.text('Keranjang (1)'));
+        await tester.tap(find.text('Keranjang · 1 barang'));
         await tester.pumpAndSettle();
         final button = find.text('Lanjut bayar');
         await tester.ensureVisible(button);

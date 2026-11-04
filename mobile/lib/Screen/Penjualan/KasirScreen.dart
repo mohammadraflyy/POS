@@ -46,7 +46,7 @@ class _KasirScreenState extends State<KasirScreen> {
             if (matches.length == 1) showProductSheet(context, widget.app, matches.first);
           }, decoration: InputDecoration(labelText: 'Cari barang', hintText: 'Nama, kode, atau barcode', prefixIcon: const Icon(Icons.search),
             suffixIcon: _search.text.isEmpty ? null : IconButton(tooltip: 'Hapus pencarian', onPressed: () => setState(_search.clear), icon: const Icon(Icons.close))))),
-          const SizedBox(width: 10), IconButton.filled(onPressed: _scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner), style: IconButton.styleFrom(padding: const EdgeInsets.all(16), backgroundColor: wine)),
+          const SizedBox(width: 10), IconButton.filled(onPressed: _scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner), style: IconButton.styleFrom(padding: const EdgeInsets.all(14), backgroundColor: primaryInk)),
         ]),
       ])),
       SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Space.lg),

@@ -35,7 +35,7 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
       const SizedBox(height: Space.lg), TextField(controller: quantity, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Jumlah', helperText: 'Boleh pecahan, misalnya 0,25')),
       const SizedBox(height: Space.lg), TextField(controller: manual, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Harga manual (Rp, opsional)', helperText: 'Kosong untuk harga otomatis dari PC')),
       const SizedBox(height: Space.lg), TextField(controller: discount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Diskon baris (Rp, opsional)')),
-      if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: wine))),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: errorColor))),
       const SizedBox(height: Space.lg), SizedBox(width: double.infinity, child: FilledButton(onPressed: save, child: const Text('Simpan ke keranjang'))),
     ])));
 }

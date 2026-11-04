@@ -49,9 +49,9 @@ class _ProductSheetState extends State<ProductSheet> {
       const SizedBox(height: Space.lg), TextField(controller: _quantity, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Jumlah', helperText: 'Boleh pecahan, misalnya 0,25')),
       const SizedBox(height: Space.lg), TextField(controller: _manual, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Harga manual (opsional)', hintText: 'Otomatis sesuai tier harga', helperText: 'Minimal ${money(_unit.cost)} per ${_unit.name}')),
       const SizedBox(height: Space.lg), TextField(controller: _discount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Diskon barang (Rp)', helperText: 'Nominal untuk seluruh baris barang ini')),
-      if (_unit.tiers.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text('Harga grosir: ${_unit.tiers.map((t) => 'mulai ${qty(t.minQty)} ${_unit.name} → ${money(t.price)}').join(', ')}', style: const TextStyle(color: wine, fontSize: 13))),
+      if (_unit.tiers.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text('Harga grosir: ${_unit.tiers.map((t) => 'mulai ${qty(t.minQty)} ${_unit.name} → ${money(t.price)}').join(', ')}', style: const TextStyle(color: muted, fontSize: 13))),
       const SizedBox(height: 12), const Text('Barang dengan satuan yang sama akan diperbarui sesuai jumlah di atas.', style: TextStyle(fontSize: 13, color: muted)),
-      if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: wine))),
+      if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: errorColor))),
       const SizedBox(height: Space.lg), SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _save, icon: const Icon(Icons.shopping_bag_outlined), label: const Text('Simpan ke keranjang'))),
     ],
   )));

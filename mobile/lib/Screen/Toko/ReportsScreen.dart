@@ -5,6 +5,10 @@ import '../../services/store_api.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/ui.dart';
 import 'CostCorrectionDialog.dart';
+import '../../Widgets/charts.dart';
+
+/// "-Rp14.000" for a deduction; a real zero stays "Rp0", with no sign to make it look like one.
+String _minus(Object? value) => (number(value) ?? 0) == 0 ? rupiah(0) : '-${rupiah(value)}';
 
 /// Cash paid out for anything but goods - water, wages, fuel.
 class ExpensesScreen extends StatefulWidget {
@@ -181,20 +185,30 @@ class _RekapScreenState extends State<RekapScreen> {
         OutlinedButton.icon(onPressed: () => showCostCorrectionHistory(context, widget.api), icon: const Icon(Icons.history), label: const Text('Riwayat koreksi HPP')),
       ]),
       LoadSwitch(loading: loading && data == null, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: Space.md, runSpacing: Space.md, children: [
-          StatTile('Omzet tunai', rupiah(summary['omzetTunai']), icon: Icons.payments_outlined),
-          StatTile('Omzet QRIS & transfer', rupiah(summary['omzetNonTunai']), icon: Icons.qr_code_2),
-          StatTile('Laba kotor', rupiah(summary['labaKotor']), icon: Icons.trending_up, color: (number(summary['labaKotor']) ?? 0) < 0 ? errorColor : successColor),
-          StatTile('Transaksi', text(summary['jumlahTransaksi'], '0'), icon: Icons.receipt_long_outlined),
-          StatTile('Piutang beredar', rupiah(summary['piutangBeredar']), icon: Icons.account_balance_wallet_outlined, color: warningColor),
-          StatTile('Nilai stok', rupiah(stock['totalNilai']), icon: Icons.inventory_2_outlined),
+        // the period's answer leads; the stock value lives with its own table below
+        KpiStrip([
+          Kpi('Laba kotor', rupiah(summary['labaKotor']), lead: true, caption: rangeLabel(range),
+            color: (number(summary['labaKotor']) ?? 0) < 0 ? errorColor : null),
+          Kpi('Omzet tunai', rupiah(summary['omzetTunai']), caption: 'termasuk pelunasan bon'),
+          Kpi('Omzet QRIS & transfer', rupiah(summary['omzetNonTunai'])),
+          Kpi('Transaksi', text(summary['jumlahTransaksi'], '0')),
+          Kpi('Piutang beredar', rupiah(summary['piutangBeredar']), caption: 'semua bon belum lunas'),
         ]),
+        if (rowsOf('labaPerHari').isNotEmpty) section('Laba per hari', WhitePanel(child: Builder(builder: (context) {
+          // every day of the period up to today, on a time scale: a day with no sale is an empty slot, not a skipped one
+          final byDay = {for (final r in rowsOf('labaPerHari')) r['tanggal'].toString(): number(r['laba']) ?? 0};
+          final today = DateTime.now();
+          final end = range.end.isAfter(today) ? DateTime(today.year, today.month, today.day) : range.end;
+          final days = [for (var d = DateTime(range.start.year, range.start.month, range.start.day); !d.isAfter(end); d = DateTime(d.year, d.month, d.day + 1)) d];
+          return ColumnChart(labels: [for (final d in days) '${d.day}/${d.month}'], values: [for (final d in days) byDay[isoDate(d)] ?? 0],
+            semanticLabel: 'Laba per hari, ${rangeLabel(range)}');
+        }))),
         if (penjelasan.isNotEmpty) section('Asal laba', WhitePanel(child: Column(children: [
           SummaryRow('Penjualan kotor', rupiah(penjelasan['penjualanKotor'])),
-          SummaryRow('Diskon barang', '-${rupiah(penjelasan['diskonItem'])}'),
-          SummaryRow('Diskon nota', '-${rupiah(penjelasan['diskonNota'])}'),
+          SummaryRow('Diskon barang', _minus(penjelasan['diskonItem'])),
+          SummaryRow('Diskon nota', _minus(penjelasan['diskonNota'])),
           SummaryRow('Omzet', rupiah(penjelasan['omzet'])),
-          SummaryRow('Modal barang', '-${rupiah(penjelasan['modal'])}'),
+          SummaryRow('Modal barang', _minus(penjelasan['modal'])),
           SummaryRow('Laba kotor', rupiah(penjelasan['labaKotor']), strong: true),
           if ((number(penjelasan['jumlahBarisRugi']) ?? 0) > 0)
             SummaryRow('${penjelasan['jumlahBarisRugi']} baris terjual rugi', rupiah(penjelasan['totalRugi']), color: errorColor),
@@ -224,7 +238,7 @@ class _RekapScreenState extends State<RekapScreen> {
           DataCol('Omzet', (r) => rupiah(r['omzet']), numeric: true),
           DataCol('Laba', (r) => rupiah(r['laba']), numeric: true),
         ])),
-        section('Laba per hari', DataView<Map<String, dynamic>>(rows: rowsOf('labaPerHari'), columns: [
+        section('Laba per hari, angkanya', DataView<Map<String, dynamic>>(rows: rowsOf('labaPerHari'), columns: [
           DataCol('Tanggal', (r) => text(r['tanggal'])),
           DataCol('Omzet', (r) => rupiah(r['omzet']), numeric: true),
           DataCol('Laba', (r) => rupiah(r['laba']), numeric: true),
@@ -251,7 +265,7 @@ class _RekapScreenState extends State<RekapScreen> {
           DataCol('Bon belum lunas', (r) => text(r['jumlahBon']), numeric: true),
           DataCol('Total piutang', (r) => rupiah(r['totalPiutang']), numeric: true),
         ])),
-        section('Nilai stok', DataView<Map<String, dynamic>>(rows: stock.isEmpty ? const [] : jsonRows(stock['produk']), columns: [
+        section('Nilai stok · ${rupiah(stock['totalNilai'])}', DataView<Map<String, dynamic>>(rows: stock.isEmpty ? const [] : jsonRows(stock['produk']), columns: [
           DataCol('Produk', (r) => text(r['namaItem']), flex: 3),
           DataCol('Stok', (r) => '${quantityText(r['stok'])} ${text(r['satuan'], '')}', numeric: true),
           DataCol('Harga pokok', (r) => rupiah(r['hargaPokok']), numeric: true),

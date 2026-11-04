@@ -16,7 +16,7 @@ class ProductsHub extends StatelessWidget {
   /// False while another menu is showing: its keyboard keys stay quiet.
   final bool active;
   @override Widget build(BuildContext context) => DefaultTabController(length: 2, child: Column(children: [
-    const Material(color: surface, child: TabBar(tabs: [Tab(text: 'Produk'), Tab(text: 'Master Satuan')])),
+    const PageTabs(tabs: ['Produk', 'Master Satuan']),
     Expanded(child: TabBarView(children: [ProductsScreen(api: api, isAdmin: isAdmin, active: active), UnitsScreen(api: api, isAdmin: isAdmin)])),
   ]));
 }

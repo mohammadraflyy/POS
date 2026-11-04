@@ -107,44 +107,50 @@ class DataView<T> extends StatelessWidget {
   final bool Function(T row)? isSelected;
   final void Function(T row, bool selected)? onSelect;
   bool get _selectable => isSelected != null && onSelect != null;
-  Widget _checkbox(T row) => SizedBox(width: 40, child: Checkbox(value: isSelected!(row), onChanged: (v) => onSelect!(row, v ?? false)));
+  Widget _checkbox(T row) => SizedBox(width: 40, child: Align(alignment: Alignment.centerLeft, child: Checkbox(value: isSelected!(row), onChanged: (v) => onSelect!(row, v ?? false),
+    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact)));
   @override Widget build(BuildContext context) {
     if (rows.isEmpty) return EmptyPanel(icon: Icons.inbox_outlined, title: emptyTitle, message: emptyMessage);
     return LayoutBuilder(builder: (context, box) {
       final wide = box.maxWidth >= 720;
       if (!wide) {
-        return Column(children: [for (final row in rows) Material(color: surface, child: InkWell(
+        return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
+          clipBehavior: Clip.antiAlias, child: Column(children: [for (final (index, row) in rows.indexed) Material(color: surface, child: InkWell(
           onTap: onTap == null ? null : () => onTap!(row),
-          child: Container(width: double.infinity, padding: const EdgeInsets.all(Space.lg),
-            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))),
+          child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
+            decoration: BoxDecoration(border: index == 0 ? null : const Border(top: BorderSide(color: ruleColor))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 if (_selectable) _checkbox(row),
-                Expanded(child: Text(columns.first.cell(row), style: Theme.of(context).textTheme.titleMedium)),
+                Expanded(child: Text(columns.first.cell(row), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500))),
+                if (columns.skip(1).where((c) => c.numeric).isNotEmpty)
+                  Text(columns.skip(1).lastWhere((c) => c.numeric).cell(row), style: amountStyle.copyWith(fontSize: 14)),
               ]),
-              const SizedBox(height: Space.xs),
-              Wrap(spacing: Space.lg, runSpacing: Space.xs, children: [
-                for (final col in columns.skip(1)) Text('${col.label}: ${col.cell(row)}', style: Theme.of(context).textTheme.bodySmall),
-              ]),
+              const SizedBox(height: 2),
+              Text([for (final col in columns.skip(1)) if (!col.numeric || col != columns.skip(1).lastWhere((c) => c.numeric)) '${col.label} ${col.cell(row)}'].join(' · '),
+                style: const TextStyle(color: muted, fontSize: 13)),
               if (actions != null) Wrap(spacing: Space.xs, children: actions!(row)),
-            ]))))]);
+            ]))))]));
       }
       return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
         clipBehavior: Clip.antiAlias, child: Column(children: [
-          Container(color: canvas, padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Row(children: [
+          Container(height: 38, padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))), child: Row(children: [
             if (_selectable) const SizedBox(width: 40),
-            for (final col in columns) Expanded(flex: col.flex, child: Text(col.label, textAlign: col.numeric ? TextAlign.end : TextAlign.start,
-              style: const TextStyle(fontWeight: FontWeight.w600, color: muted, fontSize: 13))),
+            for (final col in columns) Expanded(flex: col.flex, child: Text(col.label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: col.numeric ? TextAlign.end : TextAlign.start,
+              style: const TextStyle(color: muted, fontSize: 12))),
             if (actions != null) SizedBox(width: actionsWidth),
           ])),
-          for (final row in rows) InkWell(onTap: onTap == null ? null : () => onTap!(row), child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
-            decoration: const BoxDecoration(border: Border(top: BorderSide(color: lineColor))),
+          for (final (index, row) in rows.indexed) InkWell(onTap: onTap == null ? null : () => onTap!(row), child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 8),
+            decoration: BoxDecoration(border: index == 0 ? null : const Border(top: BorderSide(color: ruleColor))),
             child: Row(children: [
               if (_selectable) _checkbox(row),
-              for (final col in columns) Expanded(flex: col.flex, child: Text(col.cell(row), textAlign: col.numeric ? TextAlign.end : TextAlign.start,
-                style: col.numeric ? amountStyle.copyWith(fontWeight: FontWeight.w500) : null)),
-              if (actions != null) SizedBox(width: actionsWidth, child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions!(row))),
+              for (final (colIndex, col) in columns.indexed) Expanded(flex: col.flex, child: Text(col.cell(row), maxLines: 2, overflow: TextOverflow.ellipsis,
+                textAlign: col.numeric ? TextAlign.end : TextAlign.start,
+                style: col.numeric ? amountStyle.copyWith(fontSize: 14) : TextStyle(fontSize: 14, color: colIndex == 0 ? ink : const Color(0xFF3D3D3D)))),
+              if (actions != null) SizedBox(width: actionsWidth, child: _CompactActions(children: actions!(row))),
             ]))),
         ]));
     });
@@ -158,7 +164,7 @@ class Pager extends StatelessWidget {
   final ValueChanged<int> onPage;
   @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.symmetric(vertical: Space.md), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
     IconButton(tooltip: 'Halaman sebelumnya', onPressed: !busy && page > 1 ? () => onPage(page - 1) : null, icon: const Icon(Icons.chevron_left)),
-    Text('$page / $last'),
+    Text('Halaman $page dari $last', style: const TextStyle(color: muted, fontSize: 13)),
     IconButton(tooltip: 'Halaman berikutnya', onPressed: !busy && page < last ? () => onPage(page + 1) : null, icon: const Icon(Icons.chevron_right)),
   ]));
 }
@@ -169,10 +175,11 @@ class StatTile extends StatelessWidget {
   final Color? color;
   final IconData? icon;
   // two to a row on a phone (page padding and the gap between tiles taken off), fixed on a PC
-  @override Widget build(BuildContext context) => SizedBox(width: MediaQuery.sizeOf(context).width < 600 ? (MediaQuery.sizeOf(context).width - Space.lg * 2 - Space.md) / 2 : 230,
-    child: WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Row(children: [if (icon != null) ...[Icon(icon, size: 18, color: muted), const SizedBox(width: 6)], Expanded(child: Text(label, style: const TextStyle(color: muted, fontSize: 13)))]),
-    const SizedBox(height: Space.sm),
+  // the icon is accepted for old callers and not drawn: a figure needs no badge
+  @override Widget build(BuildContext context) => SizedBox(width: MediaQuery.sizeOf(context).width < 600 ? (MediaQuery.sizeOf(context).width - Space.lg * 2 - Space.gap) / 2 : 230,
+    child: WhitePanel(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text(label, style: const TextStyle(color: muted, fontSize: 13)),
+    const SizedBox(height: 6),
     Text(value, style: amountStyle.copyWith(fontSize: 22, color: color ?? ink)),
   ])));
 }
@@ -192,7 +199,7 @@ class _SearchBoxState extends State<SearchBox> {
   @override Widget build(BuildContext context) => TextField(autofocus: widget.autofocus, focusNode: widget.focusNode,
     onChanged: (value) { _timer?.cancel(); _timer = Timer(const Duration(milliseconds: 350), () => widget.onChanged(value.trim())); },
     onSubmitted: (value) { _timer?.cancel(); widget.onChanged(value.trim()); },
-    decoration: InputDecoration(labelText: widget.hint, prefixIcon: const Icon(Icons.search)));
+    decoration: InputDecoration(hintText: widget.hint, prefixIcon: const Icon(Icons.search, size: 20)));
 }
 
 /// Shows the standard loading / error / content states of a screen that loads once.
@@ -203,7 +210,7 @@ class LoadSwitch extends StatelessWidget {
   final VoidCallback onRetry;
   final Widget child;
   @override Widget build(BuildContext context) {
-    if (loading) return const Padding(padding: EdgeInsets.all(Space.xl), child: Center(child: CircularProgressIndicator()));
+    if (loading) return const Padding(padding: EdgeInsets.symmetric(vertical: Space.xl), child: LinearProgressIndicator(minHeight: 2));
     if (error != null) return EmptyPanel(icon: Icons.wifi_off, title: 'Data belum dimuat', message: error!, action: OutlinedButton(onPressed: onRetry, child: const Text('Coba lagi')));
     return child;
   }
@@ -331,14 +338,17 @@ class _FormDialogState extends State<_FormDialog> {
 
 /// Title row with optional actions, for the top of every management screen.
 class ScreenHeader extends StatelessWidget {
-  const ScreenHeader(this.title, this.description, {super.key, this.actions = const []});
+  const ScreenHeader(this.title, this.description, {super.key, this.actions = const [], this.section = false});
   final String title, description;
   final List<Widget> actions;
-  @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: Space.lg), child: Wrap(
-    alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: Space.lg, runSpacing: Space.md, children: [
-      ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: Space.xs),
-        Text(description, style: Theme.of(context).textTheme.bodySmall),
+
+  /// A section further down the screen: 16px, so the screen keeps one 24px title.
+  final bool section;
+  @override Widget build(BuildContext context) => Padding(padding: EdgeInsets.only(bottom: section ? Space.md : Space.xl), child: Wrap(
+    alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.end, spacing: Space.lg, runSpacing: Space.md, children: [
+      ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: section ? Theme.of(context).textTheme.titleMedium : Theme.of(context).textTheme.titleLarge), SizedBox(height: section ? 2 : Space.xs),
+        Text(description, style: TextStyle(color: muted, fontSize: section ? 13 : 14)),
       ])),
       if (actions.isNotEmpty) Wrap(spacing: Space.sm, runSpacing: Space.sm, children: actions),
     ]));
@@ -351,7 +361,9 @@ class ScreenBody extends StatelessWidget {
   final double maxWidth;
   final Future<void> Function()? onRefresh;
   @override Widget build(BuildContext context) {
-    final list = ListView(physics: const AlwaysScrollableScrollPhysics(), padding: const EdgeInsets.all(Space.lg), children: [
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final list = ListView(physics: const AlwaysScrollableScrollPhysics(),
+      padding: wide ? const EdgeInsets.fromLTRB(Space.xxl, Space.xxl, Space.xxl, Space.xxl) : const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.xl), children: [
       Center(child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children))),
     ]);
     return onRefresh == null ? list : RefreshIndicator(onRefresh: onRefresh!, child: list);
@@ -360,3 +372,79 @@ class ScreenBody extends StatelessWidget {
 
 String text(Object? value, [String fallback = '—']) => value == null || value.toString().isEmpty ? fallback : value.toString();
 int intOf(Object? value) => idNumber(value);
+
+/// A card with its own header: a 16px title, an optional grey note or action on the
+/// right, then the content. Its edge is the content's edge - no inner padding band.
+class SectionCard extends StatelessWidget {
+  const SectionCard({super.key, required this.title, required this.child, this.trailing, this.padded = true});
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  /// False for a table or list that runs edge to edge under the header.
+  final bool padded;
+  @override Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
+    clipBehavior: Clip.antiAlias,
+    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 14, Space.md, 10), child: Row(children: [
+        Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
+        if (trailing != null) DefaultTextStyle.merge(style: const TextStyle(color: muted, fontSize: 12), child: trailing!),
+      ])),
+      if (padded) Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: child) else child,
+    ]),
+  );
+}
+
+/// Rows inside a [SectionCard]: a label (and an optional grey subline) on the left, the
+/// figure right-aligned on one edge, a rule between rows.
+class LedgerRow extends StatelessWidget {
+  const LedgerRow({super.key, required this.label, required this.value, this.subline, this.leading, this.first = false, this.valueColor});
+  final String label, value;
+  final String? subline;
+  final Widget? leading;
+  final bool first;
+  final Color? valueColor;
+  @override Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 9),
+    decoration: BoxDecoration(border: first ? null : const Border(top: BorderSide(color: ruleColor))),
+    child: Row(children: [
+      if (leading != null) ...[leading!, const SizedBox(width: Space.md)],
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+        if (subline != null) Text(subline!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 12)),
+      ])),
+      const SizedBox(width: Space.md),
+      Text(value, style: amountStyle.copyWith(fontSize: 14, color: valueColor ?? ink)),
+    ]),
+  );
+}
+
+/// Row actions in a table: small grey icon buttons on the row's right edge, so they read
+/// as tools rather than as data.
+class _CompactActions extends StatelessWidget {
+  const _CompactActions({required this.children});
+  final List<Widget> children;
+  @override Widget build(BuildContext context) => IconButtonTheme(
+    data: IconButtonThemeData(style: IconButton.styleFrom(foregroundColor: muted, minimumSize: const Size(32, 32), padding: const EdgeInsets.all(6),
+      iconSize: 18, tapTargetSize: MaterialTapTargetSize.shrinkWrap)),
+    child: Row(mainAxisAlignment: MainAxisAlignment.end, children: children));
+}
+
+/// Underline tabs that switch between views of one area: on the ground, starting on the
+/// page's left edge, over a full-width 1px rule.
+class PageTabs extends StatelessWidget {
+  const PageTabs({super.key, required this.tabs});
+  final List<String> tabs;
+  @override Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    return Container(
+      width: double.infinity, alignment: Alignment.centerLeft,
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))),
+      padding: EdgeInsets.only(left: wide ? Space.xxl - Space.md : Space.sm, top: wide ? Space.sm : 0),
+      child: TabBar(isScrollable: true, tabAlignment: TabAlignment.start, dividerHeight: 0,
+        labelPadding: const EdgeInsets.symmetric(horizontal: Space.md),
+        tabs: [for (final t in tabs) Tab(height: 40, text: t)]),
+    );
+  }
+}

@@ -68,9 +68,9 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
         else if (!printed!) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Gunakan cetak ulang. Tidak perlu membuat penjualan lagi.')),
       ])), const SizedBox(height: Space.lg),
       if (loading) const Center(child: CircularProgressIndicator())
-      else if (error != null) ...[Text(error!, style: const TextStyle(color: wine)), OutlinedButton(onPressed: load, child: const Text('Muat ulang detail'))]
+      else if (error != null) ...[Text(error!, style: const TextStyle(color: errorColor)), OutlinedButton(onPressed: load, child: const Text('Muat ulang detail'))]
       else if (sale != null) WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Center(child: Icon(Icons.storefront, size: 36, color: wine)), const SizedBox(height: 12),
+        const Center(child: Icon(Icons.storefront_outlined, size: 32, color: muted)), const SizedBox(height: 12),
         SummaryRow('Nomor nota', (sale['nomorNota'] ?? sale['id'] ?? widget.id).toString()),
         SummaryRow('Pelanggan', (sale['namaPelanggan'] ?? 'Umum').toString()), SummaryRow('Tanggal', (sale['tanggal'] ?? sale['createdAt'] ?? '—').toString()),
         SummaryRow('Metode', (sale['metodePembayaran'] ?? '—').toString()),
