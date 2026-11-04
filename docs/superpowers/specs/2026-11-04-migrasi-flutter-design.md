@@ -57,57 +57,76 @@ Tambahan lainnya:
 
 - `bin/import_legacy.dart` menyalin `pos.sqlite` desktop ke database server.
 - `bin/seed_demo.dart` membuat database berisi data dummy untuk test.
-- 119 test lolos.
+- `lib/src/embedded.dart`: server yang ditanam di aplikasi Windows (lihat Keputusan).
+- 126 test lolos.
 
-**Belum ikut dari desktop:** commit `c9a1921` (2026-11-04):
-- `POST /v1/sales` belum menerima `cetak: false` dan belum menjawab `printSkipped: true`.
-- Pencarian produk pembelian belum mengembalikan `hargaJual`, dan
-  `POST /v1/purchases` belum menerima `hargaJual` per baris.
+Commit `c9a1921` dari desktop sudah ikut: `POST /v1/sales` menerima `cetak: false`
+(menjawab `printSkipped: true`), dan baris pembelian bisa membawa `hargaJual`.
 
 ### Aplikasi Flutter (`mobile/`)
 
 Menu yang sudah ada: Dashboard, Kasir, Riwayat, Pelanggan, Pembelian, Hutang
 supplier, Supplier, Produk (termasuk satuan, harga bertingkat, input massal,
-impor), Opname, Kartu stok, Pengeluaran, Rekap, Pengguna, Pengaturan (printer,
-perangkat). Target Android dan Windows sudah dibuat. 44 test lolos.
+impor, hapus massal), Opname, Kartu stok, Pengeluaran, Rekap (termasuk Koreksi
+HPP dan riwayatnya), Pengguna, Pengaturan (printer, perangkat, zona berbahaya:
+hapus transaksi hari ini / sebelum tanggal). Kasir di PC memakai tombol pintas
+desktop: End atau F12 bayar, F3 ubah jumlah, Alt+K kosongkan, F2/PageDown atau `/` cari.
+Installer Windows: `windows/installer/build.ps1`. 55 test lolos.
 
-**Belum ada di Flutter** (sudah tersedia di server):
-- Efisiensi harga (`/v1/products/efisiensi-harga/*`)
-- Koreksi HPP (`/v1/rekap/cost-corrections*`)
-- Hapus penjualan hari ini / sebelum tanggal (`/v1/sales-purge/*`)
-- Hapus produk massal (`/v1/products/bulk-delete`)
-- Pilihan "jangan cetak struk" dan ubah harga jual saat pembelian (menunggu server, lihat di atas)
-- Kenyamanan kasir desktop: shortcut keyboard dan command palette
-  (`desktop-node/src/renderer/pages/kasir/shortcuts.ts`, `CommandPalette.tsx`)
+**Sengaja tidak dibuat:**
+- Efisiensi harga. Di desktop juga disembunyikan (`EFISIENSI_HARGA_AKTIF = false`
+  di `Rekap.tsx`). Servernya sudah siap kalau nanti mau ditampilkan.
+- Command palette dan Alt+P (pilih pelanggan). Di Flutter, pencarian ada di layar
+  kasir dan pelanggan dipilih di layar bayar.
+
+**Untuk tahap HP (belum):**
+- Tombol "jangan cetak struk" saat bayar dan kolom ubah harga jual saat pembelian.
+  Server sudah mendukung keduanya.
+- Kode server ikut terbawa ke APK walaupun tidak dipakai di Android. APK debug
+  naik dari 177 MB ke 217 MB, jadi perlu dipisah sebelum APK dibagikan.
+
+## Keputusan (2026-11-04)
+
+- **Server ditanam di aplikasi Windows.** `main.dart` menjalankan
+  `startLocalServer()` di isolate terpisah sebelum tampilan muncul. Android tidak
+  pernah menjadi server. Satu installer, satu ikon, dan hanya satu proses yang
+  memegang file SQLite. Kalau aplikasi PC ditutup, HP ikut terputus, sama seperti desktop lama.
+- **Database baru di `%APPDATA%\point_of_sales\pos.sqlite`**, terpisah dari
+  `%APPDATA%\point-of-sale\` milik desktop. Saat pertama kali dibuka, data desktop
+  disalin lewat file sementara (`pos.sqlite.importing`), lalu file desktop tidak
+  pernah disentuh lagi.
+- **Port dicek dengan mencoba menyambung**, bukan dengan bind. Windows mengizinkan
+  socket kedua bind ke port yang sudah dipakai Electron, sehingga dua server bisa
+  hidup berdampingan dan mengimpor database yang masih dipakai. Kalau port terisi,
+  aplikasi menampilkan "Tutup POS Desktop yang lama" dan tidak menyentuh file apa pun.
+- **Installer per pengguna** (`%LOCALAPPDATA%\Programs\Point of Sales`, tanpa
+  hak admin). Installer dan uninstaller menolak berjalan selama aplikasi terbuka.
+  Uninstall tidak menghapus data toko.
 
 ## Tahapan
 
-1. **Simpan pekerjaan.** Commit `server/` dan `mobile/` ke git (sebelumnya
-   belum pernah di-commit).
-2. **Samakan fitur.** Bawa `c9a1921` ke server, lalu lengkapi menu Flutter yang
-   belum ada (daftar di atas).
-3. **Paketkan untuk PC toko.** Satu installer Windows yang berisi aplikasi
-   Flutter dan `server.exe` (`dart build`). Server menyala otomatis bersama
-   aplikasi atau sebagai proses latar. Database dan port tetap sama:
-   `%APPDATA%\point-of-sale\` atau folder baru, dan port `48950`.
+1. ~~**Simpan pekerjaan.**~~ Selesai 2026-11-04 (branch `feat/flutter-migration`).
+2. ~~**Samakan fitur.**~~ Selesai 2026-11-04, lihat status di atas.
+3. ~~**Paketkan untuk PC toko.**~~ Selesai 2026-11-04: `Point-of-Sales-Setup-<versi>.exe`.
 4. **Uji paralel.** Salin data toko asli (`import_legacy.dart`) ke PC uji,
-   jalankan versi Flutter berdampingan selama beberapa hari, lalu cocokkan
-   rekap, stok, hutang, dan piutang dengan desktop.
-5. **Pindah.** Di hari yang disepakati: tutup desktop, impor data terakhir,
-   pasang versi Flutter, lalu pairing ulang HP jika token perlu diterbitkan
-   ulang. File database desktop disimpan sebagai backup.
+   jalankan versi Flutter selama beberapa hari, lalu cocokkan rekap, stok,
+   hutang, dan piutang dengan desktop. Uji juga printer struk dan pairing HP.
+5. **Pindah.** Di hari yang disepakati: tutup desktop, pasang installer, lalu buka
+   aplikasi. Data terakhir tersalin otomatis. File database desktop tetap ada sebagai backup.
 6. **Pensiunkan `desktop-node`.** Setelah satu periode tanpa masalah, desktop
    hanya disimpan untuk referensi.
+7. **Fokus HP.** Lihat "Untuk tahap HP" di atas.
 
 ## Pertanyaan terbuka
 
-- **Cara server berjalan di Windows.** Pilihannya: dijalankan oleh aplikasi
-  Flutter sebagai proses anak, atau sebagai Windows service. Prinsip dari
-  desain mobile tetap berlaku: hanya satu proses yang memegang file SQLite.
-- **Lokasi database.** Pakai lagi `%APPDATA%\point-of-sale\pos.sqlite`, atau
-  pindah ke folder baru supaya desktop dan Flutter tidak pernah membuka file yang sama.
+- **Firewall Windows.** Saat server pertama kali membuka port, Windows bisa
+  menanyakan izin (perlu admin). Ini sama seperti desktop lama, tapi tetap perlu
+  dicek di PC toko supaya HP bisa tersambung.
+- **Ikon aplikasi.** Masih ikon bawaan Flutter. Desktop lama juga memakai ikon bawaan Electron.
 - **Update otomatis.** Untuk Windows bisa lewat GitHub Releases
   (`mohammadraflyy/POS`, publik). Untuk Android, APK diunduh lalu dipasang
   dengan konfirmasi pengguna.
-- **Token HP lama.** Apakah tetap berlaku setelah impor? Tabel `device_tokens`
-  ikut tersalin, jadi seharusnya tetap berlaku. Perlu diuji di tahap 4.
+- **Token HP lama.** Tabel `device_tokens` ikut tersalin, jadi HP yang sudah
+  pairing ke desktop seharusnya langsung tersambung. Perlu diuji di tahap 4.
+- **Versi.** Aplikasi bernomor 1.0.0, sedangkan server masih melaporkan `appVersion`
+  0.1.0 di `/v1/health`. Nomornya perlu disamakan sebelum rilis.
