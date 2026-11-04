@@ -20,11 +20,19 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
   String? error, printError;
   bool loading = true, printing = false;
   bool? printed;
+
+  /// The cashier chose no receipt: not a printer failure, nothing to warn about.
+  bool get printSkipped => widget.confirmation?['printSkipped'] == true && printed != true;
   @override void initState() {
     super.initState(); printed = widget.confirmation?['printed'] as bool?;
     printError = widget.confirmation?['printError']?.toString(); load();
     if (widget.confirmation != null) WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) showNotice(context, printed == true
+      if (!mounted) return;
+      if (printSkipped) {
+        showNotice(context, 'Penjualan berhasil disimpan tanpa struk.', title: 'Penjualan tersimpan', kind: NoticeKind.success);
+        return;
+      }
+      showNotice(context, printed == true
         ? 'Penjualan berhasil disimpan. Struk dikirim ke printer PC.'
         : 'Penjualan sudah tersimpan, tetapi struk belum tercetak. Jangan membuat penjualan lagi.',
         title: printed == true ? 'Penjualan tersimpan' : 'Struk belum tercetak',
@@ -54,9 +62,10 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
     return Scaffold(appBar: AppBar(title: Text('Nota #${widget.id}')), body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: ListView(padding: const EdgeInsets.all(Space.xl), children: [
       if (widget.confirmation != null) ...[const Center(child: Icon(Icons.check_circle, size: 64, color: Color(0xFF357361))), const SizedBox(height: 12), const Center(child: Text('Penjualan sudah tersimpan', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600))), const SizedBox(height: Space.lg)],
       if (printed != null) WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(printed! ? 'Struk tercetak di PC' : 'Penjualan tersimpan, cetak belum berhasil', style: const TextStyle(fontWeight: FontWeight.w700)),
-        if (printError != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(printError!, style: const TextStyle(color: wine))),
-        if (!printed!) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Gunakan cetak ulang. Tidak perlu membuat penjualan lagi.')),
+        Text(printSkipped ? 'Disimpan tanpa struk' : printed! ? 'Struk tercetak di PC' : 'Penjualan tersimpan, cetak belum berhasil', style: const TextStyle(fontWeight: FontWeight.w700)),
+        if (printError != null && !printSkipped) Padding(padding: const EdgeInsets.only(top: 8), child: Text(printError!, style: const TextStyle(color: errorColor))),
+        if (printSkipped) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Kalau pembeli minta struk, tekan Cetak ulang.'))
+        else if (!printed!) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Gunakan cetak ulang. Tidak perlu membuat penjualan lagi.')),
       ])), const SizedBox(height: Space.lg),
       if (loading) const Center(child: CircularProgressIndicator())
       else if (error != null) ...[Text(error!, style: const TextStyle(color: wine)), OutlinedButton(onPressed: load, child: const Text('Muat ulang detail'))]

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../services/barcode_burst.dart';
 import '../../services/business_api.dart';
 import '../../services/mutation_guard.dart';
 import '../../models/live_models.dart';
@@ -7,10 +9,13 @@ import '../../Widgets/ui.dart';
 import 'LiveSupplierScreen.dart';
 import 'LivePurchaseItemScreen.dart';
 class LivePurchaseScreen extends StatefulWidget {
-  const LivePurchaseScreen({super.key, required this.api, required this.guard, this.onSaved});
+  const LivePurchaseScreen({super.key, required this.api, required this.guard, this.onSaved, this.active = true});
   final BusinessApi api;
   final MutationGuard guard;
   final VoidCallback? onSaved;
+
+  /// False while another menu is showing, so a scan there does not land in this purchase.
+  final bool active;
   @override State<LivePurchaseScreen> createState() => _LivePurchaseScreenState();
 }
 class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
@@ -20,7 +25,32 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
   final List<PurchaseDraftItem> items = [];
   bool saving = false;
   String? error, success;
-  @override void dispose() { note.dispose(); paid.dispose(); super.dispose(); }
+  final scanner = BarcodeBurst();
+  @override void initState() { super.initState(); HardwareKeyboard.instance.addHandler(handleKey); }
+  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); note.dispose(); paid.dispose(); super.dispose(); }
+
+  /// A scanner fired while no text field had focus, as on the desktop's purchase page.
+  bool handleKey(KeyEvent event) {
+    if (!mounted || !widget.active || saving || ModalRoute.of(context)?.isCurrent == false) return false;
+    if (FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null) return false;
+    final scan = scanner.feed(event);
+    if (scan.code == null) return false;
+    addScanned(scan.code!);
+    return true;
+  }
+
+  Future<void> addScanned(String code) async {
+    try {
+      final product = await widget.api.purchaseBarcode(code);
+      if (!mounted) return;
+      await addItem(initialProduct: product);
+    } catch (e) { if (mounted) showError(context, e); }
+  }
+
+  Future<void> addItem({LiveProduct? initialProduct}) async {
+    final item = await Navigator.of(context).push<PurchaseDraftItem>(MaterialPageRoute(builder: (_) => LivePurchaseItemScreen(api: widget.api, initialProduct: initialProduct)));
+    if (mounted && item != null) setState(() { items.add(item); success = null; });
+  }
   Future<void> save() async {
     if (saving) return; setState(() { saving = true; error = null; success = null; });
     try {
@@ -50,7 +80,7 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
         OutlinedButton.icon(onPressed: !enabled ? null : () async { final selected = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now()); if (selected != null && mounted) setState(() => date = selected); }, icon: const Icon(Icons.calendar_today_outlined), label: Text(isoDate(date))),
       ])), const SizedBox(height: Space.lg),
       for (var i = 0; i < items.length; i++) Padding(padding: const EdgeInsets.only(bottom: 10), child: WhitePanel(padding: EdgeInsets.zero, child: ListTile(title: Text(items[i].product.name), subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name} • Harga beli ${rupiah(items[i].price)}'), trailing: IconButton(tooltip: 'Hapus barang pembelian', onPressed: enabled ? () => setState(() => items.removeAt(i)) : null, icon: const Icon(Icons.close))))),
-      OutlinedButton.icon(onPressed: !enabled ? null : () async { final item = await Navigator.of(context).push<PurchaseDraftItem>(MaterialPageRoute(builder: (_) => LivePurchaseItemScreen(api: widget.api))); if (mounted && item != null) setState(() { items.add(item); success = null; }); }, icon: const Icon(Icons.add), label: const Text('Tambah barang')),
+      OutlinedButton.icon(onPressed: !enabled ? null : () => addItem(), icon: const Icon(Icons.add), label: const Text('Tambah barang  ·  atau scan barcode')),
       const SizedBox(height: Space.lg), TextField(controller: paid, enabled: enabled, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Uang muka (opsional, Rp)', helperText: 'Kosong = lunas. Isi 0 untuk utang penuh.')),
       const SizedBox(height: Space.lg), TextField(controller: note, enabled: enabled, decoration: const InputDecoration(labelText: 'Catatan (opsional)')),
       const SizedBox(height: 16), const Text('Jumlah akhir dihitung oleh PC saat penyimpanan.', style: TextStyle(color: muted, fontSize: 13)),

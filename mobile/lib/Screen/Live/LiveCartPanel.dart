@@ -47,7 +47,7 @@ class LiveCartPanel extends StatelessWidget {
       SummaryRow('Subtotal', rupiah(store.price?.subtotal)),
       Row(children: [const Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))), Flexible(child: TextButton(onPressed: store.items.isEmpty || !store.editable ? null : () => discount(context), child: Text(rupiah(store.discount))))]),
       SummaryRow('Total', rupiah(store.price?.total), strong: true), const SizedBox(height: Space.lg),
-      SizedBox(width: double.infinity, child: FilledButton(onPressed: store.canCheckout ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LivePaymentScreen(store: store))) : null, child: const Text('Lanjut bayar'))),
+      SizedBox(width: double.infinity, child: FilledButton(onPressed: store.canCheckout ? () => openPayment(context, store) : null, child: const Text('Lanjut bayar'))),
     ]),
   ));
 }

@@ -35,9 +35,10 @@ class LiveUnit {
   final num? price;
 }
 class LiveProduct {
-  LiveProduct(this.id, this.name, this.code, this.stock, this.units);
+  LiveProduct(this.id, this.name, this.code, this.stock, this.units, {this.barcode});
   final int id;
   final String name, code;
+  final String? barcode;
   final num? stock;
   final List<LiveUnit> units;
   factory LiveProduct.fromJson(Map<String, dynamic> data) {
@@ -59,7 +60,8 @@ class LiveProduct {
       }
     }
     return LiveProduct(id, (data['namaItem'] ?? data['name'] ?? data['nama'] ?? 'Produk #$id').toString(),
-      (data['kodeItem'] ?? data['code'] ?? data['barcode'] ?? '').toString(), number(data['stok'] ?? data['stock']), units);
+      (data['kodeItem'] ?? data['code'] ?? data['barcode'] ?? '').toString(), number(data['stok'] ?? data['stock']), units,
+      barcode: data['barcode']?.toString());
   }
 }
 class LiveCartItem {

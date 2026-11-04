@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme.dart';
 import '../../models/live_models.dart';
 import '../../services/store_api.dart';
@@ -8,12 +9,15 @@ import 'ProductDetailScreen.dart';
 
 /// Katalog: products on one tab, the shared unit list (Master Satuan) on the other.
 class ProductsHub extends StatelessWidget {
-  const ProductsHub({super.key, required this.api, required this.isAdmin});
+  const ProductsHub({super.key, required this.api, required this.isAdmin, this.active = true});
   final StoreApi api;
   final bool isAdmin;
+
+  /// False while another menu is showing: its keyboard keys stay quiet.
+  final bool active;
   @override Widget build(BuildContext context) => DefaultTabController(length: 2, child: Column(children: [
     const Material(color: surface, child: TabBar(tabs: [Tab(text: 'Produk'), Tab(text: 'Master Satuan')])),
-    Expanded(child: TabBarView(children: [ProductsScreen(api: api, isAdmin: isAdmin), UnitsScreen(api: api, isAdmin: isAdmin)])),
+    Expanded(child: TabBarView(children: [ProductsScreen(api: api, isAdmin: isAdmin, active: active), UnitsScreen(api: api, isAdmin: isAdmin)])),
   ]));
 }
 
@@ -28,9 +32,10 @@ List<FieldSpec> productFields([Map<String, dynamic>? p]) => [
 ];
 
 class ProductsScreen extends StatefulWidget {
-  const ProductsScreen({super.key, required this.api, required this.isAdmin});
+  const ProductsScreen({super.key, required this.api, required this.isAdmin, this.active = true});
   final StoreApi api;
   final bool isAdmin;
+  final bool active;
   @override State<ProductsScreen> createState() => _ProductsScreenState();
 }
 
@@ -41,7 +46,23 @@ class _ProductsScreenState extends State<ProductsScreen> {
   final Set<int> selectedIds = {};
   bool loading = true;
   String? error;
-  @override void initState() { super.initState(); load(); }
+  final searchFocus = FocusNode();
+  @override void initState() { super.initState(); HardwareKeyboard.instance.addHandler(handleKey); load(); }
+  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); searchFocus.dispose(); super.dispose(); }
+
+  /// The desktop's keys on the product list: / jumps to the search, Delete removes the
+  /// ticked products. Neither acts while a text field has focus.
+  bool handleKey(KeyEvent event) {
+    if (event is! KeyDownEvent || !mounted || !widget.active || ModalRoute.of(context)?.isCurrent == false) return false;
+    if (FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null) return false;
+    if (event.logicalKey == LogicalKeyboardKey.slash) { searchFocus.requestFocus(); return true; }
+    if ((event.logicalKey == LogicalKeyboardKey.delete || event.logicalKey == LogicalKeyboardKey.backspace) && widget.isAdmin && selectedIds.isNotEmpty) {
+      removeSelected();
+      return true;
+    }
+    return false;
+  }
+
   Future<void> load({int target = 1}) async {
     final request = ++serial; setState(() { loading = true; error = null; });
     try {
@@ -127,7 +148,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         ],
         child: const Padding(padding: EdgeInsets.all(Space.md), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.upload_file), SizedBox(width: 6), Text('Impor Excel')]))),
     ]),
-    SearchBox(onChanged: (v) { search = v; load(); }, hint: 'Cari nama, kode, atau barcode'),
+    SearchBox(onChanged: (v) { search = v; load(); }, hint: isDesktop ? 'Cari nama, kode, atau barcode  ·  /' : 'Cari nama, kode, atau barcode', focusNode: searchFocus),
     const SizedBox(height: Space.md),
     if (loading) const LinearProgressIndicator(minHeight: 2),
     LoadSwitch(loading: false, error: error, onRetry: load, child: DataView<Map<String, dynamic>>(rows: rows,

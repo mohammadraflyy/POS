@@ -13,8 +13,11 @@ class PurchaseDraftItem {
   Map<String, dynamic> toJson() => {'productId': product.id, 'productUnitId': unit.id, 'qty': quantity, 'hargaBeli': price};
 }
 class LivePurchaseItemScreen extends StatefulWidget {
-  const LivePurchaseItemScreen({super.key, required this.api});
+  const LivePurchaseItemScreen({super.key, required this.api, this.initialProduct});
   final BusinessApi api;
+
+  /// Found by a scan on the purchase screen: its line form opens straight away.
+  final LiveProduct? initialProduct;
   @override State<LivePurchaseItemScreen> createState() => _LivePurchaseItemScreenState();
 }
 class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
@@ -22,6 +25,11 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
   List<LiveProduct> products = [];
   bool loading = false;
   String? error;
+  @override void initState() {
+    super.initState();
+    final product = widget.initialProduct;
+    if (product != null) WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) select(product); });
+  }
   @override void dispose() { query.dispose(); super.dispose(); }
   Future<void> search() async {
     if (loading) return; setState(() { loading = true; error = null; });

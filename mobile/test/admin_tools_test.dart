@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../lib/core/theme.dart';
 import '../lib/services/store_api.dart';
@@ -134,5 +136,27 @@ void main() {
     expect(saved['token'], 'tok-1');
     expect(saved['alasan'], 'Salah input, sesuai faktur');
     expect(find.textContaining('1 baris dikoreksi'), findsOneWidget);
+  });
+
+  testWidgets('/ jumps to the search and Delete removes the ticked products, as on the desktop', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    final store = FakeStore({
+      'GET /v1/products': (_) => {'data': [{'id': 1, 'kodeItem': 'K1', 'namaItem': 'Kopi', 'satuan': 'PCS', 'stok': 5}], ...page},
+      'POST /v1/products/bulk-delete': (_) => {'deleted': 1, 'blocked': <String>[]},
+    });
+    await show(tester, ProductsScreen(api: store.api, isAdmin: true));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isTrue);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+    await tester.pumpAndSettle();
+    expect(find.text('Hapus 1 produk terpilih?'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 }

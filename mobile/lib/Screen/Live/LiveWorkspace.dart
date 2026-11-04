@@ -50,14 +50,14 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
       Menu.pembelian => DefaultTabController(length: 2, child: Column(children: [
         const Material(color: surface, child: TabBar(tabs: [Tab(text: 'Catat pembelian'), Tab(text: 'Daftar pembelian')])),
         Expanded(child: TabBarView(children: [
-          WorkArea(child: LivePurchaseScreen(api: api, guard: guard, onSaved: store.stockChanged)),
+          WorkArea(child: LivePurchaseScreen(api: api, guard: guard, onSaved: store.stockChanged, active: widget.menu == Menu.pembelian)),
           PurchaseListScreen(api: api, onChanged: store.stockChanged),
         ])),
       ])),
       Menu.opname => WorkArea(child: LiveOpnameScreen(api: api, guard: guard, onSaved: store.stockChanged)),
       Menu.riwayat => WorkArea(child: LiveHistoryScreen(api: api, isAdmin: admin)),
       Menu.dashboard => DashboardScreen(api: api),
-      Menu.produk => ProductsHub(api: api, isAdmin: admin),
+      Menu.produk => ProductsHub(api: api, isAdmin: admin, active: widget.menu == Menu.produk),
       Menu.hutang => SupplierDebtScreen(api: api),
       Menu.supplier => PartiesScreen(api: api, isAdmin: admin, customers: false),
       Menu.pelanggan => PartiesScreen(api: api, isAdmin: admin, customers: true),

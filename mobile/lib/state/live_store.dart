@@ -47,11 +47,13 @@ class LiveStore extends ChangeNotifier {
     } catch (e) { if (!_closed && revision == _revision) priceError = e.toString(); }
     finally { if (!_closed && revision == _revision) { pricing = false; _emit(); } }
   }
-  Future<Map<String, dynamic>> checkout(String method, num paid, String customer) async {
+  /// [print] false saves the sale without a receipt; the server answers printSkipped.
+  Future<Map<String, dynamic>> checkout(String method, num paid, String customer, {bool print = true}) async {
     if (!canCheckout) throw const ApiFailure('Tunggu harga terbaru dan perbaiki baris dengan stok kurang.');
     final payload = <String, dynamic>{
       'metodePembayaran': method, 'namaPelanggan': customer.trim().isEmpty ? null : customer.trim(),
       'dibayar': paid, 'diskon': discount, 'items': items.map((i) => i.toJson()).toList(),
+      if (!print) 'cetak': false,
     };
     late Map<String, dynamic> result;
     try {

@@ -11,6 +11,7 @@ import 'LiveCartPanel.dart';
 import 'LivePaymentScreen.dart';
 import 'package:flutter/services.dart';
 import '../../Widgets/admin.dart' show isDesktop;
+import '../../services/barcode_burst.dart';
 class LiveKasirScreen extends StatefulWidget {
   const LiveKasirScreen({super.key, required this.store, this.active = true});
   final LiveStore store;
@@ -23,6 +24,7 @@ class LiveKasirScreen extends StatefulWidget {
 class _LiveKasirScreenState extends State<LiveKasirScreen> {
   final search = TextEditingController();
   final searchFocus = FocusNode();
+  final scanner = BarcodeBurst();
   Timer? timer;
   List<LiveProduct> products = [];
   bool loading = true;
@@ -63,6 +65,10 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   bool handleKey(KeyEvent event) {
     if (event is! KeyDownEvent || !mounted || !widget.active || ModalRoute.of(context)?.isCurrent == false) return false;
     final typing = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null;
+    if (!typing) {
+      final scan = scanner.feed(event);
+      if (scan.code != null) { scanned(scan.code!); return true; }
+    }
     final key = event.logicalKey;
     final alt = HardwareKeyboard.instance.isAltPressed;
     void Function()? action;
@@ -80,9 +86,24 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     return true;
   }
 
+  /// A scanner fired while no text field had focus: find that exact code and put it in the
+  /// cart, as the desktop till did, or say plainly that the shop does not carry it.
+  Future<void> scanned(String code) async {
+    if (!widget.store.editable) return;
+    search.text = code;
+    await load();
+    if (!mounted) return;
+    final exact = products.where((p) => p.barcode == code).toList();
+    final match = exact.length == 1 ? exact.single : products.length == 1 ? products.single : null;
+    if (match == null) { showNotice(context, 'Barcode $code tidak ditemukan di katalog.', kind: NoticeKind.warning); return; }
+    addOne(match);
+    search.clear();
+    load();
+  }
+
   void pay() {
     if (!widget.store.canCheckout) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LivePaymentScreen(store: widget.store)));
+    openPayment(context, widget.store);
   }
   Future<void> load({int target = 1}) async {
     final request = ++serial; setState(() { loading = true; error = null; });
