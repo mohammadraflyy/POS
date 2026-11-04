@@ -712,10 +712,10 @@ describe('searchProductsForPurchase', () => {
     expect(results[0]).toMatchObject({ id: 1, kodeItem: 'KOPI1', namaItem: 'Kopi Kapal Api', satuan: 'PCS', hargaPokok: 1500_00 })
   })
 
-  it('includes each product\'s available units, with their own harga pokok', () => {
+  it('includes each product\'s available units, with their own harga pokok and harga jual', () => {
     const db = seedDb()
     const results = searchProductsForPurchase(db, 'kopi')
-    expect(results[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12, hargaPokok: 18000_00 }])
+    expect(results[0].units).toEqual([{ id: 1, satuan: 'Renteng', konversi: 12, hargaPokok: 18000_00, hargaJual: 18000_00 }])
   })
 
   it('returns an empty units array for a product with no satuan turunan', () => {

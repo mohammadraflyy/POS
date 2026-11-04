@@ -12,6 +12,8 @@ interface CheckoutBody {
   tanggal?: string | null
   diskon?: number | null
   keterangan?: string | null
+  /** false skips the receipt; omitted keeps the old always-print behaviour */
+  cetak?: boolean
   items: { productId: number; productUnitId: number | null; qty: number; diskon?: number | null }[]
 }
 
@@ -52,8 +54,9 @@ export async function handleSalesRoutes(
       // cashier to reprint from the PC instead of retrying the whole checkout.
       let printed = false
       let printError: string | undefined
+      const printSkipped = input.cetak === false
 
-      if (deps.printReceipt) {
+      if (deps.printReceipt && !printSkipped) {
         try {
           await deps.printReceipt(db, result.saleId, user.name)
           printed = true
@@ -64,7 +67,7 @@ export async function handleSalesRoutes(
 
       return {
         status: 200,
-        body: { saleId: result.saleId, total: toRupiah(result.total), printed, printError },
+        body: { saleId: result.saleId, total: toRupiah(result.total), printed, printError, printSkipped },
       }
     })
   }

@@ -16,7 +16,8 @@ function mapProductOption(product: {
   namaItem: string
   satuan: string
   hargaPokok: number
-  units: { id: number; satuan: string; konversi: number; hargaPokok: number }[]
+  hargaJual: number
+  units: { id: number; satuan: string; konversi: number; hargaPokok: number; hargaJual: number }[]
 }) {
   return {
     id: product.id,
@@ -24,7 +25,12 @@ function mapProductOption(product: {
     namaItem: product.namaItem,
     satuan: product.satuan,
     hargaPokok: toRupiah(product.hargaPokok),
-    units: product.units.map((unit) => ({ ...unit, hargaPokok: toRupiah(unit.hargaPokok) })),
+    hargaJual: toRupiah(product.hargaJual),
+    units: product.units.map((unit) => ({
+      ...unit,
+      hargaPokok: toRupiah(unit.hargaPokok),
+      hargaJual: toRupiah(unit.hargaJual),
+    })),
   }
 }
 
@@ -32,7 +38,7 @@ interface PurchaseBody {
   supplierId: number | null
   tanggal: string
   catatan: string | null
-  items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number }[]
+  items: { productId: number; productUnitId: number | null; qty: number; hargaBeli: number; hargaJual?: number | null }[]
   dibayar?: number | null
 }
 
@@ -102,6 +108,7 @@ export async function handlePurchasesRoutes(
         productUnitId: item.productUnitId,
         qty: item.qty,
         hargaBeli: toCents(item.hargaBeli),
+        hargaJual: item.hargaJual == null ? null : toCents(item.hargaJual),
       }))
 
       const result = recordPurchase(db, {

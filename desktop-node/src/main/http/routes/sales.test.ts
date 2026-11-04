@@ -97,6 +97,20 @@ describe('POST /v1/sales', () => {
     expect((res.body as { printed: boolean }).printed).toBe(false)
   })
 
+  it('skips the receipt when the cashier chose not to print', async () => {
+    const printReceipt = vi.fn().mockResolvedValue(undefined)
+
+    const res = await handleHttpRequest(
+      db,
+      req({ method: 'POST', path: '/v1/sales', headers: auth(), body: { ...checkoutBody, cetak: false, items: [{ ...checkoutBody.items[0], productId }] } }),
+      { printReceipt },
+    )
+
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ printed: false, printSkipped: true })
+    expect(printReceipt).not.toHaveBeenCalled()
+  })
+
   it('reports a print failure without undoing the sale', async () => {
     const printReceipt = vi.fn().mockRejectedValue(new Error('Tidak ada printer default.'))
 

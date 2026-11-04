@@ -87,6 +87,8 @@ export interface PurchaseItemInput {
   productUnitId: number | null
   qty: number
   hargaBeli: number
+  /** optional new selling price for the purchased unit, set alongside the purchase */
+  hargaJual?: number | null
 }
 
 export interface RecordPurchaseInput {
@@ -183,7 +185,60 @@ function assertPurchaseInput(input: Pick<RecordPurchaseInput, 'tanggal' | 'items
     if (item.hargaBeli < 0) {
       throw new Error('Harga beli tidak boleh negatif.')
     }
+
+    if (item.hargaJual != null && (!Number.isFinite(item.hargaJual) || item.hargaJual < 0)) {
+      throw new Error('Harga jual tidak boleh negatif.')
+    }
   }
+}
+
+/**
+ * Restates the selling price of each purchased unit that came with a `hargaJual`. Runs after
+ * {@link applyPurchaseItems} so the audit row snapshots the cost the purchase just produced.
+ * The base unit stays mirrored onto products.hargaJual; derived units only carry their own.
+ */
+function applySellPrices(
+  tx: Tx,
+  items: PurchaseItemInput[],
+  resolvedItems: ResolvedPurchaseItem[],
+  userId: number | null,
+  now: Date,
+): void {
+  items.forEach((item, index) => {
+    if (item.hargaJual == null) {
+      return
+    }
+
+    const hargaJualBaru = Math.round(item.hargaJual)
+    const unitId = resolvedItems[index].resolvedUnitId
+    const unit = tx.select().from(productUnits).where(eq(productUnits.id, unitId)).get()
+
+    if (!unit || unit.hargaJual === hargaJualBaru) {
+      return
+    }
+
+    tx.update(productUnits).set({ hargaJual: hargaJualBaru, updatedAt: now }).where(eq(productUnits.id, unitId)).run()
+
+    if (!unit.isBaseUnit) {
+      return
+    }
+
+    const product = tx.select().from(products).where(eq(products.id, item.productId)).get()!
+
+    tx.update(products).set({ hargaJual: hargaJualBaru, updatedAt: now }).where(eq(products.id, item.productId)).run()
+    tx.insert(productPriceHistories)
+      .values({
+        productId: item.productId,
+        userId,
+        hargaPokokLama: product.hargaPokok,
+        hargaPokokBaru: product.hargaPokok,
+        hargaJualLama: product.hargaJual,
+        hargaJualBaru,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+  })
 }
 
 /** priced lines, with each input's `productUnitId` pinned to a real product_units row */
@@ -494,6 +549,7 @@ export function recordPurchase(db: Db, input: RecordPurchaseInput): RecordPurcha
 
     const total = applyPurchaseItems(tx, purchase.id, resolvedItems, input.userId, now)
 
+    applySellPrices(tx, input.items, resolvedItems, input.userId, now)
     tx.update(purchases).set({ total }).where(eq(purchases.id, purchase.id)).run()
 
     return { purchaseId: purchase.id }
@@ -778,7 +834,8 @@ export interface PurchaseProductOption {
   namaItem: string
   satuan: string
   hargaPokok: number
-  units: { id: number; satuan: string; konversi: number; hargaPokok: number }[]
+  hargaJual: number
+  units: { id: number; satuan: string; konversi: number; hargaPokok: number; hargaJual: number }[]
 }
 
 export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schema>, q: string): PurchaseProductOption[] {
@@ -792,6 +849,7 @@ export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schem
       kodeItem: products.kodeItem,
       namaItem: products.namaItem,
       hargaPokok: products.hargaPokok,
+      hargaJual: products.hargaJual,
     })
     .from(products)
     .where(whereClause)
@@ -805,7 +863,7 @@ export function searchProductsForPurchase(db: BetterSQLite3Database<typeof schem
     const baseUnit = getBaseProductUnit(db, row.id)
     const derivedUnits = listProductUnits(db, row.id)
       .filter((u) => !u.isBaseUnit)
-      .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor, hargaPokok: u.hargaPokok }))
+      .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor, hargaPokok: u.hargaPokok, hargaJual: u.hargaJual }))
 
     return { ...row, satuan: baseUnit.unitCode, units: derivedUnits }
   })
@@ -832,6 +890,7 @@ export function findProductForPurchaseByBarcode(
       kodeItem: products.kodeItem,
       namaItem: products.namaItem,
       hargaPokok: products.hargaPokok,
+      hargaJual: products.hargaJual,
     })
     .from(products)
     .where(eq(products.barcode, trimmed))
@@ -844,7 +903,7 @@ export function findProductForPurchaseByBarcode(
   const baseUnit = getBaseProductUnit(db, row.id)
   const derivedUnits = listProductUnits(db, row.id)
     .filter((u) => !u.isBaseUnit)
-    .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor, hargaPokok: u.hargaPokok }))
+    .map((u) => ({ id: u.id, satuan: u.unitCode, konversi: u.conversionFactor, hargaPokok: u.hargaPokok, hargaJual: u.hargaJual }))
 
   return { ...row, satuan: baseUnit.unitCode, units: derivedUnits }
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import path from 'node:path'
 import bcrypt from 'bcryptjs'
 import { createDb } from '../../db/migrate'
-import { users, products, productUnits, units } from '../../db/schema'
+import { users, products, productUnits, productPriceHistories, units } from '../../db/schema'
 import { issueDeviceToken } from '../../device-tokens'
 import { handleHttpRequest } from '../router'
 import type { HttpRequest } from '../context'
@@ -92,7 +92,7 @@ describe('GET /v1/purchases/products', () => {
 
     expect(res.status).toBe(200)
     const body = res.body as { data: { namaItem: string; hargaPokok: number }[] }
-    expect(body.data[0]).toMatchObject({ namaItem: 'Beras 5kg', hargaPokok: 60000 })
+    expect(body.data[0]).toMatchObject({ namaItem: 'Beras 5kg', hargaPokok: 60000, hargaJual: 65000 })
   })
 })
 
@@ -124,6 +124,43 @@ describe('POST /v1/purchases', () => {
     expect(res.status).toBe(200)
     const updated = db.select().from(products).get()
     expect(updated?.stok).toBe(15)
+  })
+
+  it('updates the selling price when a line carries hargaJual', async () => {
+    const res = await handleHttpRequest(
+      db,
+      req({
+        method: 'POST',
+        path: '/v1/purchases',
+        headers: auth(),
+        body: {
+          supplierId: null,
+          tanggal: '2026-09-15',
+          catatan: null,
+          items: [{ productId, productUnitId: null, qty: 10, hargaBeli: 62000, hargaJual: 70000 }],
+        },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(db.select().from(products).get()).toMatchObject({ hargaJual: 70000_00, hargaPokok: 61000_00 })
+    expect(db.select().from(productUnits).get()?.hargaJual).toBe(70000_00)
+    const history = db.select().from(productPriceHistories).all().at(-1)
+    expect(history).toMatchObject({ hargaJualLama: 65000_00, hargaJualBaru: 70000_00 })
+  })
+
+  it('leaves the selling price alone when hargaJual is omitted', async () => {
+    await handleHttpRequest(
+      db,
+      req({
+        method: 'POST',
+        path: '/v1/purchases',
+        headers: auth(),
+        body: { supplierId: null, tanggal: '2026-09-15', catatan: null, items: [{ productId, productUnitId: null, qty: 1, hargaBeli: 60000 }] },
+      }),
+    )
+
+    expect(db.select().from(products).get()?.hargaJual).toBe(65000_00)
   })
 
   it('rejects a purchase with no items', async () => {
