@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- talks to the shop PC's server; release builds need this as much as debug ones -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="point_of_sales"
+        android:usesCleartextTraffic="true"
+        android:label="Point of Sales"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
