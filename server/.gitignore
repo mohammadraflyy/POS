@@ -1,0 +1,11 @@
+# https://dart.dev/tools/private-files
+# Created by `dart pub`
+.dart_tool/
+
+# the shop's data never goes into git
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# compiled server bundles (dart build)
+/build/
