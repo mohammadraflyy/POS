@@ -1,0 +1,20 @@
+name: point_of_sales
+description: POS mobile dengan pairing LAN dan kasir demo interaktif.
+publish_to: none
+version: 1.0.0+1
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+dependencies:
+  file_selector: ^1.1.0
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: 9.2.4
+  mobile_scanner: 7.0.0
+  qr_flutter: ^4.1.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true

@@ -1,0 +1,86 @@
+import 'package:flutter/material.dart';
+import '../../state/app_state.dart';
+import '../../state/live_store.dart';
+import '../../services/store_api.dart';
+import '../../services/mutation_guard.dart';
+import '../../core/theme.dart';
+import '../../Widgets/ui.dart';
+import '../menus.dart';
+import '../Toko/DashboardScreen.dart';
+import '../Toko/ProductsScreen.dart';
+import '../Toko/PurchasesScreen.dart';
+import '../Toko/ReportsScreen.dart';
+import '../Toko/SettingsScreen.dart';
+import 'LiveKasirScreen.dart';
+import 'LivePurchaseScreen.dart';
+import 'LiveOpnameScreen.dart';
+import 'LiveHistoryScreen.dart';
+class LiveWorkspace extends StatefulWidget {
+  const LiveWorkspace({super.key, required this.app, required this.menu, required this.menus});
+  final AppState app;
+  final Menu menu;
+  final List<Menu> menus;
+  @override State<LiveWorkspace> createState() => _LiveWorkspaceState();
+}
+class _LiveWorkspaceState extends State<LiveWorkspace> {
+  late final StoreApi api;
+  late final MutationGuard guard;
+  late final LiveStore store;
+  // screens are built the first time they are opened, then kept alive
+  final _opened = <Menu>{Menu.kasir};
+  @override void initState() {
+    super.initState(); api = StoreApi(widget.app.businessRequest, widget.app.businessFile);
+    guard = MutationGuard(SecurePendingStore('${widget.app.address}|${widget.app.userId}'));
+    store = LiveStore(api, guard); guard.load(); _opened.add(widget.menu);
+  }
+  @override void didUpdateWidget(covariant LiveWorkspace oldWidget) { super.didUpdateWidget(oldWidget); _opened.add(widget.menu); }
+  @override void dispose() { store.dispose(); guard.dispose(); super.dispose(); }
+  Future<void> _review() async {
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Periksa hasil di PC'),
+      content: Text('${guard.pending?['operation'] ?? 'Transaksi'} • ${guard.pending?['time'] ?? ''}\n\nPeriksa riwayat atau data pada PC untuk memastikan apakah operasi ini sudah tersimpan. Jangan membuat ulang jika sudah tercatat.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Belum diperiksa')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sudah saya periksa di PC'))]));
+    if (confirmed == true) { try { await guard.acknowledgeChecked(); store.clear(); } catch (e) { if (mounted) showError(context, e); } }
+  }
+  Widget _screen(Menu menu) {
+    final admin = widget.app.isAdmin;
+    return switch (menu) {
+      Menu.kasir => LiveKasirScreen(store: store),
+      Menu.pembelian => DefaultTabController(length: 2, child: Column(children: [
+        const Material(color: surface, child: TabBar(tabs: [Tab(text: 'Catat pembelian'), Tab(text: 'Daftar pembelian')])),
+        Expanded(child: TabBarView(children: [
+          WorkArea(child: LivePurchaseScreen(api: api, guard: guard, onSaved: store.stockChanged)),
+          PurchaseListScreen(api: api, onChanged: store.stockChanged),
+        ])),
+      ])),
+      Menu.opname => WorkArea(child: LiveOpnameScreen(api: api, guard: guard, onSaved: store.stockChanged)),
+      Menu.riwayat => WorkArea(child: LiveHistoryScreen(api: api, isAdmin: admin)),
+      Menu.dashboard => DashboardScreen(api: api),
+      Menu.produk => ProductsHub(api: api, isAdmin: admin),
+      Menu.hutang => SupplierDebtScreen(api: api),
+      Menu.supplier => PartiesScreen(api: api, isAdmin: admin, customers: false),
+      Menu.pelanggan => PartiesScreen(api: api, isAdmin: admin, customers: true),
+      Menu.pengeluaran => ExpensesScreen(api: api, isAdmin: admin),
+      Menu.kartuStok => StockLedgerScreen(api: api),
+      Menu.rekap => RekapScreen(api: api),
+      Menu.pengguna => UsersScreen(api: api, currentUserId: widget.app.userId),
+      Menu.pengaturan => SettingsScreen(api: api, isAdmin: admin),
+    };
+  }
+  @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([guard, store]), builder: (context, _) => NoticeListener(
+    message: guard.error ?? (guard.pending != null && !guard.busy ? 'Hasil transaksi belum dapat dipastikan. Periksa data di PC sebelum menyimpan lagi. Jangan mengulangi transaksi yang sudah tercatat.' : null),
+    child: NoticeListener(kind: NoticeKind.error, message: store.priceError,
+      child: NoticeListener(message: store.price != null && !store.price!.stockEnough ? 'Stok tidak cukup untuk jumlah dalam keranjang. Kurangi jumlah atau pilih barang lain sebelum membayar.' : null,
+        child: Column(children: [
+    if (!guard.ready || (guard.pending != null && !guard.busy) || guard.error != null)
+      Container(color: const Color(0xFFFFE4D8), padding: const EdgeInsets.all(12), child: Row(children: [
+        Expanded(child: Text(guard.error ?? (guard.pending != null ? 'Ada transaksi yang perlu diperiksa hasilnya di PC.' : 'Memeriksa status transaksi perangkat…'), style: const TextStyle(color: wine, fontSize: 13))),
+        if (!guard.ready) TextButton(onPressed: guard.load, child: const Text('Coba lagi')),
+        if (guard.pending != null && !guard.busy) TextButton(onPressed: _review, child: const Text('Periksa')),
+      ])),
+    Expanded(child: IndexedStack(index: widget.menus.indexOf(widget.menu).clamp(0, widget.menus.length - 1), children: [
+      for (final menu in widget.menus) _opened.contains(menu) ? _screen(menu) : const SizedBox(),
+    ])),
+  ])))));
+}
