@@ -24,7 +24,18 @@ class LiveKasirScreen extends StatefulWidget {
 class _LiveKasirScreenState extends State<LiveKasirScreen> {
   final search = TextEditingController();
   final searchFocus = FocusNode();
+
+  /// "Jumlah", as on the desktop till: the next product added (clicked or scanned) goes
+  /// in at this quantity, then it falls back to 1.
+  final qty = TextEditingController(text: '1');
+  final qtyFocus = FocusNode();
   final scanner = BarcodeBurst();
+  /// PageUp and PageDown hop between Jumlah and the search on the till (handled in
+  /// handleKey); a text field must not also treat them as caret moves.
+  static const _hopKeys = <ShortcutActivator, Intent>{
+    SingleActivator(LogicalKeyboardKey.pageUp): DoNothingAndStopPropagationTextIntent(),
+    SingleActivator(LogicalKeyboardKey.pageDown): DoNothingAndStopPropagationTextIntent(),
+  };
   Timer? timer;
   List<LiveProduct> products = [];
   bool loading = true;
@@ -32,12 +43,21 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   int page = 1, lastPage = 1, serial = 0, seenCatalogRevision = 0;
   @override void initState() { super.initState(); seenCatalogRevision = widget.store.catalogRevision; widget.store.addListener(watchStock); HardwareKeyboard.instance.addHandler(handleKey); load(); }
   void watchStock() { if (mounted && seenCatalogRevision != widget.store.catalogRevision) { seenCatalogRevision = widget.store.catalogRevision; load(target: page); } }
-  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); widget.store.removeListener(watchStock); timer?.cancel(); search.dispose(); searchFocus.dispose(); super.dispose(); }
+  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); widget.store.removeListener(watchStock); timer?.cancel(); search.dispose(); searchFocus.dispose(); qty.dispose(); qtyFocus.dispose(); super.dispose(); }
+  /// The quantity typed in Jumlah; a blank or unreadable entry means 1.
+  num get enteredQty {
+    try { final value = inputQty(qty.text.trim().isEmpty ? '1' : qty.text); return value > 0 ? value : 1; }
+    catch (_) { return 1; }
+  }
+
   void addOne(LiveProduct p) {
     final existing = widget.store.items.where((i) => i.product.id == p.id && i.unit.id == null).toList();
     final old = existing.isEmpty ? null : existing.first;
-    try { widget.store.put(LiveCartItem(product: p, unit: p.units.first,
-      quantity: (old?.quantity ?? 0) + 1, manualPrice: old?.manualPrice, discount: old?.discount)); }
+    try {
+      widget.store.put(LiveCartItem(product: p, unit: p.units.first,
+        quantity: (old?.quantity ?? 0) + enteredQty, manualPrice: old?.manualPrice, discount: old?.discount));
+      qty.value = const TextEditingValue(text: '1', selection: TextSelection.collapsed(offset: 1));
+    }
     catch (e) { showError(context, e); }
   }
   /// Enter in the search box: a barcode scanner types the code then Enter, so a single
@@ -72,7 +92,9 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     final key = event.logicalKey;
     final alt = HardwareKeyboard.instance.isAltPressed;
     void Function()? action;
-    if (key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown || (key == LogicalKeyboardKey.slash && !typing)) {
+    if (key == LogicalKeyboardKey.pageUp) {
+      action = () { qtyFocus.requestFocus(); qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length); };
+    } else if (key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown || (key == LogicalKeyboardKey.slash && !typing)) {
       action = () { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); };
     } else if (key == LogicalKeyboardKey.f12 || (key == LogicalKeyboardKey.end && !typing)) {
       action = pay;
@@ -128,6 +150,14 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([widget.store, widget.store.guard]), builder: (context, _) => LayoutBuilder(builder: (context, box) {
     final wide = usesSplitCart(context, box);
     final searchRow = Row(children: [
+      SizedBox(width: 92, child: TextField(controller: qty, focusNode: qtyFocus, textAlign: TextAlign.end,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true), textInputAction: TextInputAction.next,
+        style: amountStyle.copyWith(fontSize: 16),
+        // Enter in Jumlah goes on to the search, ready for the scan or the name
+        onSubmitted: (_) { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); },
+        onTap: () => qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length),
+        decoration: const InputDecoration(prefixText: '× ', hintText: '1', helperText: null, labelText: 'Jumlah'))),
+      const SizedBox(width: Space.sm),
       Expanded(child: TextField(controller: search, textInputAction: TextInputAction.search, onChanged: (_) {
         serial++; timer?.cancel(); setState(() { loading = true; error = null; });
         timer = Timer(const Duration(milliseconds: 350), () => load());
@@ -138,7 +168,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       const SizedBox(width: Space.xs),
       IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
     ]);
-    final keys = isDesktop && wide ? const Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('F2 cari · End bayar · F3 ubah jumlah · Alt+K kosongkan · scan di mana saja',
+    final keys = isDesktop && wide ? const Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · End bayar · F3 ubah baris atas · Alt+K kosongkan · scan di mana saja',
       style: TextStyle(color: muted, fontSize: 12))) : const SizedBox.shrink();
     final list = CustomScrollView(slivers: [
       if (loading) const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),
@@ -160,7 +190,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       ]))),
     ]);
     if (!wide) {
-      return Focus(autofocus: !isDesktop, child: Column(children: [
+      return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Column(children: [
         Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: searchRow),
         const Divider(),
         Expanded(child: ColoredBox(color: surface, child: list)),
@@ -168,7 +198,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           total: widget.store.pricing ? 'Menghitung…' : rupiah(widget.store.price?.total ?? 0),
           onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => Scaffold(
             appBar: AppBar(title: const Text('Keranjang')), body: SafeArea(child: Padding(padding: const EdgeInsets.all(Space.md), child: LiveCartPanel(store: widget.store))))))),
-      ]));
+      ])));
     }
     // the catalog and the cart are two cards on one 24px frame, so their edges line up
     final catalog = Container(
@@ -180,8 +210,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         Expanded(child: list),
       ]));
     // the till is driven from the keyboard on a PC - see handleKey
-    return Focus(autofocus: !isDesktop, child: Padding(padding: const EdgeInsets.all(Space.xl), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Padding(padding: const EdgeInsets.all(Space.xl), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(child: catalog), const SizedBox(width: Space.gap), SizedBox(width: 380, child: LiveCartPanel(store: widget.store)),
-    ])));
+    ]))));
   }));
 }

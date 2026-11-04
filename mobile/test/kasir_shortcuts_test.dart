@@ -10,6 +10,9 @@ import '../lib/Screen/Live/LiveKasirScreen.dart';
 import '../lib/Screen/Live/LivePaymentScreen.dart';
 import 'live_store_test.dart' show MemoryPending;
 
+/// The till's search box (Jumlah sits before it).
+TextField searchField(WidgetTester tester) => tester.widgetList<TextField>(find.byType(TextField)).firstWhere((f) => f.decoration?.labelText != 'Jumlah');
+
 /// The desktop till's keys work the same in the Flutter app on the shop PC.
 void main() {
   late MutationGuard guard;
@@ -42,7 +45,7 @@ void main() {
     await openTill(tester);
 
     // the search box has focus on the PC: End moves the caret, it does not pay
-    await tester.tap(find.byType(TextField).first);
+    await tester.tap(find.byWidget(searchField(tester)));
     await tester.sendKeyEvent(LogicalKeyboardKey.end);
     await tester.pumpAndSettle();
     expect(find.byType(LivePaymentScreen), findsNothing);
@@ -79,13 +82,13 @@ void main() {
 
     await tester.sendKeyEvent(LogicalKeyboardKey.slash);
     await tester.pump();
-    expect(tester.widget<TextField>(find.byType(TextField).first).focusNode!.hasFocus, isTrue);
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
 
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
     await tester.pump();
-    expect(tester.widget<TextField>(find.byType(TextField).first).focusNode!.hasFocus, isTrue);
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
     await finish(tester);
   });
 
@@ -100,6 +103,22 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.f12);
     await tester.pumpAndSettle();
     expect(find.byType(LivePaymentScreen), findsNothing);
+    await finish(tester);
+  });
+
+  testWidgets('Jumlah sets how many go in, then falls back to 1; PageUp jumps to it', (tester) async {
+    await openTill(tester);
+    final qtyField = find.widgetWithText(TextField, 'Jumlah');
+    await tester.enterText(qtyField, '3');
+    await tester.tap(find.byTooltip('Tambah Kopi Sachet'));
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    expect(store.items.single.quantity, 4); // 1 from the setup plus 3
+    expect(tester.widget<TextField>(qtyField).controller!.text, '1');
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+    await tester.pump();
+    expect(tester.widget<TextField>(qtyField).focusNode!.hasFocus, isTrue);
     await finish(tester);
   });
 }

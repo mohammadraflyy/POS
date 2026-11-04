@@ -27,21 +27,7 @@ class LiveCartPanel extends StatelessWidget {
       IconButton(tooltip: 'Kosongkan keranjang (Alt+K)', onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
         icon: const Icon(Icons.delete_outline)),
     ]),
-    items: [for (var index = 0; index < store.items.length; index++) Padding(
-      padding: const EdgeInsets.symmetric(vertical: Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Expanded(child: Text(store.items[index].product.name, style: Theme.of(context).textTheme.titleMedium)),
-          IconButton(onPressed: store.editable ? () => store.remove(store.items[index]) : null, tooltip: 'Hapus barang', icon: const Icon(Icons.close, size: 20))]),
-        Text(quantityText(store.items[index].quantity) + ' ' + store.items[index].unit.name, style: const TextStyle(color: muted)),
-        if (store.price != null) ...[
-          SummaryRow('Harga satuan', rupiah(store.price!.lines[index]['hargaJual'])),
-          if (store.price!.lines[index]['stokCukup'] == false) const Text('Stok tidak cukup', style: TextStyle(color: errorColor)),
-        ],
-        TextButton(onPressed: !store.editable ? null : () async {
-          final result = await editLiveItem(context, store.items[index].product, existing: store.items[index]);
-          if (result != null && context.mounted) { try { store.put(result); } catch (e) { showError(context, e); } }
-        }, child: const Text('Ubah jumlah / harga')),
-        const Divider(),
-      ]))],
+    items: [for (var index = 0; index < store.items.length; index++) _CartLine(store: store, index: index)],
     footer: Column(mainAxisSize: MainAxisSize.min, children: [
       if (store.pricing) const LinearProgressIndicator(minHeight: 2),
       if (store.priceError != null) TextButton(onPressed: store.reprice, child: const Text('Coba hitung harga lagi')),
@@ -58,6 +44,45 @@ class LiveCartPanel extends StatelessWidget {
       SizedBox(width: double.infinity, child: FilledButton(onPressed: store.canCheckout ? () => openPayment(context, store) : null, style: FilledButton.styleFrom(minimumSize: const Size(44, 44)), child: Text(isDesktop ? 'Bayar  ·  End' : 'Bayar'))),
     ]),
   ));
+}
+
+/// One cart line: tap it to change quantity, unit, price or discount.
+class _CartLine extends StatelessWidget {
+  const _CartLine({required this.store, required this.index});
+  final LiveStore store;
+  final int index;
+  @override
+  Widget build(BuildContext context) {
+    final item = store.items[index];
+    final line = store.price != null && index < store.price!.lines.length ? store.price!.lines[index] : null;
+    final price = line?['hargaJual'];
+    final discount = number(line?['diskon']) ?? 0;
+    final short = line?['stokCukup'] == false;
+    return InkWell(
+      onTap: !store.editable ? null : () async {
+        final result = await editLiveItem(context, item.product, existing: item);
+        if (result != null && context.mounted) { try { store.put(result); } catch (e) { showError(context, e); } }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(border: index == 0 ? null : const Border(top: BorderSide(color: ruleColor))),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 2),
+            Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
+              style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
+            if (short) const Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12)),
+          ])),
+          const SizedBox(width: Space.sm),
+          Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14)),
+          SizedBox(width: 28, height: 20, child: IconButton(padding: EdgeInsets.zero, iconSize: 16, onPressed: store.editable ? () => store.remove(item) : null,
+            tooltip: 'Hapus ${item.product.name}', style: IconButton.styleFrom(minimumSize: const Size(24, 24), foregroundColor: muted, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            icon: const Icon(Icons.close))),
+        ]),
+      ),
+    );
+  }
 }
 
 class _DiscountDialog extends StatefulWidget {
