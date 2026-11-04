@@ -62,6 +62,6 @@ class _CreateSupplierState extends State<_CreateSupplier> {
     TextField(controller: phone, enabled: !saving, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Telepon (opsional)')), const SizedBox(height: 12),
     TextField(controller: address, enabled: !saving, decoration: const InputDecoration(labelText: 'Alamat (opsional)')), const SizedBox(height: 12),
     TextField(controller: note, enabled: !saving, decoration: const InputDecoration(labelText: 'Keterangan (opsional)')),
-    if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: errorColor))),
+    if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: TextStyle(color: errorColor))),
   ])), actions: [TextButton(onPressed: saving ? null : () => Navigator.pop(context), child: const Text('Batal')), FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Menyimpan…' : 'Simpan'))]));
 }

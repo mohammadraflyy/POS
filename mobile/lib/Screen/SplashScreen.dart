@@ -6,7 +6,7 @@ import '../Widgets/ui.dart';
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
   @override
-  Widget build(BuildContext context) => const Scaffold(backgroundColor: canvas, body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+  Widget build(BuildContext context) => Scaffold(backgroundColor: canvas, body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
     BrandMark(size: 44), SizedBox(height: Space.lg),
     Text('Point of Sales', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
     SizedBox(height: Space.xl),

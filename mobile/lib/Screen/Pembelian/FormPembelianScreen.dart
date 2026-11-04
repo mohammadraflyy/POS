@@ -48,7 +48,7 @@ class _FormPembelianScreenState extends State<FormPembelianScreen> {
       const SizedBox(height: Space.lg), TextField(controller: _price, textInputAction: TextInputAction.next, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Harga beli per satuan (Rp)')),
       const SizedBox(height: Space.lg), TextField(controller: _paid, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Uang muka (opsional)', helperText: 'Kosong = lunas. Isi 0 untuk utang penuh.')),
       const SizedBox(height: Space.lg), WhitePanel(child: Column(children: [SummaryRow('Total pembelian', total == null ? '—' : money(total), strong: true), SummaryRow('Stok saat ini', '${qty(_product.stock)} ${_product.baseUnit.name}')])),
-      if (_error != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(_error!, style: const TextStyle(color: errorColor))),
+      if (_error != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(_error!, style: TextStyle(color: errorColor))),
       const SizedBox(height: Space.xl), FilledButton.icon(onPressed: _saved ? null : _save, icon: const Icon(Icons.add_shopping_cart), label: const Text('Simpan pembelian demo')),
     ])))));
   }

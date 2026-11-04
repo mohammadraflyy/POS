@@ -84,7 +84,7 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
     SummaryRow('Stok sistem', '${quantityText(widget.product['stok'])} ${widget.product['satuan'] ?? ''}'),
     const SizedBox(height: 12), TextField(controller: actual, enabled: !saving, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Total stok fisik', helperText: 'Isi hasil hitung akhir, bukan jumlah selisih.')),
     const SizedBox(height: Space.lg), TextField(controller: reason, enabled: !saving, maxLength: 255, decoration: const InputDecoration(labelText: 'Alasan (opsional)')),
-    if (error != null) Text(error!, style: const TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
+    if (error != null) Text(error!, style: TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
     SizedBox(width: double.infinity, child: FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Menyimpan…' : 'Simpan ke PC'))),
   ]))));
 }

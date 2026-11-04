@@ -98,7 +98,7 @@ class _KeyboardPickerState<T> extends State<_KeyboardPicker<T>> {
       child: Actions(actions: {_Move: CallbackAction<_Move>(onInvoke: (m) { move(m.delta); return null; })}, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.sm), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(widget.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-          if (widget.description != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(widget.description!, style: const TextStyle(color: muted, fontSize: 13))),
+          if (widget.description != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(widget.description!, style: TextStyle(color: muted, fontSize: 13))),
           const SizedBox(height: Space.md),
           TextField(controller: query, autofocus: true, textInputAction: TextInputAction.go,
             onChanged: (_) { timer?.cancel(); timer = Timer(const Duration(milliseconds: 250), search); },
@@ -107,9 +107,9 @@ class _KeyboardPickerState<T> extends State<_KeyboardPicker<T>> {
         ])),
         if (loading) const LinearProgressIndicator(minHeight: 2) else const Divider(),
         Flexible(child: error != null
-          ? Padding(padding: const EdgeInsets.all(Space.lg), child: Text(error!, style: const TextStyle(color: errorColor)))
+          ? Padding(padding: const EdgeInsets.all(Space.lg), child: Text(error!, style: TextStyle(color: errorColor)))
           : options.isEmpty
-            ? Padding(padding: const EdgeInsets.all(Space.lg), child: Text(loading ? 'Mencari…' : widget.emptyText, style: const TextStyle(color: muted)))
+            ? Padding(padding: const EdgeInsets.all(Space.lg), child: Text(loading ? 'Mencari…' : widget.emptyText, style: TextStyle(color: muted)))
             : ListView.builder(controller: scroll, shrinkWrap: true, itemCount: options.length, itemExtent: 52, itemBuilder: (context, i) {
                 final o = options[i];
                 final on = i == selected;
@@ -117,13 +117,13 @@ class _KeyboardPickerState<T> extends State<_KeyboardPicker<T>> {
                   child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg), child: Row(children: [
                     Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(o.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: o.enabled ? ink : muted)),
-                      if (o.subtitle != null) Text(o.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 12)),
+                      if (o.subtitle != null) Text(o.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12)),
                     ])),
                     if (o.trailing != null) Text(o.trailing!, style: amountStyle.copyWith(fontSize: 13, color: o.enabled ? ink : errorColor)),
                   ]))));
               })),
         const Divider(),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.sm),
+        Padding(padding: EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.sm),
           child: Text('↑↓ atau PageUp/PageDown pilih · Enter ambil · Esc tutup', style: TextStyle(color: muted, fontSize: 12))),
       ]))),
     ),

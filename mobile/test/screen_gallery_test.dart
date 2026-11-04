@@ -29,6 +29,7 @@ import '../lib/state/live_store.dart';
 import '../lib/Screen/Live/LivePaymentScreen.dart';
 import '../lib/Screen/Live/LiveSaleScreen.dart';
 import '../lib/Screen/Pairing/PairingScreen.dart';
+import '../lib/Screen/AccountPanel.dart';
 
 class _NoPending implements PendingStore {
   @override Future<String?> read() async => null;
@@ -111,7 +112,7 @@ void main() {
       final api = StoreApi(app.businessRequest, app.businessFile);
       Future<void> shoot(String name, Widget screen) async {
         final key = GlobalKey();
-        await tester.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(), home: screen)));
+        await tester.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(palette), home: screen)));
         await settle();
         await _capture(tester, key, '$label-$name');
       }
@@ -127,6 +128,22 @@ void main() {
       }
       await shoot('bayar', LivePaymentScreen(store: store));
       await shoot('login', PairingScreen(app: AppState(storage: MemoryStorage())));
+
+      // the account panel, then the main screens again in the dark palette
+      await shoot('akun', Builder(builder: (ctx) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => showAccountPanel(ctx, app: app, shopName: 'Toko Sembako Berkah (Demo)', onOpenSettings: () {}));
+        return const Scaffold();
+      }));
+      palette = Palette.dark;
+      for (final (menu, name) in [(Menu.kasir, 'kasir'), (Menu.dashboard, 'dashboard'), (Menu.produk, 'produk'), (Menu.rekap, 'rekap')]) {
+        final key = GlobalKey();
+        await tester.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(Palette.dark),
+          home: MainScreen(key: ValueKey('dark-$name'), app: app, initialMenu: menu))));
+        await settle();
+        await _capture(tester, key, '$label-gelap-$name');
+      }
+      await shoot('gelap-bayar', LivePaymentScreen(store: store));
+      palette = Palette.light;
 
       await tester.pumpWidget(const SizedBox());
       store.dispose(); guard.dispose();

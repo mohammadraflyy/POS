@@ -92,7 +92,7 @@ class _ProductPickerState extends State<_ProductPicker> {
     content: SizedBox(width: 480, height: 420, child: Column(children: [
       SearchBox(onChanged: search, hint: 'Nama, kode, atau barcode', autofocus: true),
       if (loading) const LinearProgressIndicator(minHeight: 2),
-      if (error != null) Padding(padding: const EdgeInsets.all(Space.md), child: Text(error!, style: const TextStyle(color: errorColor))),
+      if (error != null) Padding(padding: const EdgeInsets.all(Space.md), child: Text(error!, style: TextStyle(color: errorColor))),
       Expanded(child: ListView(children: [for (final p in results) ListTile(
         title: Text(p.name), subtitle: Text('${p.code} • stok ${quantityText(p.stock)} ${p.units.first.name}'),
         trailing: Text(rupiah(p.units.first.price), style: amountStyle), onTap: () => Navigator.pop(context, p))])),

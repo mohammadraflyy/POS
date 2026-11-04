@@ -11,6 +11,7 @@ import 'Pembelian/PembelianScreen.dart';
 import 'StockOpname/StockOpnameScreen.dart';
 import 'Live/LiveWorkspace.dart';
 import 'menus.dart';
+import 'AccountPanel.dart';
 
 /// The shell. On a PC: an open plane - a labelled sidebar on the stone ground with the
 /// shop's mark and name at the top and the account at the bottom, no top bar, the screen
@@ -63,20 +64,8 @@ class _MainScreenState extends State<MainScreen> {
 
   void _open(Menu menu) => setState(() => _menu = menu);
 
-  Future<void> _account() async {
-    await showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (context) => SafeArea(child: Padding(
-      padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(widget.app.userName, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: 4),
-        Text(widget.app.isDemo ? 'Sesi demo · data hanya di memori' : '${_roleLabel(widget.app.role)} · ${widget.app.address?.authority ?? ''}', style: const TextStyle(color: muted)),
-        const SizedBox(height: Space.lg),
-        Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
-          if (!widget.app.isDemo) OutlinedButton.icon(onPressed: () { Navigator.pop(context); widget.app.checkConnection(); }, icon: const Icon(Icons.sync, size: 18), label: const Text('Periksa koneksi')),
-          OutlinedButton.icon(onPressed: () { Navigator.pop(context); widget.app.logout(); }, icon: const Icon(Icons.logout, size: 18), label: Text(widget.app.isDemo ? 'Keluar dari demo' : 'Keluar')),
-        ]),
-        if (!widget.app.isDemo) const Padding(padding: EdgeInsets.only(top: Space.md), child: Text('Untuk mencabut akses perangkat, buka Pengaturan.', style: TextStyle(color: muted, fontSize: 12))),
-      ]),
-    )));
-  }
+  Future<void> _account() => showAccountPanel(context, app: widget.app, shopName: _shopName,
+    onOpenSettings: menusFor(widget.app).contains(Menu.pengaturan) ? () => _open(Menu.pengaturan) : null);
 
   static String _roleLabel(String role) => role == 'admin' ? 'Admin' : role == 'kasir' ? 'Kasir' : role;
 
@@ -100,7 +89,7 @@ class _MainScreenState extends State<MainScreen> {
         const SizedBox(width: Space.md),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(_shopName ?? 'Point of Sales', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, height: 1.3)),
-          Text(widget.app.isDemo ? 'Mode demo' : 'Point of Sales', style: const TextStyle(fontSize: 12, color: muted)),
+          Text(widget.app.isDemo ? 'Mode demo' : 'Point of Sales', style: TextStyle(fontSize: 12, color: muted)),
         ])),
       ],
     ]),
@@ -121,7 +110,7 @@ class _MainScreenState extends State<MainScreen> {
           if (!compact) ...[
             const SizedBox(width: 10),
             Expanded(child: Text(info.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 14, color: selected ? ink : const Color(0xFF3D3D3D), fontWeight: selected ? FontWeight.w500 : FontWeight.w400))),
+              style: TextStyle(fontSize: 14, color: selected ? ink : secondaryInk, fontWeight: selected ? FontWeight.w500 : FontWeight.w400))),
           ],
         ])),
       ),
@@ -146,7 +135,7 @@ class _MainScreenState extends State<MainScreen> {
             Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
           else
             Padding(padding: EdgeInsets.fromLTRB(18, index == 0 ? 0 : 20, Space.md, 6),
-              child: Text(group.key, style: const TextStyle(color: muted, fontSize: 12))),
+              child: Text(group.key, style: TextStyle(color: muted, fontSize: 12))),
           for (final menu in group.value) _navRow(menu, compact: compact),
         ],
       ])),
@@ -164,10 +153,10 @@ class _MainScreenState extends State<MainScreen> {
                 Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: widget.app.isDemo ? muted : offline ? errorColor : successColor)),
                 const SizedBox(width: 6),
                 Flexible(child: Text(widget.app.isDemo ? 'Demo' : offline ? 'Server tidak terjangkau' : '${_roleLabel(widget.app.role)} · terhubung',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: muted))),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: muted))),
               ]),
             ])),
-            const Icon(Icons.unfold_more, size: 16, color: muted),
+            Icon(Icons.unfold_more, size: 16, color: muted),
           ],
         ])),
       ))),
@@ -188,8 +177,8 @@ class _MainScreenState extends State<MainScreen> {
     final barIndex = primaryMenus.contains(_menu) ? primaryMenus.indexOf(_menu) : primaryMenus.length;
     final demoBanner = widget.app.isDemo ? Container(width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 6),
-      decoration: const BoxDecoration(color: pillWarningBg, border: Border(bottom: BorderSide(color: Color(0xFFFDE68A)))),
-      child: const Text('Mode demo · data contoh, tidak dikirim ke toko', style: TextStyle(fontSize: 12, color: pillWarningInk))) : null;
+      decoration: BoxDecoration(color: pillWarningBg, border: Border(bottom: BorderSide(color: noticeBorder))),
+      child: Text('Mode demo · data contoh, tidak dikirim ke toko', style: TextStyle(fontSize: 12, color: pillWarningInk))) : null;
 
     if (wide) {
       return Scaffold(body: SafeArea(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -204,7 +193,7 @@ class _MainScreenState extends State<MainScreen> {
         title: Text(menuInfo[_menu]!.title),
         actions: [
           IconButton(onPressed: _account, tooltip: 'Akun & koneksi',
-            icon: widget.app.notice != null ? const Icon(Icons.wifi_off, color: errorColor) : _Initial(widget.app.userName)),
+            icon: widget.app.notice != null ? Icon(Icons.wifi_off, color: errorColor) : _Initial(widget.app.userName)),
           const SizedBox(width: Space.xs),
         ]),
       body: SafeArea(top: false, child: Column(children: [if (demoBanner != null) demoBanner, Expanded(child: workspace)])),
@@ -224,7 +213,7 @@ class _Initial extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: 28, height: 28, alignment: Alignment.center,
-    decoration: const BoxDecoration(color: activePill, shape: BoxShape.circle),
-    child: Text(name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: ink)),
+    decoration: BoxDecoration(color: activePill, shape: BoxShape.circle),
+    child: Text(name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: ink)),
   );
 }

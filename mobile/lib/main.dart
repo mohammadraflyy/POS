@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'core/theme.dart';
 import 'Widgets/ui.dart';
 import 'state/app_state.dart';
+import 'state/theme_controller.dart';
 import 'Screen/MainScreen.dart';
 import 'Screen/Pairing/PairingScreen.dart';
 import 'Screen/SplashScreen.dart';
 import 'Screen/LocalServerGate.dart';
 /// The shop PC (Windows) is also the server; phones connect to it over Wi-Fi.
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await appTheme.load();
+  palette = ThemeController.paletteFor(appTheme.value, WidgetsBinding.instance.platformDispatcher.platformBrightness);
   runApp(Platform.isWindows ? const LocalServerGate(child: MyApp()) : const MyApp());
 }
 class MyApp extends StatefulWidget {
@@ -26,22 +29,33 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState(); WidgetsBinding.instance.addObserver(this);
+    appTheme.addListener(_applyTheme);
     app.restore();
     _timer = Timer.periodic(const Duration(seconds: 45), (_) {
       if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) app.checkConnection();
     });
   }
+  /// Light, dark or the device's own: switch the palette, then redraw everything that
+  /// reads it - without recreating state, so the cart and open forms survive.
+  void _applyTheme() {
+    final next = ThemeController.paletteFor(appTheme.value, WidgetsBinding.instance.platformDispatcher.platformBrightness);
+    if (identical(next, palette)) return;
+    palette = next;
+    if (mounted) { setState(() {}); rebuildAll(context); }
+  }
+  @override
+  void didChangePlatformBrightness() => _applyTheme();
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) app.checkConnection();
   }
   @override
-  void dispose() { _timer?.cancel(); WidgetsBinding.instance.removeObserver(this); app.dispose(); super.dispose(); }
+  void dispose() { appTheme.removeListener(_applyTheme); _timer?.cancel(); WidgetsBinding.instance.removeObserver(this); app.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => AnimatedBuilder(animation: app, builder: (context, _) => MaterialApp(
     // Recreate Navigator on mode changes: a revoked session cannot leave a detail route visible.
     key: ValueKey(app.initializing ? 'loading' : app.mode.name),
-    title: 'Point of Sales', debugShowCheckedModeBanner: false, theme: buildTheme(),
+    title: 'Point of Sales', debugShowCheckedModeBanner: false, theme: buildTheme(palette),
     home: NoticeListener(message: app.initializing ? null : app.notice,
       child: app.initializing ? const SplashScreen() : app.mode == AppMode.pairing
         ? PairingScreen(app: app) : MainScreen(app: app)),

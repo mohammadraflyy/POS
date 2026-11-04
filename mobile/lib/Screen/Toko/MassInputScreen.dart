@@ -170,7 +170,7 @@ class _MassInputScreenState extends State<MassInputScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         fillColor: message != null ? pillNegativeBg : (locked ? canvas : surface),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Corners.chip), borderSide: BorderSide(color: message != null ? errorColor : lineColor)),
-        disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Corners.chip), borderSide: const BorderSide(color: lineColor))),
+        disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(Corners.chip), borderSide: BorderSide(color: lineColor))),
     )));
   }
 
@@ -183,21 +183,21 @@ class _MassInputScreenState extends State<MassInputScreen> {
       appBar: AppBar(title: Text(editing ? 'Ubah massal · ${widget.ids.length} produk' : 'Input massal produk')),
       body: SafeArea(child: loading ? const LinearProgressIndicator(minHeight: 2) : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(padding: const EdgeInsets.fromLTRB(Space.xl, Space.lg, Space.xl, Space.md), child: Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: Space.md, runSpacing: Space.md, children: [
-          Text(editing ? 'Ubah langsung di tabel. Stok produk lama diubah lewat Opname.' : 'Ketik satu produk per baris. Baris yang kosong dilewati.', style: const TextStyle(color: muted)),
+          Text(editing ? 'Ubah langsung di tabel. Stok produk lama diubah lewat Opname.' : 'Ketik satu produk per baris. Baris yang kosong dilewati.', style: TextStyle(color: muted)),
           Wrap(spacing: Space.sm, children: [
             if (!editing) OutlinedButton.icon(onPressed: saving ? null : () => setState(() => rows.add(_newRow())), icon: const Icon(Icons.add, size: 18), label: const Text('Tambah baris')),
-            FilledButton.icon(onPressed: saving ? null : save, icon: saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check, size: 18),
+            FilledButton.icon(onPressed: saving ? null : save, icon: saving ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : const Icon(Icons.check, size: 18),
               label: Text('Simpan ${rows.where((r) => !r.blank).length} baris')),
           ]),
         ])),
-        if (error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: Space.xl), child: Text(error!, style: const TextStyle(color: errorColor))),
-        if (messages.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.md), child: Text(messages.join('\n'), style: const TextStyle(color: errorColor, fontSize: 13))),
+        if (error != null) Padding(padding: const EdgeInsets.symmetric(horizontal: Space.xl), child: Text(error!, style: TextStyle(color: errorColor))),
+        if (messages.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.md), child: Text(messages.join('\n'), style: TextStyle(color: errorColor, fontSize: 13))),
         Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Space.xl),
           child: SizedBox(width: _columns.fold<double>(0, (s, c) => s + c.$3 + 6) + 40 + 40, child: Column(children: [
-            Container(height: 34, decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))), child: Row(children: [
-              const SizedBox(width: 40, child: Text('#', style: TextStyle(color: muted, fontSize: 12))),
+            Container(height: 34, decoration: BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))), child: Row(children: [
+              SizedBox(width: 40, child: Text('#', style: TextStyle(color: muted, fontSize: 12))),
               for (final (key, label, width) in _columns) Padding(padding: const EdgeInsets.only(right: 6), child: SizedBox(width: width,
-                child: Text(label, textAlign: key == 'hargaPokok' || key == 'hargaJual' || key == 'stok' ? TextAlign.end : TextAlign.start, style: const TextStyle(color: muted, fontSize: 12)))),
+                child: Text(label, textAlign: key == 'hargaPokok' || key == 'hargaJual' || key == 'stok' ? TextAlign.end : TextAlign.start, style: TextStyle(color: muted, fontSize: 12)))),
             ])),
             Expanded(child: ListView.builder(itemCount: rows.length, itemBuilder: (context, i) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
               SizedBox(width: 40, child: Text('${i + 1}', style: amountStyle.copyWith(color: muted, fontSize: 12))),

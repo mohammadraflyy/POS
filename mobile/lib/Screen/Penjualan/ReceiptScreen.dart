@@ -28,18 +28,18 @@ class ReceiptScreen extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(animation: app, builder: (context, _) => Scaffold(
     appBar: AppBar(title: Text(justCreated ? 'Transaksi selesai' : 'Detail transaksi')),
     body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 540), child: ListView(padding: const EdgeInsets.all(Space.xl), children: [
-      const Center(child: CircleAvatar(radius: 34, backgroundColor: Color(0xFFDDEDE6), child: Icon(Icons.check_rounded, size: 36, color: Color(0xFF357361)))),
+      Center(child: CircleAvatar(radius: 34, backgroundColor: pillPositiveBg, child: Icon(Icons.check_rounded, size: 36, color: successColor))),
       const SizedBox(height: Space.lg), Center(child: Text('Pesanan berhasil dicatat', style: Theme.of(context).textTheme.titleLarge)),
       const SizedBox(height: 8), const Center(child: Pill('STRUK DEMO • BUKAN BUKTI BAYAR')), const SizedBox(height: Space.xl),
       WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Center(child: Icon(Icons.storefront_outlined, size: 32, color: muted)), const SizedBox(height: 8),
+        Center(child: Icon(Icons.storefront_outlined, size: 32, color: muted)), const SizedBox(height: 8),
         const Center(child: Text('TOKO CONTOH', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: 2))),
         const SizedBox(height: Space.lg), SummaryRow('Nomor', receipt.id), SummaryRow('Tanggal', '${dateText(receipt.date)} ${timeText(receipt.date)}'),
         SummaryRow('Pelanggan', receipt.customer.isEmpty ? 'Umum' : receipt.customer), const Divider(height: 28),
         for (final line in receipt.lines) Padding(padding: const EdgeInsets.only(bottom: 14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(line.name, style: const TextStyle(fontWeight: FontWeight.w700)),
           SummaryRow('${qty(line.quantity)} ${line.unit} × ${money(line.price)}', money(line.total)),
-          if (line.discount > 0) Text('Diskon barang: ${money(line.discount)}', style: const TextStyle(color: muted, fontSize: 13)),
+          if (line.discount > 0) Text('Diskon barang: ${money(line.discount)}', style: TextStyle(color: muted, fontSize: 13)),
         ])), const Divider(), SummaryRow('Subtotal', money(receipt.subtotal)), SummaryRow('Diskon nota', '− ${money(receipt.discount)}'),
         SummaryRow('Total', money(receipt.total), strong: true), const Divider(),
         SummaryRow('Metode', receipt.method.name.toUpperCase()), SummaryRow('Dibayar', money(receipt.paid)),
@@ -52,7 +52,7 @@ class ReceiptScreen extends StatelessWidget {
       const SizedBox(height: Space.lg),
       if (receipt.remaining > 0 && receipt.method == PaymentMethod.bon) Padding(padding: const EdgeInsets.only(bottom: 12), child: FilledButton.icon(onPressed: () => _pay(context), icon: const Icon(Icons.payments_outlined), label: const Text('Catat cicilan demo'))),
       OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: _text())); if (context.mounted) showNotice(context, 'Struk demo disalin.', kind: NoticeKind.success); }, icon: const Icon(Icons.copy_outlined), label: const Text('Salin struk demo')),
-      const SizedBox(height: 12), const Text('Mode demo tidak mencetak ke printer PC.', style: TextStyle(color: muted, fontSize: 13), textAlign: TextAlign.center),
+      const SizedBox(height: 12), Text('Mode demo tidak mencetak ke printer PC.', style: TextStyle(color: muted, fontSize: 13), textAlign: TextAlign.center),
       const SizedBox(height: Space.lg), FilledButton(onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst), child: const Text('Kembali ke kasir')),
     ])))),
   ));

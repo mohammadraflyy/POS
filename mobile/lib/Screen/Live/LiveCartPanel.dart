@@ -29,7 +29,7 @@ class LiveCartPanel extends StatelessWidget {
     ]),
     items: [
       if (store.customerName.isNotEmpty) Padding(padding: const EdgeInsets.only(top: Space.sm, bottom: Space.xs), child: Row(children: [
-        const Icon(Icons.person_outline, size: 16, color: muted), const SizedBox(width: 6),
+        Icon(Icons.person_outline, size: 16, color: muted), const SizedBox(width: 6),
         Expanded(child: Text('Pelanggan: ${store.customerName}', style: const TextStyle(fontSize: 13))),
         TextButton(onPressed: store.editable ? () => store.setCustomer('') : null, style: TextButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 6)),
           child: const Text('Umum')),
@@ -41,7 +41,7 @@ class LiveCartPanel extends StatelessWidget {
       if (store.priceError != null) TextButton(onPressed: store.reprice, child: const Text('Coba hitung harga lagi')),
       SummaryRow('Subtotal', store.items.isEmpty ? rupiah(0) : rupiah(store.price?.subtotal)),
       Row(children: [
-        const Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))),
+        Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))),
         // tappable, but the figure still ends on the totals' right edge
         TextButton(onPressed: store.items.isEmpty || !store.editable ? null : () => discount(context),
           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: const Size(0, 32)),
@@ -73,14 +73,14 @@ class _CartLine extends StatelessWidget {
       },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(border: index == 0 ? null : const Border(top: BorderSide(color: ruleColor))),
+        decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
             const SizedBox(height: 2),
             Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
               style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
-            if (short) const Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12)),
+            if (short) Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12)),
           ])),
           const SizedBox(width: Space.sm),
           Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14)),

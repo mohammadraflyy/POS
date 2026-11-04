@@ -28,15 +28,15 @@ class _LocalServerGateState extends State<LocalServerGate> {
 
   @override
   Widget build(BuildContext context) => switch (_result) {
-    null => MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(), home: const SplashScreen()),
+    null => MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(palette), home: const SplashScreen()),
     LocalServerReady() => widget.child,
-    LocalServerFailed(:final message) => MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(), home: Scaffold(
+    LocalServerFailed(:final message) => MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(palette), home: Scaffold(
       body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: Padding(
         padding: const EdgeInsets.all(Space.xl),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.dns_outlined, size: 32, color: muted), const SizedBox(height: Space.lg),
+          Icon(Icons.dns_outlined, size: 32, color: muted), const SizedBox(height: Space.lg),
           Text('Server toko belum bisa dinyalakan', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: Space.md), Text(message, style: const TextStyle(color: muted)),
+          const SizedBox(height: Space.md), Text(message, style: TextStyle(color: muted)),
           const SizedBox(height: Space.xl),
           FilledButton.icon(onPressed: _start, icon: const Icon(Icons.refresh), label: const Text('Coba lagi')),
         ]),

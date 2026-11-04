@@ -63,7 +63,7 @@ class _PairingScreenState extends State<PairingScreen> {
         Text(_login ? 'Masuk ke toko' : 'Hubungkan ke toko', style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 12), Text(_login
           ? 'Masuk dengan akun toko. Di PC kasir, alamat server biasanya 127.0.0.1:48950.'
-          : 'Hubungkan perangkat ke PC toko untuk mulai. Pastikan keduanya menggunakan jaringan yang sama.', style: const TextStyle(color: muted)),
+          : 'Hubungkan perangkat ke PC toko untuk mulai. Pastikan keduanya menggunakan jaringan yang sama.', style: TextStyle(color: muted)),
         const SizedBox(height: 24),
         if (!_login) ...[
         if (!isDesktop) OutlinedButton.icon(onPressed: widget.app.busy || _scanning ? null : _scan, icon: const Icon(Icons.qr_code_scanner), label: const Text('Scan QR dari PC')),
@@ -77,13 +77,13 @@ class _PairingScreenState extends State<PairingScreen> {
         const SizedBox(height: Space.lg), TextField(controller: _username, textInputAction: TextInputAction.next, enabled: !widget.app.busy, autofillHints: const [AutofillHints.username], decoration: InputDecoration(labelText: _login ? 'Username' : 'Username kasir', prefixIcon: const Icon(Icons.person_outline))),
         const SizedBox(height: Space.lg), TextField(controller: _password, autofillHints: const [AutofillHints.password], textInputAction: TextInputAction.next, enabled: !widget.app.busy, obscureText: _obscure, autocorrect: false, enableSuggestions: false, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(tooltip: _obscure ? 'Tampilkan password' : 'Sembunyikan password', onPressed: () => setState(() => _obscure = !_obscure), icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
         const SizedBox(height: Space.lg), TextField(controller: _name, textInputAction: TextInputAction.done, onSubmitted: (_) { if (!widget.app.busy) { _login ? _signIn() : _connect(); } }, enabled: !widget.app.busy, decoration: const InputDecoration(labelText: 'Nama perangkat')),
-        if (_error != null || widget.app.notice != null) Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error ?? widget.app.notice!, style: const TextStyle(color: errorColor))),
+        if (_error != null || widget.app.notice != null) Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error ?? widget.app.notice!, style: TextStyle(color: errorColor))),
         const SizedBox(height: Space.xl), SizedBox(width: double.infinity, child: FilledButton(onPressed: widget.app.busy ? null : (_login ? _signIn : _connect), child: widget.app.busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_login ? 'Masuk' : 'Hubungkan perangkat'))),
         SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : () => setState(() { _login = !_login; _error = null; }),
           child: Text(_login ? 'Hubungkan dengan kode pairing' : 'Masuk dengan akun (tanpa kode pairing)'))),
         if (widget.app.hasStoredSession) SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : widget.app.restore, child: const Text('Coba koneksi tersimpan kembali'))),
         const SizedBox(height: 12), SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : widget.app.startDemo, child: const Text('Coba tampilan kasir • Mode demo'))),
-        const Text('Demo memakai data contoh. Transaksi tidak dikirim ke toko dan hilang saat demo dimulai ulang.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 13)),
+        Text('Demo memakai data contoh. Transaksi tidak dikirim ke toko dan hilang saat demo dimulai ulang.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 13)),
       ])),
     )));
     return form;

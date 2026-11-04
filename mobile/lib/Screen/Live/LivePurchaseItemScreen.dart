@@ -56,7 +56,7 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
     Row(children: [Expanded(child: TextField(controller: query, onSubmitted: (_) => search(), decoration: const InputDecoration(hintText: 'Cari produk', prefixIcon: Icon(Icons.search)))),
       IconButton(onPressed: loading ? null : search, tooltip: 'Cari produk', icon: const Icon(Icons.arrow_forward)), if (!isDesktop) IconButton(onPressed: loading ? null : scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner))]),
     const SizedBox(height: Space.lg), if (loading) const Center(child: CircularProgressIndicator()),
-    if (error != null) Text(error!, style: const TextStyle(color: errorColor)),
+    if (error != null) Text(error!, style: TextStyle(color: errorColor)),
     if (!loading && products.isEmpty && error == null) const EmptyPanel(icon: Icons.inventory_2_outlined, title: 'Cari barang masuk', message: 'Masukkan nama atau scan barcode dari produk.'),
     for (final product in products) ListTile(title: Text(product.name), subtitle: Text('${product.code} • Stok ${quantityText(product.stock)}'), trailing: const Icon(Icons.add), onTap: loading ? null : () => select(product)),
   ])));
@@ -91,7 +91,7 @@ class _PurchaseFieldsState extends State<_PurchaseFields> {
       decoration: InputDecoration(labelText: 'Harga jual baru per ${unit.name} (opsional)', hintText: unit.price == null ? null : rupiah(unit.price),
         helperText: 'Sekarang ${rupiah(unit.price)}. Kosongkan bila harga jual tidak berubah.')),
     if (_margin != null) Padding(padding: const EdgeInsets.only(top: Space.sm), child: Text(_margin!, style: TextStyle(color: _margin!.startsWith('Rugi') ? errorColor : muted, fontSize: 13))),
-    if (error != null) Text(error!, style: const TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
+    if (error != null) Text(error!, style: TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
     SizedBox(width: double.infinity, child: FilledButton(onPressed: () { try { Navigator.pop(context, PurchaseDraftItem(widget.product, unit, inputQty(quantity.text), inputRupiah(price.text), sellPrice: _read(sell))); } catch (_) { setState(() => error = 'Isi jumlah positif dan harga beli yang valid.'); showError(context, error!); } }, child: const Text('Tambah ke pembelian'))),
   ])));
 }

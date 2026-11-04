@@ -228,8 +228,8 @@ class _RekapScreenState extends State<RekapScreen> {
             const SizedBox(width: Space.md),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_saranText[s['kode']] ?? text(s['kode'])),
-              if ((s['contoh'] as List?)?.isNotEmpty ?? false) Text('Contoh: ${(s['contoh'] as List).join(', ')}', style: const TextStyle(color: muted, fontSize: 13)),
-              if (s['status'] == 'diperbaiki') const Text('Harganya sudah diperbaiki.', style: TextStyle(color: successColor, fontSize: 13)),
+              if ((s['contoh'] as List?)?.isNotEmpty ?? false) Text('Contoh: ${(s['contoh'] as List).join(', ')}', style: TextStyle(color: muted, fontSize: 13)),
+              if (s['status'] == 'diperbaiki') Text('Harganya sudah diperbaiki.', style: TextStyle(color: successColor, fontSize: 13)),
             ])),
           ]))),
         ])),

@@ -21,7 +21,7 @@ class PembelianScreen extends StatelessWidget {
       ]), const SizedBox(height: 24), Text('Invoice terbaru', style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: 12),
       if (app.demo.purchases.isEmpty) const SizedBox(height: 240, child: EmptyPanel(icon: Icons.shopping_bag_outlined, title: 'Belum ada barang masuk', message: 'Buat pembelian demo untuk melihat penambahan stok pada katalog.')),
       for (final invoice in app.demo.purchases) Padding(padding: const EdgeInsets.only(bottom: 12), child: WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(invoice.supplier, style: Theme.of(context).textTheme.titleMedium), Text('${invoice.id} • ${dateText(invoice.date)}', style: const TextStyle(color: muted, fontSize: 13)),
+        Text(invoice.supplier, style: Theme.of(context).textTheme.titleMedium), Text('${invoice.id} • ${dateText(invoice.date)}', style: TextStyle(color: muted, fontSize: 13)),
         const SizedBox(height: 10), Text('${invoice.product} • ${qty(invoice.quantity)} ${invoice.unit}'),
         SummaryRow('Total', money(invoice.total)), SummaryRow('Sisa utang', money(invoice.remaining)),
       ]))),

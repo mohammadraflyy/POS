@@ -160,12 +160,12 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
         ]),
       ] else ...[
         const SizedBox(height: Space.lg),
-        Text('Pastikan pembayaran ${methods[method]} sudah masuk ke rekening toko sebelum menyimpan. Aplikasi tidak membuat QR atau memproses transfer.', style: const TextStyle(color: muted, fontSize: 13)),
+        Text('Pastikan pembayaran ${methods[method]} sudah masuk ke rekening toko sebelum menyimpan. Aplikasi tidak membuat QR atau memproses transfer.', style: TextStyle(color: muted, fontSize: 13)),
       ],
       const SizedBox(height: Space.xl), const Divider(), const SizedBox(height: Space.lg),
       const Text('Detail nota', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)), const SizedBox(height: Space.sm),
       Row(children: [
-        const Expanded(child: Text('Tanggal transaksi', style: TextStyle(color: muted))),
+        Expanded(child: Text('Tanggal transaksi', style: TextStyle(color: muted))),
         TextButton.icon(onPressed: sending ? null : pickDate, icon: const Icon(Icons.event_outlined, size: 18), label: Text(_dateLabel(store.saleDate))),
         if (store.saleDate != null && editing == null) IconButton(tooltip: 'Kembali ke sekarang', onPressed: () => store.setDetails(clearDate: true), icon: const Icon(Icons.close, size: 16)),
       ]),
@@ -187,10 +187,10 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       SummaryRow('Total', rupiah(total), strong: true, color: dataHue),
       if (change != null) SummaryRow(change < 0 ? 'Kurang' : 'Kembalian', rupiah(change.abs()), color: change < 0 ? errorColor : ink),
       if (method == 'bon' && total != null) SummaryRow('Sisa bon', rupiah((total - (paidNow ?? 0)).clamp(0, double.infinity))),
-      if (error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(error!, style: const TextStyle(color: errorColor))),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(error!, style: TextStyle(color: errorColor))),
       const SizedBox(height: Space.lg),
       SizedBox(height: 44, child: FilledButton.icon(onPressed: sending || !store.canCheckout ? null : submit,
-        icon: sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check, size: 18),
+        icon: sending ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : const Icon(Icons.check, size: 18),
         label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  Alt+S' : ''}'))),
     ]));
 

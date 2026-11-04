@@ -69,9 +69,9 @@ class _HourlyPainter extends CustomPainter {
   final Map<int, num> today, comparison;
   final int? currentHour;
 
-  static const _axisStyle = TextStyle(fontFamily: fontFamily, fontSize: 12, color: muted, fontFeatures: [FontFeature.tabularFigures()]);
+  static TextStyle get _axisStyle => TextStyle(fontFamily: fontFamily, fontSize: 12, color: muted, fontFeatures: [FontFeature.tabularFigures()]);
 
-  TextPainter _text(String value, [TextStyle style = _axisStyle]) => TextPainter(text: TextSpan(text: value, style: style), textDirection: TextDirection.ltr)..layout();
+  TextPainter _text(String value, [TextStyle? style]) => TextPainter(text: TextSpan(text: value, style: style ?? _axisStyle), textDirection: TextDirection.ltr)..layout();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -82,7 +82,7 @@ class _HourlyPainter extends CustomPainter {
     final plot = Rect.fromLTRB(yLane, 6, size.width, size.height - xLabelBand);
     double y(num v) => plot.bottom - (v / top) * plot.height;
 
-    final grid = Paint()..color = const Color(0xFFEDEDED)..strokeWidth = 1;
+    final grid = Paint()..color = gridLine..strokeWidth = 1;
     for (var i = 0; i < ticks.length; i++) {
       final ty = y(ticks[i]);
       if (i > 0) canvas.drawLine(Offset(plot.left, ty), Offset(plot.right, ty), grid);
@@ -93,7 +93,7 @@ class _HourlyPainter extends CustomPainter {
     final slot = plot.width / slots;
     final barWidth = math.min(28.0, slot * 0.62);
     final bar = Paint()..color = dataHue;
-    final tick = Paint()..color = const Color(0xFF8A8A8A)..strokeWidth = 2;
+    final tick = Paint()..color = comparisonInk..strokeWidth = 2;
     for (var hour = first; hour <= last; hour++) {
       final cx = plot.left + slot * (hour - first + 0.5);
       final value = today[hour];
@@ -112,7 +112,7 @@ class _HourlyPainter extends CustomPainter {
       }
     }
     // the baseline: the one heavier line
-    canvas.drawLine(Offset(plot.left, plot.bottom), Offset(plot.right, plot.bottom), Paint()..color = const Color(0xFFBDBDBD)..strokeWidth = 1);
+    canvas.drawLine(Offset(plot.left, plot.bottom), Offset(plot.right, plot.bottom), Paint()..color = chartBaseline..strokeWidth = 1);
   }
 
   @override
@@ -168,17 +168,17 @@ class _MarkPainter extends CustomPainter {
       case PartMark.solid:
         canvas.drawRect(rect, Paint()..color = ink);
       case PartMark.grey:
-        canvas.drawRect(rect, Paint()..color = const Color(0xFFB5B5B5));
+        canvas.drawRect(rect, Paint()..color = Color.lerp(muted, surface, 0.45)!);
       case PartMark.hatched:
         canvas.drawRect(rect, Paint()..color = surface);
         canvas.save();
         canvas.clipRect(rect);
-        final line = Paint()..color = const Color(0xFF8A8A8A)..strokeWidth = 1;
+        final line = Paint()..color = comparisonInk..strokeWidth = 1;
         for (var x = -size.height; x < size.width; x += 4) {
           canvas.drawLine(Offset(x, size.height), Offset(x + size.height, 0), line);
         }
         canvas.restore();
-        canvas.drawRect(rect.deflate(0.5), Paint()..color = const Color(0xFF8A8A8A)..style = PaintingStyle.stroke..strokeWidth = 1);
+        canvas.drawRect(rect.deflate(0.5), Paint()..color = comparisonInk..style = PaintingStyle.stroke..strokeWidth = 1);
     }
   }
   @override
@@ -212,7 +212,7 @@ class _ColumnPainter extends CustomPainter {
   final List<num> values;
   final double top, bottom, step;
 
-  static const _axisStyle = TextStyle(fontFamily: fontFamily, fontSize: 12, color: muted, fontFeatures: [FontFeature.tabularFigures()]);
+  static TextStyle get _axisStyle => TextStyle(fontFamily: fontFamily, fontSize: 12, color: muted, fontFeatures: [FontFeature.tabularFigures()]);
   TextPainter _text(String value) => TextPainter(text: TextSpan(text: value, style: _axisStyle), textDirection: TextDirection.ltr)..layout();
 
   @override
@@ -223,14 +223,14 @@ class _ColumnPainter extends CustomPainter {
     final lane = yLabels.fold<double>(0, (w, t) => math.max(w, t.width)) + 10;
     final plot = Rect.fromLTRB(lane, 6, size.width, size.height - xBand);
     double y(num v) => plot.bottom - ((v - bottom) / (top - bottom)) * plot.height;
-    final grid = Paint()..color = const Color(0xFFEDEDED)..strokeWidth = 1;
+    final grid = Paint()..color = gridLine..strokeWidth = 1;
     for (var i = 0; i < ticks.length; i++) {
       final ty = y(ticks[i]);
       if (ticks[i] != 0) canvas.drawLine(Offset(plot.left, ty), Offset(plot.right, ty), grid);
       yLabels[i].paint(canvas, Offset(lane - 10 - yLabels[i].width, ty - yLabels[i].height / 2));
     }
     if (values.isEmpty) {
-      canvas.drawLine(Offset(plot.left, y(0)), Offset(plot.right, y(0)), Paint()..color = const Color(0xFFBDBDBD));
+      canvas.drawLine(Offset(plot.left, y(0)), Offset(plot.right, y(0)), Paint()..color = chartBaseline);
       return;
     }
     final slot = plot.width / values.length;
@@ -247,7 +247,7 @@ class _ColumnPainter extends CustomPainter {
         label.paint(canvas, Offset((cx - label.width / 2).clamp(plot.left, size.width - label.width), plot.bottom + 6));
       }
     }
-    canvas.drawLine(Offset(plot.left, y(0)), Offset(plot.right, y(0)), Paint()..color = const Color(0xFFBDBDBD));
+    canvas.drawLine(Offset(plot.left, y(0)), Offset(plot.right, y(0)), Paint()..color = chartBaseline);
   }
 
   @override

@@ -62,7 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: Space.md),
           SelectableText('Alamat $address\nKode ${code['code']}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: Space.sm),
-          const Text('Scan dari aplikasi di HP, lalu login dengan akun kasir. Kode berlaku 5 menit dan hanya sekali pakai.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 13)),
+          Text('Scan dari aplikasi di HP, lalu login dengan akun kasir. Kode berlaku 5 menit dan hanya sekali pakai.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 13)),
         ])),
         actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Selesai'))]));
       load();
@@ -144,14 +144,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const Text('Hapus transaksi hari ini', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: Space.xs),
-            const Text('Untuk membersihkan transaksi tes atau salah input. Stoknya dikembalikan; bon yang sudah dibayar sebagian dilewati.', style: TextStyle(color: muted)),
+            Text('Untuk membersihkan transaksi tes atau salah input. Stoknya dikembalikan; bon yang sudah dibayar sebagian dilewati.', style: TextStyle(color: muted)),
             const SizedBox(height: Space.md),
             Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(onPressed: purgeToday,
               style: OutlinedButton.styleFrom(foregroundColor: errorColor), icon: const Icon(Icons.delete_sweep_outlined), label: const Text('Hapus transaksi hari ini'))),
             const Divider(height: Space.xxl),
             const Text('Hapus riwayat transaksi', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: Space.xs),
-            const Text('Hapus semua transaksi sebelum tanggal tertentu, termasuk bon yang belum lunas. Stok tidak berubah.', style: TextStyle(color: muted)),
+            Text('Hapus semua transaksi sebelum tanggal tertentu, termasuk bon yang belum lunas. Stok tidak berubah.', style: TextStyle(color: muted)),
             const SizedBox(height: Space.md),
             Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(onPressed: purgeBefore,
               style: OutlinedButton.styleFrom(foregroundColor: errorColor), icon: const Icon(Icons.history_toggle_off), label: const Text('Hapus riwayat…'))),

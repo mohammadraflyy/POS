@@ -64,25 +64,25 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
     final lines = rawItems is List ? rawItems.whereType<Map>().toList() : <Map>[];
     final payments = detail?['bonPayments']; final edits = detail?['edits'];
     return Scaffold(appBar: AppBar(title: Text('Nota #${widget.id}')), body: SafeArea(child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 680), child: ListView(padding: const EdgeInsets.all(Space.xl), children: [
-      if (widget.confirmation != null) ...[const Center(child: Icon(Icons.check_circle, size: 64, color: Color(0xFF357361))), const SizedBox(height: 12), const Center(child: Text('Penjualan sudah tersimpan', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600))), const SizedBox(height: Space.lg)],
+      if (widget.confirmation != null) ...[Center(child: Icon(Icons.check_circle, size: 64, color: successColor)), const SizedBox(height: 12), const Center(child: Text('Penjualan sudah tersimpan', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600))), const SizedBox(height: Space.lg)],
       if (printed != null) WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(printSkipped ? 'Disimpan tanpa struk' : printed! ? 'Struk tercetak di PC' : 'Penjualan tersimpan, cetak belum berhasil', style: const TextStyle(fontWeight: FontWeight.w700)),
-        if (printError != null && !printSkipped) Padding(padding: const EdgeInsets.only(top: 8), child: Text(printError!, style: const TextStyle(color: errorColor))),
+        if (printError != null && !printSkipped) Padding(padding: const EdgeInsets.only(top: 8), child: Text(printError!, style: TextStyle(color: errorColor))),
         if (printSkipped) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Kalau pembeli minta struk, tekan Cetak ulang.'))
         else if (!printed!) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Gunakan cetak ulang. Tidak perlu membuat penjualan lagi.')),
       ])), const SizedBox(height: Space.lg),
       if (loading) const Center(child: CircularProgressIndicator())
-      else if (error != null) ...[Text(error!, style: const TextStyle(color: errorColor)), OutlinedButton(onPressed: load, child: const Text('Muat ulang detail'))]
+      else if (error != null) ...[Text(error!, style: TextStyle(color: errorColor)), OutlinedButton(onPressed: load, child: const Text('Muat ulang detail'))]
       else if (sale != null) WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SummaryRow('Nomor nota', (sale['nomorNota'] ?? sale['id'] ?? widget.id).toString()),
         SummaryRow('Pelanggan', (sale['namaPelanggan'] ?? 'Umum').toString()), SummaryRow('Tanggal', dateTimeLabel(sale['tanggal'] ?? sale['createdAt'])),
         SummaryRow('Metode', metodeLabel[sale['metodePembayaran']] ?? text(sale['metodePembayaran'])),
-        if (sale['status'] == 'dibatalkan') const SummaryRow('Status', 'Dibatalkan', color: errorColor),
+        if (sale['status'] == 'dibatalkan') SummaryRow('Status', 'Dibatalkan', color: errorColor),
         if (sale['kasirName'] != null) SummaryRow('Kasir', sale['kasirName'].toString()),
         if (sale['keterangan'] != null) SummaryRow('Keterangan', sale['keterangan'].toString()), const Divider(),
         for (final line in lines) Padding(padding: const EdgeInsets.only(bottom: 14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text((line['namaItem'] ?? line['productName'] ?? line['namaProduk'] ?? 'Barang #${line['productId'] ?? ''}').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
-          Text('${quantityText(line['qty'])} ${(line['namaSatuan'] ?? line['satuan'] ?? '').toString()} • ${rupiah(line['hargaJual'])}', style: const TextStyle(color: muted)),
+          Text('${quantityText(line['qty'])} ${(line['namaSatuan'] ?? line['satuan'] ?? '').toString()} • ${rupiah(line['hargaJual'])}', style: TextStyle(color: muted)),
           if (line['subtotal'] != null || line['total'] != null) SummaryRow('Jumlah', rupiah(line['subtotal'] ?? line['total'])),
         ])), const Divider(),
         SummaryRow('Total', rupiah(sale['total'] ?? widget.confirmation?['total']), strong: true),
@@ -94,7 +94,7 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
           for (final p in payments.whereType<Map>()) SummaryRow((p['tanggal'] ?? p['createdAt'] ?? '').toString(), rupiah(p['jumlah'])),
         ],
         if (edits is List && edits.isNotEmpty) ...[const Divider(), Text('${edits.length} perubahan tercatat di PC'),
-          for (final e in edits.whereType<Map>()) Text('${e['createdAt'] ?? e['tanggal'] ?? ''} • ${e['keterangan'] ?? e['reason'] ?? 'Perubahan transaksi'}', style: const TextStyle(color: muted, fontSize: 13)),
+          for (final e in edits.whereType<Map>()) Text('${e['createdAt'] ?? e['tanggal'] ?? ''} • ${e['keterangan'] ?? e['reason'] ?? 'Perubahan transaksi'}', style: TextStyle(color: muted, fontSize: 13)),
         ],
       ])),
       if (detail == null && widget.confirmation != null) SummaryRow('Total tersimpan', rupiah(widget.confirmation!['total']), strong: true),

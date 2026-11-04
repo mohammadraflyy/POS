@@ -14,7 +14,7 @@ class BottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(color: surface, child: SafeArea(top: false, child: Container(
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: lineColor))),
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: lineColor))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [for (var i = 0; i < labels.length; i++) Expanded(
         child: Semantics(selected: selectedIndex == i, button: true, label: labels[i],
           child: InkWell(onTap: () => onDestinationSelected(i), child: Padding(

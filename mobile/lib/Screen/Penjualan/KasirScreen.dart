@@ -53,7 +53,7 @@ class _KasirScreenState extends State<KasirScreen> {
         child: Row(children: [for (final category in categories) Padding(padding: const EdgeInsets.only(right: Space.sm),
           child: ChoiceChip(label: Text(category), selected: _category == category,
             onSelected: (_) => setState(() => _category = category)))])),
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), child: Text('${products.length} produk tersedia', style: const TextStyle(color: muted, fontSize: 13))),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), child: Text('${products.length} produk tersedia', style: TextStyle(color: muted, fontSize: 13))),
       ])),
       products.isEmpty ? const SliverToBoxAdapter(child: SizedBox(height: 220, child: EmptyPanel(icon: Icons.search_off, title: 'Barang tidak ditemukan', message: 'Coba nama lain atau pilih kategori Semua.'))) : SliverList(delegate: SliverChildBuilderDelegate((context, index) {
         final product = products[index];

@@ -72,7 +72,7 @@ class _CostCorrectionDialogState extends State<_CostCorrectionDialog> {
       content: SizedBox(width: 640, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text('${row['namaItem']} (${row['satuan']}) · nota #${row['saleId']}', style: const TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: Space.sm),
-        const Text('Masukkan modal sebenarnya per satuan yang terjual. Laba transaksi dihitung ulang; harga katalog, stok, dan pembayaran tetap. '
+        Text('Masukkan modal sebenarnya per satuan yang terjual. Laba transaksi dihitung ulang; harga katalog, stok, dan pembayaran tetap. '
           'Perubahan beserta alasan dan nama admin dicatat.', style: TextStyle(color: muted)),
         const SizedBox(height: Space.lg),
         DropdownButtonFormField<String>(initialValue: scope, isExpanded: true, decoration: const InputDecoration(labelText: 'Cakupan koreksi'),
@@ -87,7 +87,7 @@ class _CostCorrectionDialogState extends State<_CostCorrectionDialog> {
             onPressed: busy ? null : () async { final picked = await pickRange(context, period); if (picked != null) { period = picked; _changed(); } },
             icon: const Icon(Icons.date_range), label: Text('Tanggal transaksi: ${rangeLabel(period)}'))),
           const SizedBox(height: Space.xs),
-          const Text('Semua transaksi selesai dengan produk, satuan, dan konversi yang sama, termasuk bon belum lunas. '
+          Text('Semua transaksi selesai dengan produk, satuan, dan konversi yang sama, termasuk bon belum lunas. '
             'Ini tanggal transaksi, bukan tanggal pelunasan bon.', style: TextStyle(color: muted, fontSize: 13)),
         ],
         const SizedBox(height: Space.md),
@@ -97,7 +97,7 @@ class _CostCorrectionDialogState extends State<_CostCorrectionDialog> {
         TextField(controller: reason, enabled: !busy, maxLength: 1000, onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(labelText: 'Alasan koreksi', hintText: 'Contoh: HPP salah input, sesuai faktur supplier Rp9.000')),
         Align(alignment: Alignment.centerLeft, child: OutlinedButton(onPressed: busy ? null : _preview, child: const Text('Tampilkan pratinjau'))),
-        if (error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(error!, style: const TextStyle(color: errorColor))),
+        if (error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(error!, style: TextStyle(color: errorColor))),
         if (preview != null) ...[
           const SizedBox(height: Space.lg),
           Text('${rows.length} baris akan dikoreksi ke ${rupiah(preview!['hargaPokok'])} per ${preview!['satuan']}.', style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -116,7 +116,7 @@ class _CostCorrectionDialogState extends State<_CostCorrectionDialog> {
             DataCol('Laba baru', (r) => rupiah(r['labaBaru']), numeric: true),
           ]))),
           const SizedBox(height: Space.sm),
-          const Text('Laba sudah memperhitungkan diskon barang dan bagian diskon nota. Bon masuk Rekap pada periode pelunasannya.', style: TextStyle(color: muted, fontSize: 13)),
+          Text('Laba sudah memperhitungkan diskon barang dan bagian diskon nota. Bon masuk Rekap pada periode pelunasannya.', style: TextStyle(color: muted, fontSize: 13)),
         ],
       ]))),
       actions: [
@@ -131,7 +131,7 @@ class _CostCorrectionDialogState extends State<_CostCorrectionDialog> {
 Future<void> showCostCorrectionHistory(BuildContext context, StoreApi api) => showDialog<void>(context: context, builder: (context) => AlertDialog(
   title: const Text('Riwayat koreksi HPP'),
   content: SizedBox(width: 760, child: FutureBuilder<List<Map<String, dynamic>>>(future: api.costCorrections(), builder: (context, snapshot) {
-    if (snapshot.hasError) return Text(errorText(snapshot.error!), style: const TextStyle(color: errorColor));
+    if (snapshot.hasError) return Text(errorText(snapshot.error!), style: TextStyle(color: errorColor));
     if (!snapshot.hasData) return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()));
     return SingleChildScrollView(child: DataView<Map<String, dynamic>>(rows: snapshot.data!, emptyTitle: 'Belum ada koreksi HPP', columns: [
       DataCol('Waktu', (r) => dateTimeLabel(r['createdAt']), flex: 2),

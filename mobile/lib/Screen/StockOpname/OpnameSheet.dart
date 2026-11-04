@@ -43,7 +43,7 @@ class _OpnameSheetState extends State<OpnameSheet> {
       const SizedBox(height: Space.lg), TextField(controller: _actual, enabled: !_saving, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Hasil hitung fisik (${widget.product.baseUnit.name})', helperText: 'Isi total stok yang benar, bukan jumlah selisih.')),
       const SizedBox(height: Space.lg), TextField(controller: _reason, enabled: !_saving, maxLength: 255, decoration: const InputDecoration(labelText: 'Alasan (opsional)')),
       const SizedBox(height: 10), SummaryRow('Selisih', delta == null ? '—' : '${delta > 0 ? '+' : ''}${qty(delta)} ${widget.product.baseUnit.name}', strong: true),
-      if (_error != null) Text(_error!, style: const TextStyle(color: errorColor)),
+      if (_error != null) Text(_error!, style: TextStyle(color: errorColor)),
       const SizedBox(height: Space.lg), SizedBox(width: double.infinity, child: FilledButton(onPressed: _saving ? null : _save, child: const Text('Simpan hasil hitung demo'))),
     ])));
   }

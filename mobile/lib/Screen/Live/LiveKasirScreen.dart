@@ -205,16 +205,16 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(),
         decoration: InputDecoration(hintText: isDesktop ? 'Cari nama, kode, atau scan barcode' : 'Cari barang', prefixIcon: const Icon(Icons.search, size: 20)))),
       if (!isDesktop) ...[const SizedBox(width: Space.sm), IconButton.filled(onPressed: scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner, size: 20),
-        style: IconButton.styleFrom(backgroundColor: primaryInk, foregroundColor: Colors.white, minimumSize: const Size(44, 44)))],
+        style: IconButton.styleFrom(backgroundColor: primaryInk, foregroundColor: onPrimary, minimumSize: const Size(44, 44)))],
       const SizedBox(width: Space.xs),
       IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
     ]);
-    final keys = isDesktop && wide ? const Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+K kosongkan',
+    final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+K kosongkan',
       style: TextStyle(color: muted, fontSize: 12))) : const SizedBox.shrink();
     final list = CustomScrollView(slivers: [
       if (loading) const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),
       if (error != null) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: EmptyPanel(icon: Icons.wifi_off, title: 'Katalog belum dimuat', message: error!, action: OutlinedButton(onPressed: () => load(), child: const Text('Coba lagi')))))
-      else if (products.isEmpty && !loading) const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(Space.lg), child: Text('Tidak ada barang yang cocok. Coba kata lain atau scan barcodenya.', style: TextStyle(color: muted))))
+      else if (products.isEmpty && !loading) SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(Space.lg), child: Text('Tidak ada barang yang cocok. Coba kata lain atau scan barcodenya.', style: TextStyle(color: muted))))
       else SliverList(delegate: SliverChildBuilderDelegate((context, index) {
         final p = products[index];
         return ProductRow(name: p.name, code: p.code, stock: quantityText(p.stock),
@@ -224,7 +224,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           onAdd: loading || !widget.store.editable ? null : () => addOne(p));
       }, childCount: products.length)),
       if (lastPage > 1) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Row(children: [
-        Text('Halaman $page dari $lastPage', style: const TextStyle(color: muted, fontSize: 13)),
+        Text('Halaman $page dari $lastPage', style: TextStyle(color: muted, fontSize: 13)),
         const Spacer(),
         OutlinedButton(onPressed: !loading && page > 1 ? () => load(target: page - 1) : null, child: const Text('Sebelumnya')),
         const SizedBox(width: Space.sm), OutlinedButton(onPressed: !loading && page < lastPage ? () => load(target: page + 1) : null, child: const Text('Berikutnya')),
@@ -233,10 +233,10 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     final editing = widget.store.editingSaleId;
     final editBanner = editing == null ? null : Container(
       padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.sm, Space.sm),
-      decoration: BoxDecoration(color: pillWarningBg, border: Border.all(color: const Color(0xFFFDE68A)), borderRadius: BorderRadius.circular(Corners.panel)),
+      decoration: BoxDecoration(color: pillWarningBg, border: Border.all(color: noticeBorder), borderRadius: BorderRadius.circular(Corners.panel)),
       child: Row(children: [
-        const Icon(Icons.edit_note, size: 18, color: pillWarningInk), const SizedBox(width: Space.sm),
-        Expanded(child: Text('Mengubah nota #$editing. Ubah barang di sini, lalu Bayar untuk menyimpan perubahan.', style: const TextStyle(color: pillWarningInk, fontSize: 13))),
+        Icon(Icons.edit_note, size: 18, color: pillWarningInk), const SizedBox(width: Space.sm),
+        Expanded(child: Text('Mengubah nota #$editing. Ubah barang di sini, lalu Bayar untuk menyimpan perubahan.', style: TextStyle(color: pillWarningInk, fontSize: 13))),
         TextButton(onPressed: widget.store.editable ? widget.store.cancelEdit : null, child: const Text('Batal ubah')),
       ]));
     if (!wide) {

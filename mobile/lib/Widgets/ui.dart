@@ -11,16 +11,16 @@ void showError(BuildContext context, Object error) {
 /// A status mark inside a row or beside a value: a pale tint with dark text of the same
 /// hue. [color] picks the pair (success, error, warning); anything else is neutral.
 class Pill extends StatelessWidget {
-  const Pill(this.label, {super.key, this.color = muted, this.icon});
+  const Pill(this.label, {super.key, this.color, this.icon});
   final String label;
-  final Color color;
+
+  /// successColor, errorColor or warningColor pick that pair; null or anything else is neutral.
+  final Color? color;
   final IconData? icon;
-  (Color, Color) get _pair => switch (color) {
-    successColor => (pillPositiveBg, pillPositiveInk),
-    errorColor => (pillNegativeBg, pillNegativeInk),
-    warningColor => (pillWarningBg, pillWarningInk),
-    _ => (pillNeutralBg, pillNeutralInk),
-  };
+  (Color, Color) get _pair => color == successColor ? (pillPositiveBg, pillPositiveInk)
+    : color == errorColor ? (pillNegativeBg, pillNegativeInk)
+    : color == warningColor ? (pillWarningBg, pillWarningInk)
+    : (pillNeutralBg, pillNeutralInk);
   @override
   Widget build(BuildContext context) {
     final (bg, fg) = _pair;
@@ -53,7 +53,7 @@ class EmptyPanel extends StatelessWidget {
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 2),
-        Text(message, style: const TextStyle(color: muted, fontSize: 14)),
+        Text(message, style: TextStyle(color: muted, fontSize: 14)),
         if (action != null) ...[const SizedBox(height: Space.md), action!],
       ])),
     ]),
@@ -84,7 +84,7 @@ class WhitePanel extends StatelessWidget {
   @override
   // a Material rather than a decorated box, so list tiles inside can paint their ink
   Widget build(BuildContext context) => Material(color: surface, clipBehavior: Clip.antiAlias,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.panel), side: const BorderSide(color: lineColor)),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.panel), side: BorderSide(color: lineColor)),
     child: Padding(padding: padding, child: child));
 }
 
@@ -111,11 +111,11 @@ class KpiStrip extends StatelessWidget {
   Widget _cell(BuildContext context, Kpi kpi) => Padding(
     padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.md),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      Text(kpi.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 13)),
+      Text(kpi.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 13)),
       const SizedBox(height: 6),
       FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(kpi.value,
         style: (kpi.lead ? moneyStyle : amountStyle).copyWith(fontSize: kpi.lead ? 30 : 22, color: kpi.color ?? ink, height: 1.15))),
-      if (kpi.caption != null) ...[const SizedBox(height: 4), Text(kpi.caption!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 12))],
+      if (kpi.caption != null) ...[const SizedBox(height: 4), Text(kpi.caption!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
     ]),
   );
 
@@ -183,7 +183,7 @@ class PageIntro extends StatelessWidget {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(title, style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: Space.xs),
-      Text(description, style: const TextStyle(color: muted, fontSize: 14)),
+      Text(description, style: TextStyle(color: muted, fontSize: 14)),
     ]),
   );
 }
@@ -207,12 +207,12 @@ class CartAction extends StatelessWidget {
   final VoidCallback onPressed;
   @override Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.md),
-    decoration: const BoxDecoration(color: surface, border: Border(top: BorderSide(color: lineColor))),
+    decoration: BoxDecoration(color: surface, border: Border(top: BorderSide(color: lineColor))),
     child: SizedBox(width: double.infinity, height: 48, child: FilledButton(onPressed: onPressed,
       child: Row(children: [
         Expanded(child: Text('Keranjang · $count barang', maxLines: 1, overflow: TextOverflow.ellipsis)),
         const SizedBox(width: Space.sm),
-        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 160), child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: Text(total, style: moneyStyle.copyWith(color: Colors.white, fontSize: 16)))),
+        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 160), child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight, child: Text(total, style: moneyStyle.copyWith(color: onPrimary, fontSize: 16)))),
       ]))),
   );
 }
@@ -223,9 +223,9 @@ class CartLayout extends StatelessWidget {
   final List<Widget> items;
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
     final compact = box.maxHeight < 560 || MediaQuery.textScalerOf(context).scale(14) > 20;
-    final contents = items.isEmpty ? <Widget>[const Padding(padding: EdgeInsets.symmetric(vertical: Space.xl),
+    final contents = items.isEmpty ? <Widget>[Padding(padding: EdgeInsets.symmetric(vertical: Space.xl),
       child: Text('Keranjang masih kosong. Scan barang atau pilih dari katalog.', style: TextStyle(color: muted)))] : items;
-    return Material(color: surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.panel), side: const BorderSide(color: lineColor)),
+    return Material(color: surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.panel), side: BorderSide(color: lineColor)),
       clipBehavior: Clip.antiAlias, child: compact
       ? ListView(padding: const EdgeInsets.all(Space.lg), children: [header, const Divider(), ...contents, const Divider(), footer])
       : Column(children: [Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: header), const Divider(),
@@ -244,14 +244,14 @@ class RecordRow extends StatelessWidget {
   @override Widget build(BuildContext context) => Material(color: surface,
     child: InkWell(onTap: onTap, child: Container(
       padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: ruleColor))),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: ruleColor))),
       child: Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 2), Text(subtitle, style: const TextStyle(color: muted, fontSize: 13)),
+          const SizedBox(height: 2), Text(subtitle, style: TextStyle(color: muted, fontSize: 13)),
         ])),
         if (value != null) Text(value!, style: amountStyle.copyWith(fontSize: 14)),
-        if (onTap != null) const Padding(padding: EdgeInsets.only(left: Space.sm), child: Icon(Icons.chevron_right, size: 18, color: muted)),
+        if (onTap != null) Padding(padding: EdgeInsets.only(left: Space.sm), child: Icon(Icons.chevron_right, size: 18, color: muted)),
       ]),
     )),
   );
@@ -261,10 +261,10 @@ class PaymentTotal extends StatelessWidget {
   const PaymentTotal({super.key, required this.total, required this.description});
   final String total, description;
   @override Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('Total yang dibayar', style: TextStyle(color: muted, fontSize: 14)),
+    Text('Total yang dibayar', style: TextStyle(color: muted, fontSize: 14)),
     const SizedBox(height: Space.xs),
     FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(total, style: moneyStyle.copyWith(fontSize: 30, color: dataHue))),
-    const SizedBox(height: Space.xs), Text(description, style: const TextStyle(color: muted, fontSize: 12)),
+    const SizedBox(height: Space.xs), Text(description, style: TextStyle(color: muted, fontSize: 12)),
     const SizedBox(height: Space.xl),
   ]);
 }

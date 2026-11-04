@@ -118,12 +118,12 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
     return ListView(padding: const EdgeInsets.all(Space.lg), children: [
       PageIntro(widget.editing == null ? 'Pembelian baru' : 'Ubah pembelian #${widget.editing!.id}',
         widget.editing == null ? 'Barang yang disimpan akan menambah stok toko.' : 'Ubah supplier, tanggal, barang, atau uang muka, lalu simpan.'),
-      WhitePanel(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs), child: Column(children: [ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.local_shipping_outlined, color: muted), title: Text(supplier == null ? 'Pilih supplier (opsional)' : (supplier!['nama'] ?? supplier!['name']).toString()), trailing: const Icon(Icons.chevron_right), onTap: !enabled ? null : () async {
+      WhitePanel(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs), child: Column(children: [ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.local_shipping_outlined, color: muted), title: Text(supplier == null ? 'Pilih supplier (opsional)' : (supplier!['nama'] ?? supplier!['name']).toString()), trailing: const Icon(Icons.chevron_right), onTap: !enabled ? null : () async {
         final result = await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(builder: (_) => LiveSupplierScreen(api: widget.api, guard: widget.guard)));
         if (mounted && result != null) setState(() => supplier = result);
       }), if (supplier != null) Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: enabled ? () => setState(() => supplier = null) : null, child: const Text('Tanpa supplier'))),
         const Divider(),
-        ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.calendar_today_outlined, color: muted), title: const Text('Tanggal faktur'),
+        ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.calendar_today_outlined, color: muted), title: const Text('Tanggal faktur'),
           trailing: Text(isoDate(date), style: amountStyle.copyWith(fontSize: 14)),
           onTap: !enabled ? null : () async { final selected = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now()); if (selected != null && mounted) setState(() => date = selected); }),
       ])), const SizedBox(height: Space.lg),
@@ -131,8 +131,8 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
       OutlinedButton.icon(onPressed: !enabled ? null : () => addItem(), icon: const Icon(Icons.add), label: const Text('Tambah barang  ·  atau scan barcode')),
       const SizedBox(height: Space.lg), TextField(controller: paid, enabled: enabled, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Uang muka (opsional, Rp)', helperText: 'Kosong = lunas. Isi 0 untuk utang penuh.')),
       const SizedBox(height: Space.lg), TextField(controller: note, enabled: enabled, decoration: const InputDecoration(labelText: 'Catatan (opsional)')),
-      const SizedBox(height: 16), const Text('Jumlah akhir dihitung oleh PC saat penyimpanan.', style: TextStyle(color: muted, fontSize: 13)),
-      if (error != null) Text(error!, style: const TextStyle(color: errorColor)), if (success != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(success!, style: const TextStyle(color: Color(0xFF357361)))),
+      const SizedBox(height: 16), Text('Jumlah akhir dihitung oleh PC saat penyimpanan.', style: TextStyle(color: muted, fontSize: 13)),
+      if (error != null) Text(error!, style: TextStyle(color: errorColor)), if (success != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(success!, style: TextStyle(color: successColor))),
       const SizedBox(height: Space.lg), FilledButton.icon(onPressed: enabled && items.isNotEmpty && widget.guard.ready ? save : null, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Menyimpan…' : widget.editing == null ? 'Simpan pembelian ke PC' : 'Simpan perubahan')),
     ]);
   });

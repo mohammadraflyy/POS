@@ -20,7 +20,7 @@ class HutangSupplierScreen extends StatelessWidget {
     return Scaffold(appBar: AppBar(title: const Text('Utang supplier')), body: SafeArea(child: suppliers.isEmpty
       ? const EmptyPanel(icon: Icons.task_alt, title: 'Tidak ada utang supplier', message: 'Invoice demo yang belum lunas akan ditampilkan di sini.')
       : ListView(padding: const EdgeInsets.all(Space.lg), children: [
-        const Text('Pembayaran demo dialokasikan otomatis ke invoice tertua.', style: TextStyle(color: muted)), const SizedBox(height: 16),
+        Text('Pembayaran demo dialokasikan otomatis ke invoice tertua.', style: TextStyle(color: muted)), const SizedBox(height: 16),
         for (final supplier in suppliers) Padding(padding: const EdgeInsets.only(bottom: 14), child: WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(supplier, style: Theme.of(context).textTheme.titleLarge),
           for (final p in app.demo.purchases.where((p) => p.supplier == supplier && p.remaining > 0)) SummaryRow('${p.id}\n${dateText(p.date)}', money(p.remaining)),

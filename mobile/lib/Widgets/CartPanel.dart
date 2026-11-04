@@ -36,7 +36,7 @@ class CartPanel extends StatelessWidget {
     items: [for (final line in app.cart) Padding(padding: const EdgeInsets.symmetric(vertical: Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [Expanded(child: Text(line.product.name, style: Theme.of(context).textTheme.titleMedium)),
         IconButton(onPressed: () => app.remove(line), tooltip: 'Hapus barang', icon: const Icon(Icons.close, size: 20))]),
-      Text(money(line.price) + ' / ' + line.unit.name, style: const TextStyle(color: muted)),
+      Text(money(line.price) + ' / ' + line.unit.name, style: TextStyle(color: muted)),
       if (line.discount > 0) SummaryRow('Diskon', money(line.discount)),
       Wrap(spacing: Space.sm, runSpacing: Space.sm, crossAxisAlignment: WrapCrossAlignment.center, children: [
         IconButton.outlined(tooltip: 'Kurangi satu', onPressed: () {
@@ -54,7 +54,7 @@ class CartPanel extends StatelessWidget {
     ]))],
     footer: Column(mainAxisSize: MainAxisSize.min, children: [
       SummaryRow('Subtotal', money(app.subtotal)),
-      Row(children: [const Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))), Flexible(child: TextButton(onPressed: app.cart.isEmpty ? null : () => _discount(context), child: Text(app.billDiscount == 0 ? 'Tambah diskon' : money(app.billDiscount))))]),
+      Row(children: [Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))), Flexible(child: TextButton(onPressed: app.cart.isEmpty ? null : () => _discount(context), child: Text(app.billDiscount == 0 ? 'Tambah diskon' : money(app.billDiscount))))]),
       SummaryRow('Total', money(app.total), strong: true), const SizedBox(height: Space.lg),
       SizedBox(width: double.infinity, child: FilledButton(onPressed: app.cart.isEmpty ? null : () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PaymentScreen(app: app))), child: const Text('Lanjut bayar'))),
     ]),

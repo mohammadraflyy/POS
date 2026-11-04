@@ -118,7 +118,7 @@ class DataView<T> extends StatelessWidget {
           clipBehavior: Clip.antiAlias, child: Column(children: [for (final (index, row) in rows.indexed) Material(color: surface, child: InkWell(
           onTap: onTap == null ? null : () => onTap!(row),
           child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
-            decoration: BoxDecoration(border: index == 0 ? null : const Border(top: BorderSide(color: ruleColor))),
+            decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 if (_selectable) _checkbox(row),
@@ -128,28 +128,28 @@ class DataView<T> extends StatelessWidget {
               ]),
               const SizedBox(height: 2),
               Text([for (final col in columns.skip(1)) if (!col.numeric || col != columns.skip(1).lastWhere((c) => c.numeric)) '${col.label} ${col.cell(row)}'].join(' · '),
-                style: const TextStyle(color: muted, fontSize: 13)),
+                style: TextStyle(color: muted, fontSize: 13)),
               if (actions != null) Wrap(spacing: Space.xs, children: actions!(row)),
             ]))))]));
       }
       return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
         clipBehavior: Clip.antiAlias, child: Column(children: [
           Container(height: 38, padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))), child: Row(children: [
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))), child: Row(children: [
             if (_selectable) const SizedBox(width: 40),
             for (final col in columns) Expanded(flex: col.flex, child: Text(col.label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: col.numeric ? TextAlign.end : TextAlign.start,
-              style: const TextStyle(color: muted, fontSize: 12))),
+              style: TextStyle(color: muted, fontSize: 12))),
             if (actions != null) SizedBox(width: actionsWidth),
           ])),
           for (final (index, row) in rows.indexed) InkWell(onTap: onTap == null ? null : () => onTap!(row), child: Container(
             constraints: const BoxConstraints(minHeight: 44),
             padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 8),
-            decoration: BoxDecoration(border: index == 0 ? null : const Border(top: BorderSide(color: ruleColor))),
+            decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
             child: Row(children: [
               if (_selectable) _checkbox(row),
               for (final (colIndex, col) in columns.indexed) Expanded(flex: col.flex, child: Text(col.cell(row), maxLines: 2, overflow: TextOverflow.ellipsis,
                 textAlign: col.numeric ? TextAlign.end : TextAlign.start,
-                style: col.numeric ? amountStyle.copyWith(fontSize: 14) : TextStyle(fontSize: 14, color: colIndex == 0 ? ink : const Color(0xFF3D3D3D)))),
+                style: col.numeric ? amountStyle.copyWith(fontSize: 14) : TextStyle(fontSize: 14, color: colIndex == 0 ? ink : secondaryInk))),
               if (actions != null) SizedBox(width: actionsWidth, child: _CompactActions(children: actions!(row))),
             ]))),
         ]));
@@ -164,7 +164,7 @@ class Pager extends StatelessWidget {
   final ValueChanged<int> onPage;
   @override Widget build(BuildContext context) => Padding(padding: const EdgeInsets.symmetric(vertical: Space.md), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
     IconButton(tooltip: 'Halaman sebelumnya', onPressed: !busy && page > 1 ? () => onPage(page - 1) : null, icon: const Icon(Icons.chevron_left)),
-    Text('Halaman $page dari $last', style: const TextStyle(color: muted, fontSize: 13)),
+    Text('Halaman $page dari $last', style: TextStyle(color: muted, fontSize: 13)),
     IconButton(tooltip: 'Halaman berikutnya', onPressed: !busy && page < last ? () => onPage(page + 1) : null, icon: const Icon(Icons.chevron_right)),
   ]));
 }
@@ -178,7 +178,7 @@ class StatTile extends StatelessWidget {
   // the icon is accepted for old callers and not drawn: a figure needs no badge
   @override Widget build(BuildContext context) => SizedBox(width: MediaQuery.sizeOf(context).width < 600 ? (MediaQuery.sizeOf(context).width - Space.lg * 2 - Space.gap) / 2 : 230,
     child: WhitePanel(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(label, style: const TextStyle(color: muted, fontSize: 13)),
+    Text(label, style: TextStyle(color: muted, fontSize: 13)),
     const SizedBox(height: 6),
     Text(value, style: amountStyle.copyWith(fontSize: 22, color: color ?? ink)),
   ])));
@@ -327,12 +327,12 @@ class _FormDialogState extends State<_FormDialog> {
   @override Widget build(BuildContext context) => AlertDialog(title: Text(widget.title), scrollable: true,
     content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
       for (final f in widget.fields) Padding(padding: const EdgeInsets.only(bottom: Space.md), child: _field(f)),
-      if (error != null) Text(error!, style: const TextStyle(color: errorColor)),
+      if (error != null) Text(error!, style: TextStyle(color: errorColor)),
     ])),
     actions: [
       TextButton(onPressed: saving ? null : () => Navigator.pop(context), child: const Text('Batal')),
       FilledButton(onPressed: saving ? null : _save, child: saving
-        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(widget.saveLabel)),
+        ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : Text(widget.saveLabel)),
     ]);
 }
 
@@ -389,7 +389,7 @@ class SectionCard extends StatelessWidget {
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 14, Space.md, 10), child: Row(children: [
         Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
-        if (trailing != null) DefaultTextStyle.merge(style: const TextStyle(color: muted, fontSize: 12), child: trailing!),
+        if (trailing != null) DefaultTextStyle.merge(style: TextStyle(color: muted, fontSize: 12), child: trailing!),
       ])),
       if (padded) Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: child) else child,
     ]),
@@ -407,12 +407,12 @@ class LedgerRow extends StatelessWidget {
   final Color? valueColor;
   @override Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 9),
-    decoration: BoxDecoration(border: first ? null : const Border(top: BorderSide(color: ruleColor))),
+    decoration: BoxDecoration(border: first ? null : Border(top: BorderSide(color: ruleColor))),
     child: Row(children: [
       if (leading != null) ...[leading!, const SizedBox(width: Space.md)],
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
-        if (subline != null) Text(subline!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 12)),
+        if (subline != null) Text(subline!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12)),
       ])),
       const SizedBox(width: Space.md),
       Text(value, style: amountStyle.copyWith(fontSize: 14, color: valueColor ?? ink)),
@@ -440,7 +440,7 @@ class PageTabs extends StatelessWidget {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     return Container(
       width: double.infinity, alignment: Alignment.centerLeft,
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))),
       padding: EdgeInsets.only(left: wide ? Space.xxl - Space.md : Space.sm, top: wide ? Space.sm : 0),
       child: TabBar(isScrollable: true, tabAlignment: TabAlignment.start, dividerHeight: 0,
         labelPadding: const EdgeInsets.symmetric(horizontal: Space.md),

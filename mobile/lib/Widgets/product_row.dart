@@ -17,7 +17,7 @@ class ProductRow extends StatelessWidget {
     color: surface,
     child: InkWell(onTap: onConfigure, child: Container(
       decoration: BoxDecoration(border: Border(
-        bottom: const BorderSide(color: ruleColor),
+        bottom: BorderSide(color: ruleColor),
         left: BorderSide(color: inCart ? ink : Colors.transparent, width: 2))),
       padding: const EdgeInsets.fromLTRB(14, 10, Space.sm, 10),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
@@ -32,14 +32,14 @@ class ProductRow extends StatelessWidget {
         ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text.rich(TextSpan(children: [
             TextSpan(text: price, style: amountStyle.copyWith(fontSize: 15)),
-            TextSpan(text: ' /$unit', style: const TextStyle(color: muted, fontSize: 12)),
+            TextSpan(text: ' /$unit', style: TextStyle(color: muted, fontSize: 12)),
           ]), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end),
           const SizedBox(height: 2),
           Text(available ? 'stok $stock' : 'stok habis', maxLines: 1, overflow: TextOverflow.ellipsis, style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: available ? muted : errorColor, fontSize: 12)),
         ])),
         const SizedBox(width: Space.sm),
         IconButton(tooltip: 'Tambah $name', onPressed: available ? onAdd : null,
-          style: IconButton.styleFrom(side: const BorderSide(color: controlBorder), backgroundColor: surface),
+          style: IconButton.styleFrom(side: BorderSide(color: controlBorder), backgroundColor: surface),
           icon: const Icon(Icons.add, size: 18)),
       ]),
     )),

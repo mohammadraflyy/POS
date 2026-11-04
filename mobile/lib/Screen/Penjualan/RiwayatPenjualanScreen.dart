@@ -19,7 +19,7 @@ class _RiwayatPenjualanScreenState extends State<RiwayatPenjualanScreen> {
     return ListView(padding: const EdgeInsets.all(Space.lg), children: [
       const PageIntro('Riwayat penjualan', 'Penjualan dan bon selama sesi demo.'),
       WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Pill('PENJUALAN DEMO'), const SizedBox(height: 10),
-        Text(money(omzet), style: Theme.of(context).textTheme.headlineLarge), Text('${widget.app.demo.receipts.length} transaksi', style: const TextStyle(color: muted)),
+        Text(money(omzet), style: Theme.of(context).textTheme.headlineLarge), Text('${widget.app.demo.receipts.length} transaksi', style: TextStyle(color: muted)),
       ])), const SizedBox(height: Space.lg),
       TextField(onChanged: (v) => setState(() => _query = v), decoration: const InputDecoration(labelText: 'Pencarian', hintText: 'Cari nomor atau pelanggan', prefixIcon: Icon(Icons.search))), const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, children: [for (final label in ['Semua', 'Tunai', 'Qris', 'Transfer', 'Bon', 'Belum lunas'])

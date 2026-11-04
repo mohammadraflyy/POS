@@ -118,8 +118,8 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
       child: NoticeListener(message: store.price != null && !store.price!.stockEnough ? 'Stok tidak cukup untuk jumlah dalam keranjang. Kurangi jumlah atau pilih barang lain sebelum membayar.' : null,
         child: Column(children: [
     if (!guard.ready || (guard.pending != null && !guard.busy) || guard.error != null)
-      Container(color: const Color(0xFFFFE4D8), padding: const EdgeInsets.all(12), child: Row(children: [
-        Expanded(child: Text(guard.error ?? (guard.pending != null ? 'Ada transaksi yang perlu diperiksa hasilnya di PC.' : 'Memeriksa status transaksi perangkat…'), style: const TextStyle(color: muted, fontSize: 13))),
+      Container(color: pillWarningBg, padding: const EdgeInsets.all(12), child: Row(children: [
+        Expanded(child: Text(guard.error ?? (guard.pending != null ? 'Ada transaksi yang perlu diperiksa hasilnya di PC.' : 'Memeriksa status transaksi perangkat…'), style: TextStyle(color: muted, fontSize: 13))),
         if (!guard.ready) TextButton(onPressed: guard.load, child: const Text('Coba lagi')),
         if (guard.pending != null && !guard.busy) TextButton(onPressed: _review, child: const Text('Periksa')),
       ])),

@@ -56,13 +56,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
           const SizedBox(height: Space.lg), WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Icon(icons[_method], size: 32, color: muted), const SizedBox(height: 12),
             Text(_method == PaymentMethod.qris ? 'Simulasi pembayaran QRIS' : 'Simulasi pembayaran transfer', style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6), const Text('Tidak ada QR pembayaran atau transfer uang sungguhan. Demo mencatat metode ini sebagai lunas sesuai total.', style: TextStyle(color: muted)),
+            const SizedBox(height: 6), Text('Tidak ada QR pembayaran atau transfer uang sungguhan. Demo mencatat metode ini sebagai lunas sesuai total.', style: TextStyle(color: muted)),
           ])),
         ],
         const SizedBox(height: Space.xl), WhitePanel(child: Column(children: [SummaryRow('Subtotal', money(widget.app.subtotal)), SummaryRow('Diskon nota', '− ${money(widget.app.billDiscount)}'), const Divider(), SummaryRow('Total', money(total), strong: true)])),
-        if (_error != null) Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error!, style: const TextStyle(color: errorColor))),
+        if (_error != null) Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error!, style: TextStyle(color: errorColor))),
         const SizedBox(height: 24), FilledButton.icon(onPressed: _processing ? null : _submit, icon: const Icon(Icons.check_circle_outline), label: const Text('Selesaikan transaksi demo')),
-        const SizedBox(height: 12), const Text('Hanya simulasi • tidak mengubah data atau kas toko', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: muted)),
+        const SizedBox(height: 12), Text('Hanya simulasi • tidak mengubah data atau kas toko', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: muted)),
       ]),
     ))));
   }

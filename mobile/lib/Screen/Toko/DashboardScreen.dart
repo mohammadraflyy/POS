@@ -87,7 +87,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 10, height: 10, color: dataHue), const SizedBox(width: 6), const Text('Hari ini'),
         const SizedBox(width: Space.md),
-        Container(width: 12, height: 2, color: const Color(0xFF8A8A8A)), const SizedBox(width: 6),
+        Container(width: 12, height: 2, color: comparisonInk), const SizedBox(width: 6),
         Text(compareDate == null ? 'Minggu lalu' : _tanggalPendek(compareDate)),
       ]),
       child: HourlyBars(today: today, comparison: before, currentHour: now.hour, height: 220));
@@ -97,7 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final stock = SectionCard(title: 'Stok menipis', padded: false,
       trailing: Text(lowStock.isEmpty ? 'tidak ada di bawah 5' : '${lowStock.length} barang di bawah 5'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (lowStock.isEmpty && stockRows.isNotEmpty) const Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, 6),
+        if (lowStock.isEmpty && stockRows.isNotEmpty) Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, 6),
           child: Text('Stok paling sedikit saat ini:', style: TextStyle(color: muted, fontSize: 12))),
         for (final (i, r) in stockRows.indexed) LedgerRow(first: i == 0, label: text(r['namaItem']), subline: text(r['kodeItem']),
           value: '${quantityText(r['stok'])} ${text(r['satuan'], '')}', valueColor: (number(r['stok']) ?? 0) <= 0 ? errorColor : ink),
@@ -106,13 +106,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final best = SectionCard(title: 'Paling laku hari ini', padded: false,
       trailing: const Text('nilai nota'),
       child: topProducts.isEmpty
-        ? const Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: Text('Belum ada barang terjual hari ini.', style: TextStyle(color: muted)))
+        ? Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: Text('Belum ada barang terjual hari ini.', style: TextStyle(color: muted)))
         : Column(children: [for (final (i, r) in topProducts.indexed) LedgerRow(first: i == 0, label: text(r['namaItem']),
             subline: '${quantityText(r['qtyTerjual'])} terjual', value: rupiah(r['totalPenjualan']))]));
 
     final recent = SectionCard(title: 'Nota terakhir', padded: false,
       child: latest.isEmpty
-        ? const Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: Text('Belum ada nota.', style: TextStyle(color: muted)))
+        ? Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: Text('Belum ada nota.', style: TextStyle(color: muted)))
         : Column(children: [for (final (i, r) in latest.indexed) LedgerRow(first: i == 0,
             label: text(r['itemSummary']),
             subline: '${_saleTime(r['createdAt'])} · ${metodeLabel[r['metodePembayaran']] ?? text(r['metodePembayaran'])}${_bonStatus(r)}',
@@ -169,11 +169,11 @@ class _MoneyFigures extends StatelessWidget {
     Widget cell(String label, String value, {String? caption, bool lead = false, Color? color}) => Padding(
       padding: const EdgeInsets.fromLTRB(Space.lg, 14, Space.lg, 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(color: muted, fontSize: 13)),
+        Text(label, style: TextStyle(color: muted, fontSize: 13)),
         const SizedBox(height: 4),
         FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
           child: Text(value, style: (lead ? moneyStyle : amountStyle).copyWith(fontSize: lead ? 32 : 22, color: color ?? ink, height: 1.15))),
-        if (caption != null) ...[const SizedBox(height: 2), Text(caption, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: muted, fontSize: 12))],
+        if (caption != null) ...[const SizedBox(height: 2), Text(caption, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
       ]));
     final lead = cell('Uang masuk', rupiah(masuk), caption: 'tunai + QRIS + transfer', lead: true);
     final rest = [
