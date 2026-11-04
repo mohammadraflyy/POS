@@ -6,11 +6,14 @@ import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
 import '../Pairing/ScanScreen.dart';
 class PurchaseDraftItem {
-  PurchaseDraftItem(this.product, this.unit, this.quantity, this.price);
+  PurchaseDraftItem(this.product, this.unit, this.quantity, this.price, {this.sellPrice});
   final LiveProduct product;
   final LiveUnit unit;
   final num quantity, price;
-  Map<String, dynamic> toJson() => {'productId': product.id, 'productUnitId': unit.id, 'qty': quantity, 'hargaBeli': price};
+
+  /// A new selling price for this unit, set with the purchase; null leaves it as it is.
+  final num? sellPrice;
+  Map<String, dynamic> toJson() => {'productId': product.id, 'productUnitId': unit.id, 'qty': quantity, 'hargaBeli': price, if (sellPrice != null) 'hargaJual': sellPrice};
 }
 class LivePurchaseItemScreen extends StatefulWidget {
   const LivePurchaseItemScreen({super.key, required this.api, this.initialProduct});
@@ -65,15 +68,30 @@ class _PurchaseFields extends StatefulWidget {
 }
 class _PurchaseFieldsState extends State<_PurchaseFields> {
   late LiveUnit unit = widget.product.units.first;
-  final quantity = TextEditingController(text: '1'), price = TextEditingController();
+  final quantity = TextEditingController(text: '1'), price = TextEditingController(), sell = TextEditingController();
   String? error;
-  @override void dispose() { quantity.dispose(); price.dispose(); super.dispose(); }
+  @override void dispose() { quantity.dispose(); price.dispose(); sell.dispose(); super.dispose(); }
+
+  num? _read(TextEditingController c) { try { return c.text.trim().isEmpty ? null : inputRupiah(c.text); } catch (_) { return null; } }
+
+  /// "Untung Rp500 per PCS (14%)" from the cost being typed and the price it will sell at.
+  String? get _margin {
+    final cost = _read(price);
+    final selling = _read(sell) ?? unit.price;
+    if (cost == null || selling == null || selling <= 0) return null;
+    final gain = selling - cost;
+    return '${gain < 0 ? 'Rugi' : 'Untung'} ${rupiah(gain.abs())} per ${unit.name} (${(gain / selling * 100).toStringAsFixed(0)}%)';
+  }
   @override Widget build(BuildContext context) => SafeArea(child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(24, 0, 24, MediaQuery.viewInsetsOf(context).bottom + 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
     Text(widget.product.name, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: Space.lg),
     DropdownButtonFormField<LiveUnit>(value: unit, isExpanded: true, decoration: const InputDecoration(labelText: 'Satuan pembelian'), items: widget.product.units.map((u) => DropdownMenuItem(value: u, child: Text(u.name))).toList(), onChanged: (u) => setState(() => unit = u!)),
     const SizedBox(height: Space.lg), TextField(controller: quantity, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Jumlah masuk')),
-    const SizedBox(height: Space.lg), TextField(controller: price, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Harga beli per satuan (Rp)')),
+    const SizedBox(height: Space.lg), TextField(controller: price, textInputAction: TextInputAction.next, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Harga beli per satuan (Rp)')),
+    const SizedBox(height: Space.lg), TextField(controller: sell, textInputAction: TextInputAction.done, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(labelText: 'Harga jual baru per ${unit.name} (opsional)', hintText: unit.price == null ? null : rupiah(unit.price),
+        helperText: 'Sekarang ${rupiah(unit.price)}. Kosongkan bila harga jual tidak berubah.')),
+    if (_margin != null) Padding(padding: const EdgeInsets.only(top: Space.sm), child: Text(_margin!, style: TextStyle(color: _margin!.startsWith('Rugi') ? errorColor : muted, fontSize: 13))),
     if (error != null) Text(error!, style: const TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
-    SizedBox(width: double.infinity, child: FilledButton(onPressed: () { try { Navigator.pop(context, PurchaseDraftItem(widget.product, unit, inputQty(quantity.text), inputRupiah(price.text))); } catch (_) { setState(() => error = 'Isi jumlah positif dan harga beli yang valid.'); showError(context, error!); } }, child: const Text('Tambah ke pembelian'))),
+    SizedBox(width: double.infinity, child: FilledButton(onPressed: () { try { Navigator.pop(context, PurchaseDraftItem(widget.product, unit, inputQty(quantity.text), inputRupiah(price.text), sellPrice: _read(sell))); } catch (_) { setState(() => error = 'Isi jumlah positif dan harga beli yang valid.'); showError(context, error!); } }, child: const Text('Tambah ke pembelian'))),
   ])));
 }

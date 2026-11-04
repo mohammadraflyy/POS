@@ -9,7 +9,10 @@ import '../../Widgets/ui.dart';
 import 'LiveSupplierScreen.dart';
 import 'LivePurchaseItemScreen.dart';
 class LivePurchaseScreen extends StatefulWidget {
-  const LivePurchaseScreen({super.key, required this.api, required this.guard, this.onSaved, this.active = true});
+  const LivePurchaseScreen({super.key, required this.api, required this.guard, this.onSaved, this.active = true, this.editing});
+
+  /// A saved purchase to change: its id, supplier, date, note, lines and down payment.
+  final PurchaseEdit? editing;
   final BusinessApi api;
   final MutationGuard guard;
   final VoidCallback? onSaved;
@@ -18,6 +21,32 @@ class LivePurchaseScreen extends StatefulWidget {
   final bool active;
   @override State<LivePurchaseScreen> createState() => _LivePurchaseScreenState();
 }
+/// A saved purchase loaded into the form.
+class PurchaseEdit {
+  const PurchaseEdit({required this.id, required this.supplier, required this.date, required this.note, required this.items, required this.downPayment});
+  final int id;
+  final Map<String, dynamic>? supplier;
+  final DateTime date;
+  final String note;
+  final List<PurchaseDraftItem> items;
+  final num downPayment;
+
+  /// From GET /v1/purchases/:id; [supplierName] comes from the list it was opened from.
+  factory PurchaseEdit.fromDetail(Map<String, dynamic> d, {String? supplierName}) {
+    final lines = <PurchaseDraftItem>[];
+    for (final raw in (d['items'] as List? ?? const []).whereType<Map>()) {
+      final i = Map<String, dynamic>.from(raw);
+      final units = [LiveUnit(null, i['baseSatuan']?.toString() ?? 'Satuan dasar', null),
+        for (final u in (i['units'] as List? ?? const []).whereType<Map>()) LiveUnit(idNumber(u['id']), u['satuan']?.toString() ?? '', number(u['hargaJual']))];
+      final product = LiveProduct(idNumber(i['productId']), i['namaItem']?.toString() ?? '', i['kodeItem']?.toString() ?? '', null, units);
+      final unitId = i['productUnitId'] == null ? null : idNumber(i['productUnitId']);
+      lines.add(PurchaseDraftItem(product, units.firstWhere((u) => u.id == unitId, orElse: () => units.first), number(i['qty']) ?? 1, number(i['hargaBeli']) ?? 0));
+    }
+    return PurchaseEdit(id: idNumber(d['id']), supplier: d['supplierId'] == null ? null : {'id': d['supplierId'], 'nama': supplierName ?? 'Supplier #${d['supplierId']}'},
+      date: DateTime.tryParse(d['tanggal']?.toString() ?? '') ?? DateTime.now(), note: d['catatan']?.toString() ?? '', items: lines, downPayment: number(d['uangMuka']) ?? 0);
+  }
+}
+
 class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
   Map<String, dynamic>? supplier;
   DateTime date = DateTime.now();
@@ -26,7 +55,15 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
   bool saving = false;
   String? error, success;
   final scanner = BarcodeBurst();
-  @override void initState() { super.initState(); HardwareKeyboard.instance.addHandler(handleKey); }
+  @override void initState() {
+    super.initState();
+    final e = widget.editing;
+    if (e != null) {
+      supplier = e.supplier; date = e.date; note.text = e.note; items.addAll(e.items);
+      paid.text = e.downPayment == e.downPayment.roundToDouble() ? e.downPayment.toInt().toString() : e.downPayment.toString();
+    }
+    HardwareKeyboard.instance.addHandler(handleKey);
+  }
   @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); note.dispose(); paid.dispose(); super.dispose(); }
 
   /// A scanner fired while no text field had focus, as on the desktop's purchase page.
@@ -60,9 +97,16 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
       final body = <String, dynamic>{'supplierId': supplier == null ? null : idNumber(supplier!['id'] ?? supplier!['supplierId']),
         'tanggal': isoDate(date), 'catatan': note.text.trim().isEmpty ? null : note.text.trim(),
         'items': items.map((i) => i.toJson()).toList(), if (upfront != null) 'dibayar': upfront};
-      final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('Simpan pembelian ke PC?'), content: Text('${items.length} baris barang masuk akan dicatat. Stok dan harga pokok diperbarui oleh PC.'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Periksa lagi')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Simpan'))]));
+      final editing = widget.editing;
+      final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+        title: Text(editing == null ? 'Simpan pembelian ke PC?' : 'Simpan perubahan pembelian #${editing.id}?'),
+        content: Text(editing == null ? '${items.length} baris barang masuk akan dicatat. Stok dan harga pokok diperbarui oleh PC.'
+          : 'Barang lama dikembalikan dulu, lalu ${items.length} baris ini dicatat ulang. Stok, harga pokok, dan sisa hutang dihitung ulang oleh PC.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Periksa lagi')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Simpan'))]));
       if (confirmed != true) return;
-      final result = await widget.guard.run('Pembelian', () => widget.api.purchase(body));
+      final result = await widget.guard.run(editing == null ? 'Pembelian' : 'Ubah pembelian #${editing.id}',
+        () => editing == null ? widget.api.purchase(body) : widget.api.request('/v1/purchases/${editing.id}', method: 'PUT', body: body));
+      if (editing != null) { if (mounted) { widget.onSaved?.call(); Navigator.of(context).pop(true); } return; }
       if (mounted) widget.onSaved?.call();
       if (mounted) setState(() { items.clear(); paid.clear(); note.clear(); success = 'Pembelian berhasil disimpan di PC${result is Map && result['purchaseId'] != null ? ' (#${result['purchaseId']})' : ''}.'; });
       if (mounted && success != null) showNotice(context, success!, kind: NoticeKind.success);
@@ -72,7 +116,8 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: widget.guard, builder: (context, _) {
     final enabled = !saving && !widget.guard.busy && widget.guard.pending == null;
     return ListView(padding: const EdgeInsets.all(Space.lg), children: [
-      const PageIntro('Pembelian baru', 'Barang yang disimpan akan menambah stok toko.'),
+      PageIntro(widget.editing == null ? 'Pembelian baru' : 'Ubah pembelian #${widget.editing!.id}',
+        widget.editing == null ? 'Barang yang disimpan akan menambah stok toko.' : 'Ubah supplier, tanggal, barang, atau uang muka, lalu simpan.'),
       WhitePanel(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs), child: Column(children: [ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.local_shipping_outlined, color: muted), title: Text(supplier == null ? 'Pilih supplier (opsional)' : (supplier!['nama'] ?? supplier!['name']).toString()), trailing: const Icon(Icons.chevron_right), onTap: !enabled ? null : () async {
         final result = await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(builder: (_) => LiveSupplierScreen(api: widget.api, guard: widget.guard)));
         if (mounted && result != null) setState(() => supplier = result);
@@ -82,13 +127,13 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
           trailing: Text(isoDate(date), style: amountStyle.copyWith(fontSize: 14)),
           onTap: !enabled ? null : () async { final selected = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now()); if (selected != null && mounted) setState(() => date = selected); }),
       ])), const SizedBox(height: Space.lg),
-      for (var i = 0; i < items.length; i++) Padding(padding: const EdgeInsets.only(bottom: 10), child: WhitePanel(padding: EdgeInsets.zero, child: ListTile(title: Text(items[i].product.name), subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name} • Harga beli ${rupiah(items[i].price)}'), trailing: IconButton(tooltip: 'Hapus barang pembelian', onPressed: enabled ? () => setState(() => items.removeAt(i)) : null, icon: const Icon(Icons.close))))),
+      for (var i = 0; i < items.length; i++) Padding(padding: const EdgeInsets.only(bottom: 10), child: WhitePanel(padding: EdgeInsets.zero, child: ListTile(title: Text(items[i].product.name), subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name} × ${rupiah(items[i].price)} = ${rupiah(items[i].quantity * items[i].price)}${items[i].sellPrice == null ? '' : ' · jual jadi ${rupiah(items[i].sellPrice)}'}'), trailing: IconButton(tooltip: 'Hapus barang pembelian', onPressed: enabled ? () => setState(() => items.removeAt(i)) : null, icon: const Icon(Icons.close))))),
       OutlinedButton.icon(onPressed: !enabled ? null : () => addItem(), icon: const Icon(Icons.add), label: const Text('Tambah barang  ·  atau scan barcode')),
       const SizedBox(height: Space.lg), TextField(controller: paid, enabled: enabled, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Uang muka (opsional, Rp)', helperText: 'Kosong = lunas. Isi 0 untuk utang penuh.')),
       const SizedBox(height: Space.lg), TextField(controller: note, enabled: enabled, decoration: const InputDecoration(labelText: 'Catatan (opsional)')),
       const SizedBox(height: 16), const Text('Jumlah akhir dihitung oleh PC saat penyimpanan.', style: TextStyle(color: muted, fontSize: 13)),
       if (error != null) Text(error!, style: const TextStyle(color: errorColor)), if (success != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(success!, style: const TextStyle(color: Color(0xFF357361)))),
-      const SizedBox(height: Space.lg), FilledButton.icon(onPressed: enabled && items.isNotEmpty && widget.guard.ready ? save : null, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Menyimpan…' : 'Simpan pembelian ke PC')),
+      const SizedBox(height: Space.lg), FilledButton.icon(onPressed: enabled && items.isNotEmpty && widget.guard.ready ? save : null, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Menyimpan…' : widget.editing == null ? 'Simpan pembelian ke PC' : 'Simpan perubahan')),
     ]);
   });
 }

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../services/mutation_guard.dart';
+import '../Live/LivePurchaseScreen.dart';
 import '../../core/theme.dart';
 import '../../models/live_models.dart';
 import '../../services/store_api.dart';
@@ -7,9 +9,10 @@ import '../../Widgets/ui.dart';
 
 /// Recorded purchase invoices, newest first, with their remaining supplier debt.
 class PurchaseListScreen extends StatefulWidget {
-  const PurchaseListScreen({super.key, required this.api, this.onChanged});
+  const PurchaseListScreen({super.key, required this.api, this.onChanged, this.guard});
   final StoreApi api;
   final VoidCallback? onChanged;
+  final MutationGuard? guard;
   @override State<PurchaseListScreen> createState() => _PurchaseListScreenState();
 }
 
@@ -30,7 +33,7 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
     finally { if (mounted) setState(() => loading = false); }
   }
   Future<void> open(Map<String, dynamic> row) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PurchaseDetailScreen(api: widget.api, id: idNumber(row['id']), onChanged: widget.onChanged)));
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PurchaseDetailScreen(api: widget.api, id: idNumber(row['id']), onChanged: widget.onChanged, guard: widget.guard, supplierName: row['supplierName']?.toString())));
     if (mounted) load(target: page);
   }
   @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), children: [
@@ -42,6 +45,7 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
     if (loading) const LinearProgressIndicator(minHeight: 2),
     LoadSwitch(loading: false, error: error, onRetry: load, child: DataView<Map<String, dynamic>>(rows: rows, onTap: open,
       emptyTitle: 'Belum ada pembelian', columns: [
+        DataCol('No.', (r) => '#${r['id']}'),
         DataCol('Tanggal', (r) => text(r['tanggal'])),
         DataCol('Supplier', (r) => text(r['supplierName'], 'Tanpa supplier'), flex: 2),
         DataCol('Barang', (r) => text(r['itemSummary']), flex: 4),
@@ -53,10 +57,15 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
 }
 
 class PurchaseDetailScreen extends StatefulWidget {
-  const PurchaseDetailScreen({super.key, required this.api, required this.id, this.onChanged});
+  const PurchaseDetailScreen({super.key, required this.api, required this.id, this.onChanged, this.guard, this.supplierName});
   final StoreApi api;
   final int id;
   final VoidCallback? onChanged;
+
+  /// The workspace's guard, so an edited purchase is protected like a new one; editing is
+  /// offered only when it is given.
+  final MutationGuard? guard;
+  final String? supplierName;
   @override State<PurchaseDetailScreen> createState() => _PurchaseDetailScreenState();
 }
 
@@ -79,6 +88,14 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
       if (mounted) Navigator.of(context).pop();
     }
   }
+  Future<void> edit() async {
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => Scaffold(
+      appBar: AppBar(title: Text('Ubah pembelian #${widget.id}')),
+      body: WorkArea(child: LivePurchaseScreen(api: widget.api, guard: widget.guard!, onSaved: widget.onChanged,
+        editing: PurchaseEdit.fromDetail(detail!, supplierName: widget.supplierName))))));
+    if (changed == true && mounted) { showNotice(context, 'Pembelian #${widget.id} diperbarui.', kind: NoticeKind.success); load(); }
+  }
+
   @override Widget build(BuildContext context) {
     final items = detail == null ? const <Map<String, dynamic>>[] : jsonRows(detail!['items']);
     final total = number(detail?['total']) ?? 0;
@@ -106,9 +123,11 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
           DataCol('Subtotal', (i) => rupiah((number(i['qty']) ?? 0) * (number(i['hargaBeli']) ?? 0)), numeric: true),
         ]),
         const SizedBox(height: Space.xl),
-        Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(onPressed: remove, style: OutlinedButton.styleFrom(foregroundColor: errorColor),
-          icon: const Icon(Icons.delete_outline), label: const Text('Hapus pembelian'))),
-        const Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('Untuk mengubah barang atau harga, hapus lalu catat ulang pembelian ini.', style: TextStyle(color: muted, fontSize: 13))),
+        Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
+          if (widget.guard != null && detail != null) OutlinedButton.icon(onPressed: edit, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Ubah pembelian')),
+          OutlinedButton.icon(onPressed: remove, style: OutlinedButton.styleFrom(foregroundColor: errorColor),
+            icon: const Icon(Icons.delete_outline, size: 18), label: const Text('Hapus pembelian')),
+        ]),
       ])),
     ]));
   }

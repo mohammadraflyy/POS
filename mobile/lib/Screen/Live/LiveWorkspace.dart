@@ -90,7 +90,7 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
         const PageTabs(tabs: ['Catat pembelian', 'Daftar pembelian']),
         Expanded(child: TabBarView(children: [
           WorkArea(child: LivePurchaseScreen(api: api, guard: guard, onSaved: store.stockChanged, active: widget.menu == Menu.pembelian)),
-          PurchaseListScreen(api: api, onChanged: store.stockChanged),
+          PurchaseListScreen(api: api, onChanged: store.stockChanged, guard: guard),
         ])),
       ])),
       Menu.opname => WorkArea(child: LiveOpnameScreen(api: api, guard: guard, onSaved: store.stockChanged)),

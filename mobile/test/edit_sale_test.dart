@@ -94,4 +94,27 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async => db.close());
   });
+
+  testWidgets('a saved purchase opens in the purchase form and saves as an edit', (tester) async {
+    await start(tester, Menu.pembelian);
+    final purchaseId = (await tester.runAsync(() async => db.scalar<int>('SELECT max(id) FROM purchases')))!;
+    final lines = (await tester.runAsync(() async => db.scalar<int>('SELECT count(*) FROM purchase_items WHERE purchase_id = ?', [purchaseId])))!;
+
+    await tapText(tester, 'Daftar pembelian');
+    await tapText(tester, '#$purchaseId');
+    await tapText(tester, 'Ubah pembelian');
+    expect(find.text('Ubah pembelian #$purchaseId'), findsWidgets);
+
+    final downPayment = find.widgetWithText(TextField, 'Uang muka (opsional, Rp)');
+    await tester.scrollUntilVisible(downPayment, 200, scrollable: find.byType(Scrollable).last);
+    await tester.enterText(downPayment, '0');
+    await tapText(tester, 'Simpan perubahan');
+    await tapText(tester, 'Simpan');
+
+    final saved = (await tester.runAsync(() async => db.first('SELECT dibayar FROM purchases WHERE id = ?', [purchaseId])))!;
+    expect(saved['dibayar'], 0, reason: 'the whole invoice is now owed');
+    expect(await tester.runAsync(() async => db.scalar<int>('SELECT count(*) FROM purchase_items WHERE purchase_id = ?', [purchaseId])), lines);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async => db.close());
+  });
 }
