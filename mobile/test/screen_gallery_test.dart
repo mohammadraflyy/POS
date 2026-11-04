@@ -3,7 +3,6 @@
 //   flutter test test/screen_gallery_test.dart --dart-define=UI_PREVIEWS=true
 //
 // Writes build/screens/<width>-<screen>.png. Skipped in a normal test run.
-import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -15,7 +14,6 @@ import 'package:pos_server/pos_server.dart';
 import 'package:pos_server/src/db/demo_seed.dart';
 import 'package:pos_server/src/printing/printer.dart';
 import 'package:pos_server/src/printing/receipts.dart';
-import 'package:shelf/shelf.dart' as shelf;
 
 import '../lib/core/theme.dart';
 import '../lib/Screen/MainScreen.dart';
