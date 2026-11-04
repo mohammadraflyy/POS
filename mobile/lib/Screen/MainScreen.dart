@@ -183,7 +183,7 @@ class _MainScreenState extends State<MainScreen> {
     final workspace = widget.app.isDemo ? IndexedStack(index: demoIndex, children: [
       KasirScreen(app: widget.app), WorkArea(child: PembelianScreen(app: widget.app)),
       WorkArea(child: StockOpnameScreen(app: widget.app)), WorkArea(child: RiwayatPenjualanScreen(app: widget.app)),
-    ]) : LiveWorkspace(app: widget.app, menu: _menu, menus: menus);
+    ]) : LiveWorkspace(app: widget.app, menu: _menu, menus: menus, onOpenMenu: _open);
     final hasMore = menus.length > primaryMenus.length;
     final barIndex = primaryMenus.contains(_menu) ? primaryMenus.indexOf(_menu) : primaryMenus.length;
     final demoBanner = widget.app.isDemo ? Container(width: double.infinity,

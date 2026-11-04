@@ -7,7 +7,10 @@ import '../../Widgets/ui.dart';
 import 'LiveSaleScreen.dart';
 import '../../Widgets/admin.dart';
 class LiveHistoryScreen extends StatefulWidget {
-  const LiveHistoryScreen({super.key, required this.api, this.isAdmin = false});
+  const LiveHistoryScreen({super.key, required this.api, this.isAdmin = false, this.onEditSale});
+
+  /// Loads a nota into the till for editing; admins only.
+  final Future<void> Function(int saleId)? onEditSale;
   final BusinessApi api;
   final bool isAdmin;
   @override State<LiveHistoryScreen> createState() => _LiveHistoryScreenState();
@@ -43,7 +46,7 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
   Future<void> _open(Map<String, dynamic> row) async {
     try {
       final id = idNumber(row['saleId'] ?? row['id']);
-      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LiveSaleScreen(api: widget.api, id: id, isAdmin: widget.isAdmin)));
+      await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LiveSaleScreen(api: widget.api, id: id, isAdmin: widget.isAdmin, onEdit: widget.onEditSale)));
       if (mounted) load(target: page);
     } catch (e) { if (mounted) showError(context, e); }
   }

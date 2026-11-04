@@ -8,7 +8,10 @@ import '../../services/store_api.dart';
 import '../Toko/BonActions.dart';
 import '../../Widgets/admin.dart' show dateTimeLabel, metodeLabel, text;
 class LiveSaleScreen extends StatefulWidget {
-  const LiveSaleScreen({super.key, required this.api, required this.id, this.confirmation, this.isAdmin = false});
+  const LiveSaleScreen({super.key, required this.api, required this.id, this.confirmation, this.isAdmin = false, this.onEdit});
+
+  /// "Ubah nota": loads this sale into the till. Null where editing is not offered.
+  final Future<void> Function(int saleId)? onEdit;
   final BusinessApi api;
   final int id;
   final Map<String, dynamic>? confirmation;
@@ -97,6 +100,14 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
       if (detail == null && widget.confirmation != null) SummaryRow('Total tersimpan', rupiah(widget.confirmation!['total']), strong: true),
       if (sale != null && widget.api is StoreApi) ...[const SizedBox(height: Space.lg), SaleActions(api: widget.api as StoreApi, sale: sale, isAdmin: widget.isAdmin, onChanged: load,
         onDeleted: () { if (mounted) Navigator.of(context).pop(); })],
+      if (widget.onEdit != null && sale?['status'] == 'selesai') ...[const SizedBox(height: Space.md), OutlinedButton.icon(
+        icon: const Icon(Icons.edit_note, size: 18), label: const Text('Ubah nota di kasir'),
+        onPressed: () async {
+          try {
+            await widget.onEdit!(widget.id);
+            if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+          } catch (e) { if (mounted) showError(context, e); }
+        })],
       const SizedBox(height: Space.xl), OutlinedButton.icon(onPressed: printing ? null : printAgain, icon: const Icon(Icons.print_outlined), label: Text(printing ? 'Mengirim ke printer…' : 'Cetak ulang di PC')),
       const SizedBox(height: 12), TextButton(onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst), child: const Text('Kembali ke kasir')),
     ])))));

@@ -5,7 +5,9 @@ import '../../services/store_api.dart';
 import '../../services/mutation_guard.dart';
 import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
-import '../../Widgets/admin.dart' show PageTabs;
+import '../../Widgets/admin.dart' show PageTabs, text;
+import '../../models/live_models.dart';
+import '../../services/mobile_api.dart' show ApiFailure;
 import '../menus.dart';
 import '../Toko/DashboardScreen.dart';
 import '../Toko/ProductsScreen.dart';
@@ -17,7 +19,10 @@ import 'LivePurchaseScreen.dart';
 import 'LiveOpnameScreen.dart';
 import 'LiveHistoryScreen.dart';
 class LiveWorkspace extends StatefulWidget {
-  const LiveWorkspace({super.key, required this.app, required this.menu, required this.menus});
+  const LiveWorkspace({super.key, required this.app, required this.menu, required this.menus, this.onOpenMenu});
+
+  /// Switches the shell to another menu (the till, when a nota is opened for editing).
+  final void Function(Menu menu)? onOpenMenu;
   final AppState app;
   final Menu menu;
   final List<Menu> menus;
@@ -44,6 +49,39 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
         FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sudah saya periksa di PC'))]));
     if (confirmed == true) { try { await guard.acknowledgeChecked(); store.clear(); } catch (e) { if (mounted) showError(context, e); } }
   }
+  /// Loads a saved nota into the till's cart, the way the desktop's "Edit nota" did: each
+  /// line keeps the price it was sold at, and the sale keeps its date, charge and note.
+  Future<void> _editSale(int saleId) async {
+    final data = jsonObject(await api.get('/v1/sales/$saleId/edit'));
+    if (data['status'] != 'selesai') throw const ApiFailure('Hanya nota yang selesai yang bisa diubah.');
+    final details = <int, Map<String, dynamic>>{};
+    final lines = <LiveCartItem>[];
+    for (final raw in (data['items'] as List).whereType<Map>()) {
+      final item = jsonObject(raw);
+      final productId = idNumber(item['productId']);
+      final detail = details[productId] ??= await api.product(productId);
+      final units = jsonRows(detail['units']);
+      final base = units.where((u) => u['isBaseUnit'] == true).firstOrNull;
+      final liveUnits = [
+        LiveUnit(null, text(base?['satuan'], 'Satuan dasar'), number(base?['hargaJual'])),
+        for (final u in units.where((u) => u['isBaseUnit'] != true)) LiveUnit(idNumber(u['id']), text(u['satuan']), number(u['hargaJual'])),
+      ];
+      final product = LiveProduct(productId, text(detail['namaItem']), text(detail['kodeItem'], ''), null, liveUnits);
+      final unitRowId = item['productUnitId'] == null ? null : idNumber(item['productUnitId']);
+      final unit = unitRowId == null || unitRowId == idNumber(base?['id'] ?? -1) ? liveUnits.first : liveUnits.where((u) => u.id == unitRowId).firstOrNull;
+      if (unit == null) throw ApiFailure('Nota ini tidak bisa diubah: satuan ${product.name} sudah dihapus.');
+      final lineDiscount = number(item['diskon']) ?? 0;
+      lines.add(LiveCartItem(product: product, unit: unit, quantity: number(item['qty']) ?? 1,
+        manualPrice: number(item['hargaJual']), discount: lineDiscount > 0 ? lineDiscount : null));
+    }
+    store.startEdit(saleId: saleId, lines: lines,
+      date: DateTime.tryParse(data['createdAt']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
+      method: data['metodePembayaran']?.toString() ?? 'tunai', customer: data['namaPelanggan']?.toString() ?? '',
+      paid: number(data['dibayar']) ?? 0, charge: number(data['biayaLain']) ?? 0, text: data['keterangan']?.toString() ?? '',
+      billDiscount: number(data['diskon']) ?? 0);
+    widget.onOpenMenu?.call(Menu.kasir);
+  }
+
   Widget _screen(Menu menu) {
     final admin = widget.app.isAdmin;
     return switch (menu) {
@@ -56,7 +94,7 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
         ])),
       ])),
       Menu.opname => WorkArea(child: LiveOpnameScreen(api: api, guard: guard, onSaved: store.stockChanged)),
-      Menu.riwayat => LiveHistoryScreen(api: api, isAdmin: admin),
+      Menu.riwayat => LiveHistoryScreen(api: api, isAdmin: admin, onEditSale: admin ? _editSale : null),
       Menu.dashboard => DashboardScreen(api: api),
       Menu.produk => ProductsHub(api: api, isAdmin: admin, active: widget.menu == Menu.produk),
       Menu.hutang => SupplierDebtScreen(api: api),

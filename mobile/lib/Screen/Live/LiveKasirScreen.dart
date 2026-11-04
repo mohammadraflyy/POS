@@ -189,8 +189,18 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         const SizedBox(width: Space.sm), OutlinedButton(onPressed: !loading && page < lastPage ? () => load(target: page + 1) : null, child: const Text('Berikutnya')),
       ]))),
     ]);
+    final editing = widget.store.editingSaleId;
+    final editBanner = editing == null ? null : Container(
+      padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.sm, Space.sm),
+      decoration: BoxDecoration(color: pillWarningBg, border: Border.all(color: const Color(0xFFFDE68A)), borderRadius: BorderRadius.circular(Corners.panel)),
+      child: Row(children: [
+        const Icon(Icons.edit_note, size: 18, color: pillWarningInk), const SizedBox(width: Space.sm),
+        Expanded(child: Text('Mengubah nota #$editing. Ubah barang di sini, lalu Bayar untuk menyimpan perubahan.', style: const TextStyle(color: pillWarningInk, fontSize: 13))),
+        TextButton(onPressed: widget.store.editable ? widget.store.cancelEdit : null, child: const Text('Batal ubah')),
+      ]));
     if (!wide) {
       return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Column(children: [
+        if (editBanner != null) Padding(padding: const EdgeInsets.fromLTRB(Space.md, Space.md, Space.md, 0), child: editBanner),
         Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: searchRow),
         const Divider(),
         Expanded(child: ColoredBox(color: surface, child: list)),
@@ -205,7 +215,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
       clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [searchRow, keys])),
+        Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (editBanner != null) ...[editBanner, const SizedBox(height: Space.md)], searchRow, keys])),
         const Divider(),
         Expanded(child: list),
       ]));

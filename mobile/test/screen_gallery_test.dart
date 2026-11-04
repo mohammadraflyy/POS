@@ -23,6 +23,7 @@ import '../lib/Screen/menus.dart';
 import '../lib/services/mobile_api.dart';
 import '../lib/state/app_state.dart';
 import 'session_test.dart' show MemoryStorage;
+import 'support/in_process.dart';
 import '../lib/models/live_models.dart';
 import '../lib/services/mutation_guard.dart';
 import '../lib/services/store_api.dart';
@@ -38,19 +39,6 @@ class _NoPending implements PendingStore {
 }
 
 const _enabled = bool.fromEnvironment('UI_PREVIEWS');
-
-/// Sends the app's requests straight into the server's handler, no sockets.
-class InProcessTransport implements JsonTransport {
-  InProcessTransport(this.handler);
-  final shelf.Handler handler;
-  @override
-  Future<ApiResponse> send(String method, Uri uri, Map<String, String> headers, Map<String, dynamic>? body) async {
-    final response = await handler(shelf.Request(method, Uri.parse('http://localhost${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}'),
-      headers: headers, body: body == null ? null : jsonEncode(body)));
-    final text = await response.readAsString();
-    return ApiResponse(response.statusCode, text.isEmpty ? null : jsonDecode(text));
-  }
-}
 
 Future<void> _loadFonts() async {
   Future<void> load(String family, List<String> files) async {
