@@ -22,6 +22,7 @@ PurchaseInput _purchaseInput(Map<String, Object?> body, int userId) => PurchaseI
             productUnitId: item.intOr('productUnitId'),
             qty: item.number('qty'),
             hargaBeli: toCents(item.number('hargaBeli')),
+            hargaJual: item.numOr('hargaJual') == null ? null : toCents(item.number('hargaJual')),
           ),
       ],
     );

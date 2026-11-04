@@ -80,20 +80,27 @@ void addSalesRoutes(Router router, ApiContext ctx) {
       ),
     );
 
-    // the sale is already committed - a printer problem must never look like it failed
+    // the sale is already committed - a printer problem must never look like it failed.
+    // `cetak: false` (the desktop contract; `print` is the older spelling) skips the
+    // receipt on purpose, answered as printSkipped so the phone does not show an error.
+    final printSkipped = (body.boolOr('cetak') ?? body.boolOr('print') ?? true) == false;
     String? printError;
 
-    if (body.boolOr('print') ?? true) {
+    if (!printSkipped) {
       try {
         await ctx.receipts.printSale(result.saleId);
       } on Object catch (error) {
         printError = error is BusinessException ? error.message : 'Gagal mencetak struk: $error';
       }
-    } else {
-      printError = 'Struk tidak dicetak.';
     }
 
-    return json({'saleId': result.saleId, 'total': rupiahJson(result.total), 'printed': printError == null, 'printError': ?printError});
+    return json({
+      'saleId': result.saleId,
+      'total': rupiahJson(result.total),
+      'printed': !printSkipped && printError == null,
+      'printError': ?printError,
+      'printSkipped': printSkipped,
+    });
   });
 
   router.get('/v1/sales', (Request request) {

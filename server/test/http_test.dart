@@ -172,7 +172,7 @@ void main() {
           {'productId': 1, 'productUnitId': null, 'qty': 5},
         ],
       });
-      expect(sale, {'saleId': 1, 'total': 310000, 'printed': true});
+      expect(sale, {'saleId': 1, 'total': 310000, 'printed': true, 'printSkipped': false});
       expect(api.printer.jobs, hasLength(1));
       expect(latin1.decode(api.printer.jobs.single.bytes), contains('TOTAL'));
 
@@ -186,6 +186,20 @@ void main() {
 
       expect(await api.kasir('POST', '/v1/sales/1/print'), {'printed': true});
       expect(api.printer.jobs, hasLength(2));
+    });
+
+    test('skips the receipt when the cashier chose not to print', () async {
+      final api = Api();
+      final sale = await api.kasir('POST', '/v1/sales', {
+        'metodePembayaran': 'qris',
+        'cetak': false,
+        'items': [
+          {'productId': 2, 'productUnitId': null, 'qty': 1},
+        ],
+      });
+
+      expect(sale, {'saleId': 1, 'total': 3000, 'printed': false, 'printSkipped': true});
+      expect(api.printer.jobs, isEmpty);
     });
 
     test('a failed print never fails the sale', () async {
@@ -292,6 +306,63 @@ void main() {
       await api.kasir('PUT', '/v1/supplier-payments/${payments['data'].single['id']}', {'jumlah': 50000, 'tanggal': '2026-10-15', 'keterangan': 'koreksi'});
       await api.kasir('PUT', '/v1/purchases/1/sisa-hutang', {'sisa': 10000});
       expect((await api.kasir('GET', '/v1/purchases/1'))['uangMuka'], 40000);
+    });
+
+    test('restates the selling price when a purchase line carries hargaJual', () async {
+      final api = Api();
+
+      expect((await api.kasir('GET', '/v1/purchases/products?q=beras'))['data'].single, containsPair('hargaJual', 65000));
+      expect((await api.kasir('GET', '/v1/purchases/products?q=mie'))['data'].single['units'].single['hargaJual'], 110000);
+
+      await api.kasir('POST', '/v1/purchases', {
+        'supplierId': null,
+        'tanggal': '2026-09-15',
+        'catatan': null,
+        'items': [
+          {'productId': 1, 'productUnitId': null, 'qty': 10, 'hargaBeli': 62000, 'hargaJual': 70000},
+          {'productId': 2, 'productUnitId': 9, 'qty': 1, 'hargaBeli': 100000, 'hargaJual': 120000},
+        ],
+      });
+
+      expect(api.db.first('SELECT harga_jual, harga_pokok FROM products WHERE id = 1'), {'harga_jual': 7000000, 'harga_pokok': 6100000});
+      expect(api.db.scalar<int>('SELECT harga_jual FROM product_units WHERE id = 101'), 7000000);
+      expect(
+        api.db.first('SELECT harga_jual_lama, harga_jual_baru FROM product_price_histories WHERE product_id = 1 ORDER BY id DESC LIMIT 1'),
+        {'harga_jual_lama': 6500000, 'harga_jual_baru': 7000000},
+      );
+      // a derived unit carries its own price; the product's base price is left alone
+      expect(api.db.scalar<int>('SELECT harga_jual FROM product_units WHERE id = 9'), 12000000);
+      expect(api.db.scalar<int>('SELECT harga_jual FROM products WHERE id = 2'), 300000);
+    });
+
+    test('leaves the selling price alone when hargaJual is omitted', () async {
+      final api = Api();
+
+      await api.kasir('POST', '/v1/purchases', {
+        'supplierId': null,
+        'tanggal': '2026-09-15',
+        'catatan': null,
+        'items': [
+          {'productId': 1, 'productUnitId': null, 'qty': 1, 'hargaBeli': 60000},
+        ],
+      });
+
+      expect(api.db.scalar<int>('SELECT harga_jual FROM products WHERE id = 1'), 6500000);
+    });
+
+    test('a negative hargaJual on a purchase line is rejected', () async {
+      final api = Api();
+      final result = await api.call('POST', '/v1/purchases', token: api.kasirToken, body: {
+        'supplierId': null,
+        'tanggal': '2026-09-15',
+        'catatan': null,
+        'items': [
+          {'productId': 1, 'productUnitId': null, 'qty': 1, 'hargaBeli': 60000, 'hargaJual': -1},
+        ],
+      });
+
+      expect(result.status, 400);
+      expect(result.body['error'], contains('Harga jual tidak boleh negatif'));
     });
 
     test('a barcode nobody carries is a 404', () async {

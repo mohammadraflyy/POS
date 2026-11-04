@@ -41,7 +41,7 @@ int balikHargaPokokSatuan(num stokDasarSekarang, int hargaPokokSatuanSekarang, i
 }
 
 class PurchaseItemInput {
-  const PurchaseItemInput({required this.productId, this.productUnitId, required this.qty, required this.hargaBeli});
+  const PurchaseItemInput({required this.productId, this.productUnitId, required this.qty, required this.hargaBeli, this.hargaJual});
 
   final int productId;
 
@@ -51,6 +51,9 @@ class PurchaseItemInput {
 
   /// Cents per unit.
   final int hargaBeli;
+
+  /// Cents; an optional new selling price for the purchased unit, set with the purchase.
+  final int? hargaJual;
 }
 
 class PurchaseInput {
@@ -147,6 +150,10 @@ void _assertPurchaseInput(String tanggal, List<PurchaseItemInput> items) {
 
     if (item.hargaBeli < 0) {
       throw BusinessException('Harga beli tidak boleh negatif.');
+    }
+
+    if (item.hargaJual != null && item.hargaJual! < 0) {
+      throw BusinessException('Harga jual tidak boleh negatif.');
     }
   }
 }
@@ -341,10 +348,48 @@ int recordPurchase(Db db, PurchaseInput input) {
     );
     final total = _applyPurchaseItems(db, purchaseId, lines, input.userId, now);
 
+    _applySellPrices(db, input.items, lines, input.userId, now);
     db.execute('UPDATE purchases SET total = ? WHERE id = ?', [total, purchaseId]);
 
     return purchaseId;
   });
+}
+
+/// Restates the selling price of each purchased unit that came with a `hargaJual`. Runs
+/// after [_applyPurchaseItems] so the history row snapshots the cost the purchase just
+/// produced. The base unit stays mirrored onto `products.harga_jual`; derived units only
+/// carry their own.
+void _applySellPrices(Db db, List<PurchaseItemInput> items, List<_ResolvedLine> lines, int? userId, int now) {
+  for (var index = 0; index < items.length; index++) {
+    final hargaJualBaru = items[index].hargaJual;
+
+    if (hargaJualBaru == null) {
+      continue;
+    }
+
+    final unitId = lines[index].resolvedUnitId;
+    final unit = db.first('SELECT harga_jual, is_base_unit FROM product_units WHERE id = ?', [unitId]);
+
+    if (unit == null || unit['harga_jual'] == hargaJualBaru) {
+      continue;
+    }
+
+    db.execute('UPDATE product_units SET harga_jual = ?, updated_at = ? WHERE id = ?', [hargaJualBaru, now, unitId]);
+
+    if (!asBool(unit['is_base_unit'])) {
+      continue;
+    }
+
+    final productId = items[index].productId;
+    final product = db.first('SELECT harga_pokok, harga_jual FROM products WHERE id = ?', [productId])!;
+
+    db.execute('UPDATE products SET harga_jual = ?, updated_at = ? WHERE id = ?', [hargaJualBaru, now, productId]);
+    db.insert(
+      'INSERT INTO product_price_histories (product_id, user_id, harga_pokok_lama, harga_pokok_baru, harga_jual_lama, harga_jual_baru, created_at, updated_at) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [productId, userId, product['harga_pokok'], product['harga_pokok'], product['harga_jual'], hargaJualBaru, now, now],
+    );
+  }
 }
 
 int _cicilan(Db db, int purchaseId) =>
@@ -405,7 +450,7 @@ void deletePurchase(Db db, int purchaseId) {
 
 List<Map<String, Object?>> _derivedUnitsJson(Db db, int productId) => [
       for (final unit in listProductUnits(db, productId).where((u) => !u.isBaseUnit))
-        {'id': unit.id, 'satuan': unit.unitCode, 'konversi': unit.conversionFactor, 'hargaPokok': rupiahJson(unit.hargaPokok)},
+        {'id': unit.id, 'satuan': unit.unitCode, 'konversi': unit.conversionFactor, 'hargaPokok': rupiahJson(unit.hargaPokok), 'hargaJual': rupiahJson(unit.hargaJual)},
     ];
 
 /// The saved purchase, in the shape the entry form fills itself from (rupiah).
@@ -523,15 +568,16 @@ Map<String, Object?> _productOption(Db db, Row row) {
     // the base unit is the product's own satuan; the picker lists only the derived ones
     'satuan': getBaseProductUnit(db, productId).unitCode,
     'hargaPokok': rupiahJson(row['harga_pokok'] as int),
+    'hargaJual': rupiahJson(row['harga_jual'] as int),
     'units': _derivedUnitsJson(db, productId),
   };
 }
 
 List<Map<String, Object?>> searchProductsForPurchase(Db db, String q) {
   final rows = q.isEmpty
-      ? db.select('SELECT id, kode_item, nama_item, harga_pokok FROM products ORDER BY nama_item LIMIT 20')
+      ? db.select('SELECT id, kode_item, nama_item, harga_pokok, harga_jual FROM products ORDER BY nama_item LIMIT 20')
       : db.select(
-          'SELECT id, kode_item, nama_item, harga_pokok FROM products WHERE kode_item LIKE ? OR nama_item LIKE ? OR barcode LIKE ? ORDER BY nama_item LIMIT 20',
+          'SELECT id, kode_item, nama_item, harga_pokok, harga_jual FROM products WHERE kode_item LIKE ? OR nama_item LIKE ? OR barcode LIKE ? ORDER BY nama_item LIMIT 20',
           List.filled(3, '%$q%'),
         );
 
@@ -546,7 +592,7 @@ Map<String, Object?>? findProductForPurchaseByBarcode(Db db, String barcode) {
     return null;
   }
 
-  final row = db.first('SELECT id, kode_item, nama_item, harga_pokok FROM products WHERE barcode = ?', [trimmed]);
+  final row = db.first('SELECT id, kode_item, nama_item, harga_pokok, harga_jual FROM products WHERE barcode = ?', [trimmed]);
 
   return row == null ? null : _productOption(db, row);
 }
