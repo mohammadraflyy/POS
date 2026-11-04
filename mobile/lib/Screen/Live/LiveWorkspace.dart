@@ -3,6 +3,7 @@ import '../../state/app_state.dart';
 import '../../state/live_store.dart';
 import '../../services/store_api.dart';
 import '../../services/mutation_guard.dart';
+import '../../services/draft_store.dart';
 import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
 import '../../Widgets/admin.dart' show PageTabs, text;
@@ -37,7 +38,11 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
   @override void initState() {
     super.initState(); api = StoreApi(widget.app.businessRequest, widget.app.businessFile);
     guard = MutationGuard(SecurePendingStore('${widget.app.address}|${widget.app.userId}'));
-    store = LiveStore(api, guard); guard.load(); _opened.add(widget.menu);
+    store = LiveStore(api, guard, drafts: DraftStore.forDevice('${widget.app.address?.authority}|${widget.app.userId}'));
+    guard.load(); _opened.add(widget.menu);
+    store.restoreDraft().then((count) {
+      if (count > 0 && mounted) showNotice(context, 'Keranjang terakhir dipulihkan: $count barang.', kind: NoticeKind.info);
+    });
   }
   @override void didUpdateWidget(covariant LiveWorkspace oldWidget) { super.didUpdateWidget(oldWidget); _opened.add(widget.menu); }
   @override void dispose() { store.dispose(); guard.dispose(); super.dispose(); }

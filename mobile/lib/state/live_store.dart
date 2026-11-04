@@ -1,13 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
+import '../services/draft_store.dart';
 import 'package:flutter/foundation.dart';
 import '../models/live_models.dart';
 import '../services/business_api.dart';
 import '../services/mobile_api.dart';
 import '../services/mutation_guard.dart';
 class LiveStore extends ChangeNotifier {
-  LiveStore(this.api, this.guard);
+  LiveStore(this.api, this.guard, {this.drafts});
   final BusinessApi api;
   final MutationGuard guard;
+
+  /// Where the sale in progress is kept between runs; null keeps nothing (tests, demo).
+  final DraftStore? drafts;
+  Timer? _draftTimer;
   final List<LiveCartItem> items = [];
   num discount = 0;
   ServerPrice? price;
@@ -40,7 +46,74 @@ class LiveStore extends ChangeNotifier {
     if (clearDate) { saleDate = null; } else if (date != null) { saleDate = date; }
     if (charge != null) otherCharge = charge;
     if (text != null) note = text;
+    _saveDraft();
     _emit();
+  }
+
+  // --- the draft: the sale in progress survives a closed app, as on the desktop ---
+
+  Map<String, dynamic> _draftJson() => {
+    'items': [for (final i in items) {
+      'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
+        'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price}]},
+      'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
+    }],
+    'discount': discount, 'otherCharge': otherCharge, 'note': note,
+    if (saleDate != null) 'saleDate': saleDate!.toIso8601String(),
+  };
+
+  /// Saves shortly after a change; never while a saved nota is being edited (that one
+  /// lives on the server already). An empty sale removes the draft.
+  void _saveDraft() {
+    final store = drafts;
+    if (store == null || editingSaleId != null || _closed) return;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 300), _writeDraft);
+  }
+
+  Future<void> _writeDraft() async {
+    final store = drafts;
+    if (store == null || editingSaleId != null) return;
+    try {
+      if (items.isEmpty && discount == 0 && otherCharge == 0 && note.trim().isEmpty && saleDate == null) {
+        await store.clear();
+      } else {
+        await store.write(jsonEncode(_draftJson()));
+      }
+    } catch (_) {
+      // the till keeps working without its draft; the next change tries again
+    }
+  }
+
+  /// Puts back the sale that was in progress when the app last closed. Returns how many
+  /// lines came back. A draft that cannot be read is dropped rather than half-restored.
+  Future<int> restoreDraft() async {
+    final store = drafts;
+    if (store == null || items.isNotEmpty) return 0;
+    try {
+      final raw = await store.read();
+      if (raw == null || raw.isEmpty) return 0;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final lines = <LiveCartItem>[];
+      for (final entry in (data['items'] as List? ?? const []).whereType<Map>()) {
+        final p = Map<String, dynamic>.from(entry['product'] as Map);
+        final units = [for (final u in (p['units'] as List).whereType<Map>()) LiveUnit(u['id'] as int?, u['name'] as String, u['price'] as num?)];
+        final product = LiveProduct(p['id'] as int, p['name'] as String, p['code'] as String? ?? '', null, units, barcode: p['barcode'] as String?);
+        final unit = units.firstWhere((u) => u.id == entry['unitId'], orElse: () => units.first);
+        lines.add(LiveCartItem(product: product, unit: unit, quantity: entry['qty'] as num, manualPrice: entry['manualPrice'] as num?, discount: entry['discount'] as num?));
+      }
+      if (_closed) return 0;
+      items.addAll(lines);
+      discount = data['discount'] as num? ?? 0;
+      otherCharge = data['otherCharge'] as num? ?? 0;
+      note = data['note'] as String? ?? '';
+      saleDate = data['saleDate'] == null ? null : DateTime.tryParse(data['saleDate'] as String);
+      reprice();
+      return lines.length;
+    } catch (_) {
+      await store.clear();
+      return 0;
+    }
   }
 
   /// Loads a saved nota into the cart, keeping each line's price as it was sold - an edit
@@ -80,6 +153,7 @@ class LiveStore extends ChangeNotifier {
   void setDiscount(num value) { if (!editable) return; discount = value; reprice(); }
   void clear() { if (!editable) return; items.clear(); discount = 0; _resetDetails(); reprice(); }
   void reprice() {
+    _saveDraft();
     _debounce?.cancel(); final revision = ++_revision;
     price = null; priceError = null;
     if (items.isEmpty) { discount = 0; pricing = false; _emit(); return; }
@@ -128,7 +202,14 @@ class LiveStore extends ChangeNotifier {
     }
     // Already committed: clear cart even if the printer reports failure.
     items.clear(); discount = 0; _resetDetails(); price = null; priceError = null; _revision++; catalogRevision++; _emit();
+    // the sale is on the server now: the draft has done its job
+    _draftTimer?.cancel();
+    try { await drafts?.clear(); } catch (_) {}
     return result;
   }
-  @override void dispose() { _closed = true; _debounce?.cancel(); super.dispose(); }
+  @override void dispose() {
+    // a change made in the last moments before closing still lands in the draft
+    if (_draftTimer?.isActive ?? false) { _draftTimer!.cancel(); _writeDraft(); }
+    _closed = true; _debounce?.cancel(); super.dispose();
+  }
 }
