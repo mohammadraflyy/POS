@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
 import '../../services/store_api.dart';
 import '../Toko/BonActions.dart';
+import '../../Widgets/admin.dart' show dateTimeLabel, metodeLabel, text;
 class LiveSaleScreen extends StatefulWidget {
   const LiveSaleScreen({super.key, required this.api, required this.id, this.confirmation, this.isAdmin = false});
   final BusinessApi api;
@@ -70,10 +71,9 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
       if (loading) const Center(child: CircularProgressIndicator())
       else if (error != null) ...[Text(error!, style: const TextStyle(color: errorColor)), OutlinedButton(onPressed: load, child: const Text('Muat ulang detail'))]
       else if (sale != null) WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Center(child: Icon(Icons.storefront_outlined, size: 32, color: muted)), const SizedBox(height: 12),
         SummaryRow('Nomor nota', (sale['nomorNota'] ?? sale['id'] ?? widget.id).toString()),
-        SummaryRow('Pelanggan', (sale['namaPelanggan'] ?? 'Umum').toString()), SummaryRow('Tanggal', (sale['tanggal'] ?? sale['createdAt'] ?? '—').toString()),
-        SummaryRow('Metode', (sale['metodePembayaran'] ?? '—').toString()),
+        SummaryRow('Pelanggan', (sale['namaPelanggan'] ?? 'Umum').toString()), SummaryRow('Tanggal', dateTimeLabel(sale['tanggal'] ?? sale['createdAt'])),
+        SummaryRow('Metode', metodeLabel[sale['metodePembayaran']] ?? text(sale['metodePembayaran'])),
         if (sale['status'] == 'dibatalkan') const SummaryRow('Status', 'Dibatalkan', color: errorColor),
         if (sale['kasirName'] != null) SummaryRow('Kasir', sale['kasirName'].toString()),
         if (sale['keterangan'] != null) SummaryRow('Keterangan', sale['keterangan'].toString()), const Divider(),
@@ -85,7 +85,7 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
         SummaryRow('Total', rupiah(sale['total'] ?? widget.confirmation?['total']), strong: true),
         if (sale['dibayar'] != null) SummaryRow('Dibayar', rupiah(sale['dibayar'])),
         if (sale['metodePembayaran'] == 'bon' && (number(sale['total']) ?? 0) > (number(sale['dibayar']) ?? 0))
-          SummaryRow('Sisa piutang', rupiah((number(sale['total']) ?? 0) - (number(sale['dibayar']) ?? 0)), color: warningColor),
+          SummaryRow('Sisa piutang', rupiah((number(sale['total']) ?? 0) - (number(sale['dibayar']) ?? 0)), color: errorColor),
         if (sale['kembalian'] != null) SummaryRow('Kembalian', rupiah(sale['kembalian'])),
         if (payments is List && payments.isNotEmpty) ...[const Divider(), const Text('Cicilan bon', style: TextStyle(fontWeight: FontWeight.w700)),
           for (final p in payments.whereType<Map>()) SummaryRow((p['tanggal'] ?? p['createdAt'] ?? '').toString(), rupiah(p['jumlah'])),
@@ -98,7 +98,7 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
       if (sale != null && widget.api is StoreApi) ...[const SizedBox(height: Space.lg), SaleActions(api: widget.api as StoreApi, sale: sale, isAdmin: widget.isAdmin, onChanged: load,
         onDeleted: () { if (mounted) Navigator.of(context).pop(); })],
       const SizedBox(height: Space.xl), OutlinedButton.icon(onPressed: printing ? null : printAgain, icon: const Icon(Icons.print_outlined), label: Text(printing ? 'Mengirim ke printer…' : 'Cetak ulang di PC')),
-      const SizedBox(height: 12), FilledButton(onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst), child: const Text('Kembali ke toko')),
+      const SizedBox(height: 12), TextButton(onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst), child: const Text('Kembali ke kasir')),
     ])))));
   }
 }

@@ -37,7 +37,7 @@ class _LiveOpnameScreenState extends State<LiveOpnameScreen> {
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: widget.guard, builder: (context, _) => ListView(padding: const EdgeInsets.all(Space.lg), children: [
     const PageIntro('Periksa stok', 'Koreksi hanya jika jumlah barang berbeda. Gunakan satuan dasar.'),
-    TextField(onChanged: (v) { query = v; serial++; timer?.cancel(); setState(() => loading = true); timer = Timer(const Duration(milliseconds: 350), load); }, decoration: const InputDecoration(labelText: 'Pencarian', hintText: 'Cari nama, kode, barcode, atau kategori', prefixIcon: Icon(Icons.search))),
+    TextField(onChanged: (v) { query = v; serial++; timer?.cancel(); setState(() => loading = true); timer = Timer(const Duration(milliseconds: 350), load); }, decoration: const InputDecoration(hintText: 'Cari nama, kode, barcode, atau kategori', prefixIcon: Icon(Icons.search))),
     const SizedBox(height: 12), if (categoryError != null) TextButton(onPressed: loadCategories, child: const Text('Muat ulang kategori')),
     Wrap(spacing: 8, runSpacing: 8, children: [for (final c in categories) FilterChip(label: Text((c['nama'] ?? c['name'] ?? '').toString()), selected: selected.contains(idNumber(c['id'])), onSelected: (value) { final id = idNumber(c['id']); if (value) { selected.add(id); } else { selected.remove(id); } load(); })]),
     const SizedBox(height: 16), if (loading) const Center(child: CircularProgressIndicator())

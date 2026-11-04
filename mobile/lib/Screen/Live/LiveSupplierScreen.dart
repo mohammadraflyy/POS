@@ -26,7 +26,7 @@ class _LiveSupplierScreenState extends State<LiveSupplierScreen> {
     finally { if (mounted && n == serial) setState(() => loading = false); }
   }
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Pilih supplier')), body: SafeArea(child: ListView(padding: const EdgeInsets.all(Space.lg), children: [
-    TextField(controller: query, onSubmitted: (_) => load(), decoration: InputDecoration(labelText: 'Pencarian', hintText: 'Cari supplier', prefixIcon: const Icon(Icons.search), suffixIcon: IconButton(tooltip: 'Cari supplier', onPressed: () => load(), icon: const Icon(Icons.arrow_forward)))),
+    TextField(controller: query, onSubmitted: (_) => load(), decoration: InputDecoration(hintText: 'Cari supplier', prefixIcon: const Icon(Icons.search), suffixIcon: IconButton(tooltip: 'Cari supplier', onPressed: () => load(), icon: const Icon(Icons.arrow_forward)))),
     const SizedBox(height: 12), OutlinedButton.icon(onPressed: () async { await showDialog<void>(context: context, builder: (_) => _CreateSupplier(api: widget.api, guard: widget.guard)); if (mounted) load(); }, icon: const Icon(Icons.add), label: const Text('Supplier baru')),
     const SizedBox(height: Space.lg), if (loading) const Center(child: CircularProgressIndicator())
     else if (error != null) EmptyPanel(icon: Icons.error_outline, title: 'Supplier belum dimuat', message: error!, action: TextButton(onPressed: () => load(), child: const Text('Coba lagi')))

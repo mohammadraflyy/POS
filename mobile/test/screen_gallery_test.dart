@@ -23,6 +23,19 @@ import '../lib/Screen/menus.dart';
 import '../lib/services/mobile_api.dart';
 import '../lib/state/app_state.dart';
 import 'session_test.dart' show MemoryStorage;
+import '../lib/models/live_models.dart';
+import '../lib/services/mutation_guard.dart';
+import '../lib/services/store_api.dart';
+import '../lib/state/live_store.dart';
+import '../lib/Screen/Live/LivePaymentScreen.dart';
+import '../lib/Screen/Live/LiveSaleScreen.dart';
+import '../lib/Screen/Pairing/PairingScreen.dart';
+
+class _NoPending implements PendingStore {
+  @override Future<String?> read() async => null;
+  @override Future<void> write(String data) async {}
+  @override Future<void> clear() async {}
+}
 
 const _enabled = bool.fromEnvironment('UI_PREVIEWS');
 
@@ -99,7 +112,8 @@ void main() {
       }
 
       for (final (menu, name) in [(Menu.kasir, 'kasir'), (Menu.dashboard, 'dashboard'), (Menu.produk, 'produk'), (Menu.riwayat, 'riwayat'),
-          (Menu.rekap, 'rekap'), (Menu.pembelian, 'pembelian'), (Menu.pengaturan, 'pengaturan')]) {
+          (Menu.rekap, 'rekap'), (Menu.pembelian, 'pembelian'), (Menu.pengaturan, 'pengaturan'), (Menu.opname, 'opname'),
+          (Menu.pengeluaran, 'pengeluaran'), (Menu.kartuStok, 'kartustok'), (Menu.pelanggan, 'pelanggan'), (Menu.hutang, 'hutang'), (Menu.pengguna, 'pengguna')]) {
         final key = GlobalKey();
         await tester.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(),
           home: MainScreen(key: ValueKey(name), app: app, initialMenu: menu))));
@@ -107,7 +121,29 @@ void main() {
         await _capture(tester, key, '$label-$name');
       }
 
+      // screens reached from the till: a sale's detail, payment with a filled cart, and sign-in
+      final api = StoreApi(app.businessRequest, app.businessFile);
+      Future<void> shoot(String name, Widget screen) async {
+        final key = GlobalKey();
+        await tester.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(), home: screen)));
+        await settle();
+        await _capture(tester, key, '$label-$name');
+      }
+      final saleId = (await tester.runAsync(() async => db.scalar<int>("SELECT max(id) FROM sales WHERE metode_pembayaran = 'bon'")))!;
+      await shoot('nota', LiveSaleScreen(api: api, id: saleId, isAdmin: true));
+      final guard = MutationGuard(_NoPending());
+      await tester.runAsync(() => guard.load());
+      final store = LiveStore(api, guard);
+      final catalog = await tester.runAsync(() => api.catalog('', 1));
+      for (final raw in jsonRows(catalog).take(3)) {
+        final product = LiveProduct.fromJson(raw);
+        store.put(LiveCartItem(product: product, unit: product.units.first, quantity: 2));
+      }
+      await shoot('bayar', LivePaymentScreen(store: store));
+      await shoot('login', PairingScreen(app: AppState(storage: MemoryStorage())));
+
       await tester.pumpWidget(const SizedBox());
+      store.dispose(); guard.dispose();
       await tester.runAsync(() async { db.close(); });
     }, skip: !_enabled, timeout: const Timeout(Duration(minutes: 4)));
   }

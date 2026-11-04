@@ -50,7 +50,7 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
     finally { if (mounted) setState(() => loading = false); }
   }
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Tambah barang masuk')), body: SafeArea(child: ListView(padding: const EdgeInsets.all(Space.lg), children: [
-    Row(children: [Expanded(child: TextField(controller: query, onSubmitted: (_) => search(), decoration: const InputDecoration(labelText: 'Pencarian', hintText: 'Cari produk', prefixIcon: Icon(Icons.search)))),
+    Row(children: [Expanded(child: TextField(controller: query, onSubmitted: (_) => search(), decoration: const InputDecoration(hintText: 'Cari produk', prefixIcon: Icon(Icons.search)))),
       IconButton(onPressed: loading ? null : search, tooltip: 'Cari produk', icon: const Icon(Icons.arrow_forward)), if (!isDesktop) IconButton(onPressed: loading ? null : scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner))]),
     const SizedBox(height: Space.lg), if (loading) const Center(child: CircularProgressIndicator()),
     if (error != null) Text(error!, style: const TextStyle(color: errorColor)),

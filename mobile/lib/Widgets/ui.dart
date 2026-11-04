@@ -193,8 +193,10 @@ class WorkArea extends StatelessWidget {
   const WorkArea({super.key, required this.child, this.maxWidth = 760});
   final Widget child;
   final double maxWidth;
-  @override Widget build(BuildContext context) => Align(alignment: Alignment.topCenter,
-    child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child));
+  // inner lists pad 16; on a PC 16 more puts the content on the same 32px left edge as ScreenBody
+  @override Widget build(BuildContext context) => Align(alignment: Alignment.topLeft,
+    child: Padding(padding: EdgeInsets.only(left: MediaQuery.sizeOf(context).width >= 900 ? Space.lg : 0, top: MediaQuery.sizeOf(context).width >= 900 ? Space.lg : 0),
+      child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child)));
 }
 
 /// The phone's cart bar: the count and the total, one tap to the cart.

@@ -73,11 +73,14 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
     final enabled = !saving && !widget.guard.busy && widget.guard.pending == null;
     return ListView(padding: const EdgeInsets.all(Space.lg), children: [
       const PageIntro('Pembelian baru', 'Barang yang disimpan akan menambah stok toko.'),
-      WhitePanel(child: Column(children: [ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.local_shipping_outlined, color: muted), title: Text(supplier == null ? 'Pilih supplier (opsional)' : (supplier!['nama'] ?? supplier!['name']).toString()), trailing: const Icon(Icons.chevron_right), onTap: !enabled ? null : () async {
+      WhitePanel(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs), child: Column(children: [ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.local_shipping_outlined, color: muted), title: Text(supplier == null ? 'Pilih supplier (opsional)' : (supplier!['nama'] ?? supplier!['name']).toString()), trailing: const Icon(Icons.chevron_right), onTap: !enabled ? null : () async {
         final result = await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(builder: (_) => LiveSupplierScreen(api: widget.api, guard: widget.guard)));
         if (mounted && result != null) setState(() => supplier = result);
-      }), if (supplier != null) TextButton(onPressed: enabled ? () => setState(() => supplier = null) : null, child: const Text('Tanpa supplier')),
-        OutlinedButton.icon(onPressed: !enabled ? null : () async { final selected = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now()); if (selected != null && mounted) setState(() => date = selected); }, icon: const Icon(Icons.calendar_today_outlined), label: Text(isoDate(date))),
+      }), if (supplier != null) Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: enabled ? () => setState(() => supplier = null) : null, child: const Text('Tanpa supplier'))),
+        const Divider(),
+        ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.calendar_today_outlined, color: muted), title: const Text('Tanggal faktur'),
+          trailing: Text(isoDate(date), style: amountStyle.copyWith(fontSize: 14)),
+          onTap: !enabled ? null : () async { final selected = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now()); if (selected != null && mounted) setState(() => date = selected); }),
       ])), const SizedBox(height: Space.lg),
       for (var i = 0; i < items.length; i++) Padding(padding: const EdgeInsets.only(bottom: 10), child: WhitePanel(padding: EdgeInsets.zero, child: ListTile(title: Text(items[i].product.name), subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name} • Harga beli ${rupiah(items[i].price)}'), trailing: IconButton(tooltip: 'Hapus barang pembelian', onPressed: enabled ? () => setState(() => items.removeAt(i)) : null, icon: const Icon(Icons.close))))),
       OutlinedButton.icon(onPressed: !enabled ? null : () => addItem(), icon: const Icon(Icons.add), label: const Text('Tambah barang  ·  atau scan barcode')),

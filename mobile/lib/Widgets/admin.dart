@@ -364,7 +364,7 @@ class ScreenBody extends StatelessWidget {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final list = ListView(physics: const AlwaysScrollableScrollPhysics(),
       padding: wide ? const EdgeInsets.fromLTRB(Space.xxl, Space.xxl, Space.xxl, Space.xxl) : const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.xl), children: [
-      Center(child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children))),
+      Align(alignment: Alignment.topLeft, child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children))),
     ]);
     return onRefresh == null ? list : RefreshIndicator(onRefresh: onRefresh!, child: list);
   }
