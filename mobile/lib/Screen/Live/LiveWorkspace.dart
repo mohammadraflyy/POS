@@ -46,7 +46,7 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
   Widget _screen(Menu menu) {
     final admin = widget.app.isAdmin;
     return switch (menu) {
-      Menu.kasir => LiveKasirScreen(store: store),
+      Menu.kasir => LiveKasirScreen(store: store, active: widget.menu == Menu.kasir),
       Menu.pembelian => DefaultTabController(length: 2, child: Column(children: [
         const Material(color: surface, child: TabBar(tabs: [Tab(text: 'Catat pembelian'), Tab(text: 'Daftar pembelian')])),
         Expanded(child: TabBarView(children: [

@@ -5,6 +5,15 @@ import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
 import 'LiveItemSheet.dart';
 import 'LivePaymentScreen.dart';
+/// Asks before emptying the cart - from the bin button or Alt+K on the PC.
+Future<void> confirmClearCart(BuildContext context, LiveStore store) async {
+  if (store.items.isEmpty || !store.editable) return;
+  final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('Kosongkan keranjang?'),
+    content: const Text('Semua barang yang dipilih akan dihapus dari keranjang.'),
+    actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Kosongkan'))]));
+  if (yes == true) store.clear();
+}
+
 class LiveCartPanel extends StatelessWidget {
   const LiveCartPanel({super.key, required this.store});
   final LiveStore store;
@@ -14,12 +23,8 @@ class LiveCartPanel extends StatelessWidget {
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([store, store.guard]), builder: (context, _) => CartLayout(
     header: Row(children: [Expanded(child: Text('Keranjang', style: Theme.of(context).textTheme.titleLarge)),
-      IconButton(tooltip: 'Kosongkan keranjang', onPressed: store.items.isEmpty || !store.editable ? null : () async {
-        final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('Kosongkan keranjang?'),
-          content: const Text('Semua barang yang dipilih akan dihapus dari keranjang.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Kosongkan'))]));
-        if (yes == true) store.clear();
-      }, icon: const Icon(Icons.delete_outline)),
+      IconButton(tooltip: 'Kosongkan keranjang (Alt+K)', onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
+        icon: const Icon(Icons.delete_outline)),
     ]),
     items: [for (var index = 0; index < store.items.length; index++) Padding(
       padding: const EdgeInsets.symmetric(vertical: Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

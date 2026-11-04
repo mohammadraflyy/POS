@@ -12,8 +12,12 @@ import 'LivePaymentScreen.dart';
 import 'package:flutter/services.dart';
 import '../../Widgets/admin.dart' show isDesktop;
 class LiveKasirScreen extends StatefulWidget {
-  const LiveKasirScreen({super.key, required this.store});
+  const LiveKasirScreen({super.key, required this.store, this.active = true});
   final LiveStore store;
+
+  /// False while another menu is showing: the workspace keeps the till alive offstage,
+  /// and its keyboard keys must not fire from there.
+  final bool active;
   @override State<LiveKasirScreen> createState() => _LiveKasirScreenState();
 }
 class _LiveKasirScreenState extends State<LiveKasirScreen> {
@@ -24,9 +28,9 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   bool loading = true;
   String? error;
   int page = 1, lastPage = 1, serial = 0, seenCatalogRevision = 0;
-  @override void initState() { super.initState(); seenCatalogRevision = widget.store.catalogRevision; widget.store.addListener(watchStock); load(); }
+  @override void initState() { super.initState(); seenCatalogRevision = widget.store.catalogRevision; widget.store.addListener(watchStock); HardwareKeyboard.instance.addHandler(handleKey); load(); }
   void watchStock() { if (mounted && seenCatalogRevision != widget.store.catalogRevision) { seenCatalogRevision = widget.store.catalogRevision; load(target: page); } }
-  @override void dispose() { widget.store.removeListener(watchStock); timer?.cancel(); search.dispose(); searchFocus.dispose(); super.dispose(); }
+  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); widget.store.removeListener(watchStock); timer?.cancel(); search.dispose(); searchFocus.dispose(); super.dispose(); }
   void addOne(LiveProduct p) {
     final existing = widget.store.items.where((i) => i.product.id == p.id && i.unit.id == null).toList();
     final old = existing.isEmpty ? null : existing.first;
@@ -43,6 +47,39 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     addOne(products.single);
     search.clear(); searchFocus.requestFocus();
   }
+  /// F3: change the quantity of the line at the top of the cart, as on the desktop till.
+  Future<void> editTopLine() async {
+    if (widget.store.items.isEmpty || !widget.store.editable) return;
+    final top = widget.store.items.first;
+    final result = await editLiveItem(context, top.product, existing: top);
+    if (result == null || !mounted) return;
+    try { widget.store.put(result); } catch (e) { showError(context, e); }
+  }
+
+  /// The desktop till's keys, so a cashier moving to this app keeps their habits. Like the
+  /// desktop they work anywhere in the window - but only while the till is the screen in
+  /// front: not under a dialog or the payment screen, and not while another menu is showing.
+  /// Keys that would type or move the caret (End, /) only act when no text field has focus.
+  bool handleKey(KeyEvent event) {
+    if (event is! KeyDownEvent || !mounted || !widget.active || ModalRoute.of(context)?.isCurrent == false) return false;
+    final typing = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null;
+    final key = event.logicalKey;
+    final alt = HardwareKeyboard.instance.isAltPressed;
+    void Function()? action;
+    if (key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown || (key == LogicalKeyboardKey.slash && !typing)) {
+      action = () { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); };
+    } else if (key == LogicalKeyboardKey.f12 || (key == LogicalKeyboardKey.end && !typing)) {
+      action = pay;
+    } else if (key == LogicalKeyboardKey.f3) {
+      action = editTopLine;
+    } else if (alt && key == LogicalKeyboardKey.keyK) {
+      action = () => confirmClearCart(context, widget.store);
+    }
+    if (action == null) return false;
+    action();
+    return true;
+  }
+
   void pay() {
     if (!widget.store.canCheckout) return;
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LivePaymentScreen(store: widget.store)));
@@ -75,7 +112,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         Row(children: [Expanded(child: TextField(controller: search, textInputAction: TextInputAction.search, onChanged: (_) {
           serial++; timer?.cancel(); setState(() { loading = true; error = null; });
           timer = Timer(const Duration(milliseconds: 350), () => load());
-        }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(), decoration: InputDecoration(labelText: 'Cari barang', hintText: isDesktop ? 'Nama, kode, atau scan barcode • F2' : 'Nama, kode, atau barcode', prefixIcon: const Icon(Icons.search)))),
+        }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(), decoration: InputDecoration(labelText: 'Cari barang', hintText: isDesktop ? 'Nama, kode, atau scan barcode  ·  F2 cari · End bayar · F3 ubah jumlah · Alt+K kosongkan' : 'Nama, kode, atau barcode', prefixIcon: const Icon(Icons.search)))),
           if (!isDesktop) ...[const SizedBox(width: 8), IconButton.filled(onPressed: scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner), style: IconButton.styleFrom(backgroundColor: wine))],
           IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh)),
         ]),
@@ -103,10 +140,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           appBar: AppBar(title: const Text('Keranjang')), body: SafeArea(child: LiveCartPanel(store: widget.store)))))),
     ]);
     final body = wide ? Row(children: [Expanded(child: catalog), SizedBox(width: 380, child: Padding(padding: const EdgeInsets.fromLTRB(0, 18, 18, 18), child: LiveCartPanel(store: widget.store)))]) : catalog;
-    // F2 jumps to search, F12 opens payment - the till is driven from the keyboard on a PC
-    return CallbackShortcuts(bindings: {
-      const SingleActivator(LogicalKeyboardKey.f2): () => searchFocus.requestFocus(),
-      const SingleActivator(LogicalKeyboardKey.f12): pay,
-    }, child: Focus(autofocus: !isDesktop, child: body));
+    // the till is driven from the keyboard on a PC - see handleKey
+    return Focus(autofocus: !isDesktop, child: body);
   }));
 }
