@@ -32,6 +32,11 @@ class LiveStore extends ChangeNotifier {
   num otherCharge = 0;
   String note = '';
 
+  /// Chosen at the till with Alt+P, as on the desktop; empty means "Umum".
+  String customerName = '';
+
+  void setCustomer(String name) { customerName = name.trim(); _saveDraft(); _emit(); }
+
   // --- editing a saved sale ---
 
   /// Set while the cart holds a saved nota being changed; checkout then rewrites it.
@@ -58,7 +63,7 @@ class LiveStore extends ChangeNotifier {
         'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price}]},
       'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
     }],
-    'discount': discount, 'otherCharge': otherCharge, 'note': note,
+    'discount': discount, 'otherCharge': otherCharge, 'note': note, 'customer': customerName,
     if (saleDate != null) 'saleDate': saleDate!.toIso8601String(),
   };
 
@@ -75,7 +80,7 @@ class LiveStore extends ChangeNotifier {
     final store = drafts;
     if (store == null || editingSaleId != null) return;
     try {
-      if (items.isEmpty && discount == 0 && otherCharge == 0 && note.trim().isEmpty && saleDate == null) {
+      if (items.isEmpty && discount == 0 && otherCharge == 0 && note.trim().isEmpty && saleDate == null && customerName.isEmpty) {
         await store.clear();
       } else {
         await store.write(jsonEncode(_draftJson()));
@@ -107,6 +112,7 @@ class LiveStore extends ChangeNotifier {
       discount = data['discount'] as num? ?? 0;
       otherCharge = data['otherCharge'] as num? ?? 0;
       note = data['note'] as String? ?? '';
+      customerName = data['customer'] as String? ?? '';
       saleDate = data['saleDate'] == null ? null : DateTime.tryParse(data['saleDate'] as String);
       reprice();
       return lines.length;
@@ -132,7 +138,7 @@ class LiveStore extends ChangeNotifier {
     items.clear(); discount = 0; reprice();
   }
 
-  void _resetDetails() { editingSaleId = null; saleDate = null; otherCharge = 0; note = ''; }
+  void _resetDetails() { editingSaleId = null; saleDate = null; otherCharge = 0; note = ''; customerName = ''; }
 
   static String _localStamp(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}T${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';

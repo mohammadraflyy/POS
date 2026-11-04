@@ -27,7 +27,15 @@ class LiveCartPanel extends StatelessWidget {
       IconButton(tooltip: 'Kosongkan keranjang (Alt+K)', onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
         icon: const Icon(Icons.delete_outline)),
     ]),
-    items: [for (var index = 0; index < store.items.length; index++) _CartLine(store: store, index: index)],
+    items: [
+      if (store.customerName.isNotEmpty) Padding(padding: const EdgeInsets.only(top: Space.sm, bottom: Space.xs), child: Row(children: [
+        const Icon(Icons.person_outline, size: 16, color: muted), const SizedBox(width: 6),
+        Expanded(child: Text('Pelanggan: ${store.customerName}', style: const TextStyle(fontSize: 13))),
+        TextButton(onPressed: store.editable ? () => store.setCustomer('') : null, style: TextButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 6)),
+          child: const Text('Umum')),
+      ])),
+      for (var index = 0; index < store.items.length; index++) _CartLine(store: store, index: index),
+    ],
     footer: Column(mainAxisSize: MainAxisSize.min, children: [
       if (store.pricing) const LinearProgressIndicator(minHeight: 2),
       if (store.priceError != null) TextButton(onPressed: store.reprice, child: const Text('Coba hitung harga lagi')),

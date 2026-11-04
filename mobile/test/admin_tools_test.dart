@@ -7,6 +7,8 @@ import '../lib/services/store_api.dart';
 import '../lib/Screen/Toko/ProductsScreen.dart';
 import '../lib/Screen/Toko/ReportsScreen.dart';
 import '../lib/Screen/Toko/SettingsScreen.dart';
+import '../lib/Screen/Toko/MassInputScreen.dart';
+import '../lib/services/draft_store.dart';
 
 /// A pretend server for the admin tools the desktop app had: answers by method + path
 /// and remembers every call.
@@ -158,5 +160,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Hapus 1 produk terpilih?'), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('the new-product grid comes back after leaving it, and a save clears it', (tester) async {
+    final drafts = MemoryDraftStore();
+    final store = FakeStore({'POST /v1/products/bulk-save': (_) => {'success': true, 'created': 1, 'updated': 0, 'unchanged': 0}});
+    await show(tester, MassInputScreen(api: store.api, drafts: drafts));
+    await tester.enterText(find.byType(TextField).at(0), 'ES01');
+    await tester.enterText(find.byType(TextField).at(2), 'Es Batu');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpWidget(const SizedBox());
+    expect(drafts.value, contains('Es Batu'));
+
+    await show(tester, MassInputScreen(api: store.api, drafts: drafts));
+    expect(tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text, 'Es Batu');
+    await tapText(tester, 'Mengerti'); // the "restored" notice
+
+    await tapText(tester, 'Simpan 1 baris');
+    expect(drafts.value, isNull);
   });
 }

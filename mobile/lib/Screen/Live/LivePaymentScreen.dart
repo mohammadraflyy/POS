@@ -71,6 +71,7 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       method = store.editMethod; customer.text = store.editCustomer;
       if (store.editPaid > 0) paid.text = _plain(store.editPaid);
     }
+    if (store.editingSaleId == null && store.customerName.isNotEmpty) customer.text = store.customerName;
     if (store.otherCharge > 0) charge.text = _plain(store.otherCharge);
     note.text = store.note;
     HardwareKeyboard.instance.addHandler(handleKey); loadCustomers();

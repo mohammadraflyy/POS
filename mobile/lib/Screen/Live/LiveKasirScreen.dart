@@ -12,6 +12,7 @@ import 'LivePaymentScreen.dart';
 import 'package:flutter/services.dart';
 import '../../Widgets/admin.dart' show isDesktop;
 import '../../services/barcode_burst.dart';
+import '../../Widgets/keyboard_picker.dart';
 class LiveKasirScreen extends StatefulWidget {
   const LiveKasirScreen({super.key, required this.store, this.active = true});
   final LiveStore store;
@@ -50,11 +51,12 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     catch (_) { return 1; }
   }
 
-  void addOne(LiveProduct p) {
-    final existing = widget.store.items.where((i) => i.product.id == p.id && i.unit.id == null).toList();
+  void addOne(LiveProduct p, {LiveUnit? unit}) {
+    final sold = unit ?? p.units.first;
+    final existing = widget.store.items.where((i) => i.product.id == p.id && i.unit.id == sold.id).toList();
     final old = existing.isEmpty ? null : existing.first;
     try {
-      widget.store.put(LiveCartItem(product: p, unit: p.units.first,
+      widget.store.put(LiveCartItem(product: p, unit: sold,
         quantity: (old?.quantity ?? 0) + enteredQty, manualPrice: old?.manualPrice, discount: old?.discount));
       qty.value = const TextEditingValue(text: '1', selection: TextSelection.collapsed(offset: 1));
     }
@@ -94,7 +96,11 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     void Function()? action;
     if (key == LogicalKeyboardKey.pageUp) {
       action = () { qtyFocus.requestFocus(); qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length); };
-    } else if (key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown || (key == LogicalKeyboardKey.slash && !typing)) {
+    } else if (key == LogicalKeyboardKey.slash && !typing) {
+      action = openPalette;
+    } else if (alt && key == LogicalKeyboardKey.keyP) {
+      action = pickCustomer;
+    } else if (key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown) {
       action = () { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); };
     } else if (key == LogicalKeyboardKey.f12 || (key == LogicalKeyboardKey.end && !typing)) {
       action = pay;
@@ -121,6 +127,41 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     addOne(match);
     search.clear();
     load();
+  }
+
+  /// The desktop's product palette (/): every product in every unit it is sold in, with
+  /// price and stock; the pick goes in at the Jumlah typed.
+  Future<void> openPalette() async {
+    if (!widget.store.editable) return;
+    final picked = await showKeyboardPicker<(LiveProduct, LiveUnit)>(context,
+      title: 'Cari barang', hint: 'Nama, kode, atau barcode', description: 'Masuk ke keranjang sebanyak ${quantityText(enteredQty)}',
+      emptyText: 'Barang tidak ditemukan.',
+      load: (q) async {
+        final rows = jsonRows(await widget.store.api.catalog(q, 1)).map(LiveProduct.fromJson);
+        return [
+          for (final p in rows) for (final u in p.units) PickerOption((p, u),
+            title: '${p.name} · ${u.name}', subtitle: p.code,
+            trailing: (p.stock ?? 1) <= 0 ? 'Habis' : '${rupiah(u.price)} · stok ${quantityText(p.stock)}',
+            enabled: (p.stock ?? 1) > 0),
+        ];
+      });
+    if (picked == null || !mounted) return;
+    addOne(picked.$1, unit: picked.$2);
+  }
+
+  /// The desktop's customer picker (Alt+P): an existing name or a new one; payment starts with it.
+  Future<void> pickCustomer() async {
+    final names = await widget.store.api.customers().catchError((Object _) => <String>[]);
+    if (!mounted) return;
+    final picked = await showKeyboardPicker<String>(context,
+      title: 'Pilih pelanggan', hint: 'Cari atau ketik nama pelanggan baru',
+      load: (q) async => [
+        const PickerOption('', title: 'Umum', subtitle: 'tanpa nama pelanggan'),
+        for (final n in names.where((n) => q.isEmpty || n.toLowerCase().contains(q.toLowerCase())).take(30)) PickerOption(n, title: n),
+      ],
+      extra: (q, results) => q.isEmpty || results.any((o) => o.value.toLowerCase() == q.toLowerCase()) ? null
+        : PickerOption(q, title: 'Pelanggan baru: $q', subtitle: 'dicatat saat transaksi disimpan'));
+    if (picked != null && mounted) widget.store.setCustomer(picked);
   }
 
   void pay() {
@@ -168,7 +209,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       const SizedBox(width: Space.xs),
       IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
     ]);
-    final keys = isDesktop && wide ? const Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · End bayar · F3 ubah baris atas · Alt+K kosongkan · scan di mana saja',
+    final keys = isDesktop && wide ? const Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+K kosongkan',
       style: TextStyle(color: muted, fontSize: 12))) : const SizedBox.shrink();
     final list = CustomScrollView(slivers: [
       if (loading) const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),

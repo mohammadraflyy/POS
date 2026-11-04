@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../services/draft_store.dart';
 import '../../core/theme.dart';
 import '../../models/live_models.dart';
 import '../../services/store_api.dart';
@@ -43,9 +46,13 @@ class _Row {
 /// Opname there, so its column is locked for existing rows). Either every row is valid and
 /// all are saved, or nothing is, and the server's reasons sit under the rows they belong to.
 class MassInputScreen extends StatefulWidget {
-  const MassInputScreen({super.key, required this.api, this.ids = const []});
+  const MassInputScreen({super.key, required this.api, this.ids = const [], this.drafts});
   final StoreApi api;
   final List<int> ids;
+
+  /// Keeps the new-product grid between visits, as the desktop did; editing ticked
+  /// products is never drafted (that data lives in the database already).
+  final DraftStore? drafts;
   @override State<MassInputScreen> createState() => _MassInputScreenState();
 }
 
@@ -61,16 +68,57 @@ class _MassInputScreenState extends State<MassInputScreen> {
     ('satuan', 'Satuan', 90.0), ('hargaPokok', 'Harga pokok', 120.0), ('hargaJual', 'Harga jual', 120.0), ('stok', 'Stok', 90.0),
   ];
 
+  late final DraftStore? _drafts = widget.ids.isEmpty ? (widget.drafts ?? DraftStore.forDevice('input-massal')) : null;
+  Timer? _draftTimer;
+
   @override void initState() {
     super.initState();
-    if (widget.ids.isEmpty) { rows.addAll([_newRow(), _newRow(), _newRow()]); } else { load(); }
+    if (widget.ids.isEmpty) { rows.addAll([_newRow(), _newRow(), _newRow()]); _restoreDraft(); } else { load(); }
   }
-  @override void dispose() { for (final r in rows) { r.dispose(); } super.dispose(); }
+  @override void dispose() {
+    if (_draftTimer?.isActive ?? false) { _draftTimer!.cancel(); _writeDraft(); }
+    for (final r in rows) { r.dispose(); }
+    super.dispose();
+  }
+
+  static const _fields = ['kode', 'barcode', 'nama', 'kategori', 'satuan', 'pokok', 'jual', 'stok'];
+
+  Future<void> _restoreDraft() async {
+    try {
+      final raw = await _drafts?.read();
+      if (raw == null || raw.isEmpty || !mounted) return;
+      String field(Map r, String key, String fallback) => r[key]?.toString() ?? fallback;
+      final saved = [for (final r in (jsonDecode(raw) as List).whereType<Map>()) _track(_Row(key: 'baru-${_serial++}',
+        kode: field(r, 'kode', ''), barcode: field(r, 'barcode', ''), nama: field(r, 'nama', ''), kategori: field(r, 'kategori', ''),
+        satuan: field(r, 'satuan', 'PCS'), pokok: field(r, 'pokok', ''), jual: field(r, 'jual', ''), stok: field(r, 'stok', '0')))];
+      if (saved.isEmpty) return;
+      final old = List.of(rows);
+      setState(() => rows..clear()..addAll(saved));
+      WidgetsBinding.instance.addPostFrameCallback((_) { for (final r in old) { r.dispose(); } });
+      showNotice(context, 'Isian input massal terakhir dipulihkan: ${saved.length} baris.', kind: NoticeKind.info);
+    } catch (_) { await _drafts?.clear(); }
+  }
+
+  void _saveDraft() {
+    if (_drafts == null) return;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 400), _writeDraft);
+  }
+
+  Future<void> _writeDraft() async {
+    final store = _drafts;
+    if (store == null) return;
+    final filled = rows.where((r) => !r.blank).toList();
+    try {
+      if (filled.isEmpty) { await store.clear(); return; }
+      await store.write(jsonEncode([for (final r in filled) {for (final (i, f) in _fields.indexed) f: r.all[i].text}]));
+    } catch (_) {}
+  }
 
   _Row _newRow() => _track(_Row(key: 'baru-${_serial++}'));
 
   /// The save button counts the filled rows, so typing a code or a name redraws it.
-  _Row _track(_Row row) { row.kode.addListener(_changed); row.nama.addListener(_changed); return row; }
+  _Row _track(_Row row) { row.kode.addListener(_changed); row.nama.addListener(_changed); for (final c in row.all) { c.addListener(_saveDraft); } return row; }
   void _changed() { if (mounted) setState(() {}); }
 
   Future<void> load() async {
@@ -99,6 +147,9 @@ class _MassInputScreenState extends State<MassInputScreen> {
         showNotice(context, 'Belum disimpan: ${errors.length} baris perlu diperbaiki. Lihat tanda merah di tabel.', kind: NoticeKind.warning);
         return;
       }
+      _draftTimer?.cancel();
+      await _drafts?.clear();
+      if (!mounted) return;
       showNotice(context, '${result['created'] ?? 0} produk baru, ${result['updated'] ?? 0} diubah, ${result['unchanged'] ?? 0} tidak berubah.', kind: NoticeKind.success);
       Navigator.of(context).pop(true);
     } catch (e) { if (mounted) { setState(() => error = e is FormatException ? e.message : e.toString()); showError(context, e); } }

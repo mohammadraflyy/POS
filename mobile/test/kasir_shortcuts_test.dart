@@ -24,8 +24,9 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
     guard = MutationGuard(MemoryPending()); await guard.load();
     store = LiveStore(BusinessApi((path, {required method, query, body}) async {
-      if (path == '/v1/catalog/search') return {'data': [{'id': 1, 'namaItem': 'Kopi Sachet', 'kodeItem': 'KOPI1', 'satuan': 'PCS', 'stok': 50, 'hargaJual': 1500}], 'currentPage': 1, 'lastPage': 1};
-      if (path == '/v1/customers') return {'names': <String>[]};
+      if (path == '/v1/catalog/search') return {'data': [{'id': 1, 'namaItem': 'Kopi Sachet', 'kodeItem': 'KOPI1', 'satuan': 'PCS', 'stok': 50, 'hargaJual': 1500,
+        'units': [{'productUnitId': 7, 'satuan': 'RENTENG', 'konversi': 10, 'hargaJual': 14000}]}], 'currentPage': 1, 'lastPage': 1};
+      if (path == '/v1/customers') return {'names': <String>['Bu Siti', 'Pak Budi']};
       if (path == '/v1/carts/price') return {'lines': [{'stokCukup': true, 'hargaJual': 1500}], 'subtotal': 1500, 'diskon': 0, 'total': 1500};
       throw StateError('Unexpected request: $path');
     }), guard);
@@ -75,20 +76,56 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('/ and PageDown jump back to the search box', (tester) async {
+  testWidgets('PageDown jumps back to the search box', (tester) async {
     await openTill(tester);
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pump();
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.slash);
-    await tester.pump();
-    expect(searchField(tester).focusNode!.hasFocus, isTrue);
-
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
     await tester.pump();
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
+    await finish(tester);
+  });
+
+  testWidgets('/ opens the product palette: arrows pick the unit, Enter adds the Jumlah', (tester) async {
+    await openTill(tester);
+    await tester.enterText(find.widgetWithText(TextField, 'Jumlah'), '2');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.slash);
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    expect(find.text('Cari barang'), findsOneWidget);
+    expect(find.text('Kopi Sachet · RENTENG'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.go);
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    final renteng = store.items.firstWhere((i) => i.unit.id == 7);
+    expect(renteng.quantity, 2);
+    await finish(tester);
+  });
+
+  testWidgets('Alt+P picks a customer - a new name too - and payment starts with it', (tester) async {
+    await openTill(tester);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyP);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pumpAndSettle();
+    expect(find.text('Pilih pelanggan'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).last, 'Bu Rina');
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    expect(find.text('Pelanggan baru: Bu Rina'), findsOneWidget);
+    await tester.testTextInput.receiveAction(TextInputAction.go);
+    await tester.pumpAndSettle();
+    expect(store.customerName, 'Bu Rina');
+    expect(find.text('Pelanggan: Bu Rina'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Bu Rina'), findsOneWidget);
     await finish(tester);
   });
 
