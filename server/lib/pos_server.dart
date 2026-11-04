@@ -14,6 +14,7 @@ import 'src/printing/printer.dart';
 import 'src/printing/receipts.dart';
 
 export 'src/db/db.dart' show Db;
+export 'src/embedded.dart' show PortInUseException, defaultLegacyDbPath, defaultShopDbPath, importLegacyOnFirstRun, startEmbeddedServer;
 export 'src/domain/pairing.dart' show PairingCodes;
 export 'src/http/api.dart' show ApiContext;
 export 'src/http/app.dart' show buildHandler;

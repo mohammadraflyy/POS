@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'core/theme.dart';
 import 'Widgets/ui.dart';
@@ -6,7 +7,12 @@ import 'state/app_state.dart';
 import 'Screen/MainScreen.dart';
 import 'Screen/Pairing/PairingScreen.dart';
 import 'Screen/SplashScreen.dart';
-void main() { WidgetsFlutterBinding.ensureInitialized(); runApp(const MyApp()); }
+import 'Screen/LocalServerGate.dart';
+/// The shop PC (Windows) is also the server; phones connect to it over Wi-Fi.
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(Platform.isWindows ? const LocalServerGate(child: MyApp()) : const MyApp());
+}
 class MyApp extends StatefulWidget {
   const MyApp({super.key, this.app});
   /// Injected by tests; the real app builds its own.
