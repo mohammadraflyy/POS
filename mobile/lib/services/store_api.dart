@@ -23,11 +23,18 @@ class StoreApi extends BusinessApi {
   Future<Map<String, dynamic>> rekap(String from, String to) => getObject('/v1/rekap', {'from': from, 'to': to});
   Future<FileResponse> rekapExport(String from, String to) => file('/v1/rekap/export', query: {'from': from, 'to': to});
 
+  // --- koreksi HPP (body: saleItemId, scope item|period, from, to, hargaPokok in rupiah) ---
+  Future<Map<String, dynamic>> previewCostCorrection(Map<String, dynamic> body) async => jsonObject(await post('/v1/rekap/cost-corrections/preview', body));
+  Future<Map<String, dynamic>> applyCostCorrection(Map<String, dynamic> body) async => jsonObject(await post('/v1/rekap/cost-corrections', body));
+  Future<List<Map<String, dynamic>>> costCorrections() => getRows('/v1/rekap/cost-corrections');
+
   // --- sales (admin actions + bon) ---
   Future<Object?> payBon(int saleId, num jumlah, String? keterangan) => post('/v1/sales/$saleId/bon-payments', {'jumlah': jumlah, 'keterangan': keterangan});
   Future<Object?> addItemsToBon(int saleId, List<Map<String, dynamic>> items) => post('/v1/sales/$saleId/items', {'items': items});
   Future<Object?> cancelSale(int saleId) => post('/v1/sales/$saleId/cancel');
   Future<Object?> deleteSale(int saleId) => delete('/v1/sales/$saleId');
+  Future<Map<String, dynamic>> purgeTodaySales() async => jsonObject(await post('/v1/sales-purge/today'));
+  Future<Map<String, dynamic>> purgeSalesBefore(String before) async => jsonObject(await post('/v1/sales-purge/before', {'before': before}));
 
   // --- products ---
   Future<Map<String, dynamic>> products(String search, int page, {int pageSize = 25}) =>
@@ -35,6 +42,7 @@ class StoreApi extends BusinessApi {
   Future<Map<String, dynamic>> product(int id) => getObject('/v1/products/$id');
   Future<Object?> updateProduct(int id, Map<String, dynamic> body) => put('/v1/products/$id', body);
   Future<Object?> deleteProduct(int id) => delete('/v1/products/$id');
+  Future<Map<String, dynamic>> bulkDeleteProducts(List<int> ids) async => jsonObject(await post('/v1/products/bulk-delete', {'ids': ids}));
   Future<Map<String, dynamic>> saveProducts(List<Map<String, dynamic>> rows) async => jsonObject(await post('/v1/products/bulk-save', {'rows': rows}));
   Future<Object?> addUnit(int productId, Map<String, dynamic> body) => post('/v1/products/$productId/units', body);
   Future<Object?> updateUnit(int productId, int unitRowId, Map<String, dynamic> body) => put('/v1/products/$productId/units/$unitRowId', body);

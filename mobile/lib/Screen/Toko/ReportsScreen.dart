@@ -4,6 +4,7 @@ import '../../models/live_models.dart';
 import '../../services/store_api.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/ui.dart';
+import 'CostCorrectionDialog.dart';
 
 /// Cash paid out for anything but goods - water, wages, fuel.
 class ExpensesScreen extends StatefulWidget {
@@ -149,6 +150,12 @@ class _RekapScreenState extends State<RekapScreen> {
       if (mounted) await saveDownload(context, file, 'rekap-${isoDate(range.start)}-${isoDate(range.end)}.xlsx');
     } catch (e) { if (mounted) showError(context, e); }
   }
+  Future<void> correct(Map<String, dynamic> row) async {
+    final count = await showCostCorrectionDialog(context, api: widget.api, row: row, range: range);
+    if (count == null || !mounted) return;
+    showNotice(context, '$count baris dikoreksi. Rekap dihitung ulang.', kind: NoticeKind.success);
+    load();
+  }
   List<Map<String, dynamic>> rowsOf(String key) => data == null ? const [] : jsonRows(data![key]);
   Widget section(String title, Widget child) => Padding(padding: const EdgeInsets.only(top: Space.xl), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
     Text(title, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: Space.sm), child]));
@@ -165,11 +172,13 @@ class _RekapScreenState extends State<RekapScreen> {
     final penjelasan = data?['penjelasanLaba'] is Map ? jsonObject(data!['penjelasanLaba']) : const <String, dynamic>{};
     final stock = data?['stockValue'] is Map ? jsonObject(data!['stockValue']) : const <String, dynamic>{};
     final saran = penjelasan.isEmpty ? const <Map<String, dynamic>>[] : jsonRows(penjelasan['saran']);
+    final rugi = penjelasan['barisRugi'] is List ? jsonRows(penjelasan['barisRugi']) : const <Map<String, dynamic>>[];
     return ScreenBody(onRefresh: load, children: [
       ScreenHeader('Rekap', 'Omzet dihitung saat uang diterima: bon masuk saat lunas.', actions: [
         OutlinedButton.icon(onPressed: () async { final picked = await pickRange(context, range); if (picked != null) { range = picked; load(); } },
           icon: const Icon(Icons.date_range), label: Text(rangeLabel(range))),
         if (isDesktop) OutlinedButton.icon(onPressed: export, icon: const Icon(Icons.download), label: const Text('Ekspor Excel')),
+        OutlinedButton.icon(onPressed: () => showCostCorrectionHistory(context, widget.api), icon: const Icon(Icons.history), label: const Text('Riwayat koreksi HPP')),
       ]),
       LoadSwitch(loading: loading && data == null, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Wrap(spacing: Space.md, runSpacing: Space.md, children: [
@@ -190,6 +199,15 @@ class _RekapScreenState extends State<RekapScreen> {
           if ((number(penjelasan['jumlahBarisRugi']) ?? 0) > 0)
             SummaryRow('${penjelasan['jumlahBarisRugi']} baris terjual rugi', rupiah(penjelasan['totalRugi']), color: errorColor),
         ]))),
+        if (rugi.isNotEmpty) section(rugi.length < (number(penjelasan['jumlahBarisRugi']) ?? 0) ? 'Terjual di bawah modal (${rugi.length} terbesar)' : 'Terjual di bawah modal',
+          DataView<Map<String, dynamic>>(rows: rugi, actionsWidth: 190,
+            actions: (r) => [TextButton(onPressed: loading ? null : () => correct(r), child: const Text('Koreksi HPP'))],
+            columns: [
+              DataCol('Barang', (r) => '${r['namaItem']} (${r['satuan']}) · nota #${r['saleId']}', flex: 3),
+              DataCol('Perhitungan', (r) => '${quantityText(r['qty'])} × (${rupiah(r['hargaJual'])} jual − ${rupiah(r['hargaPokok'])} modal)'
+                '${(number(r['diskon']) ?? 0) > 0 ? ' − diskon ${rupiah(r['diskon'])}' : ''}', flex: 4),
+              DataCol('Laba', (r) => rupiah(r['laba']), numeric: true),
+            ])),
         if (saran.isNotEmpty) section('Saran', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (final s in saran) Padding(padding: const EdgeInsets.only(bottom: Space.sm), child: WhitePanel(child: Row(children: [
             Icon(s['status'] == 'diperbaiki' ? Icons.check_circle_outline : Icons.lightbulb_outline, color: s['status'] == 'diperbaiki' ? successColor : warningColor),

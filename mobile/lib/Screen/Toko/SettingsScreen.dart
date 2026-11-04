@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../models/live_models.dart';
 import '../../services/store_api.dart';
@@ -72,6 +73,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
       message: 'Perangkat ini langsung keluar dan harus dihubungkan ulang.')) { return; }
     if (mounted && await runAction(context, () => widget.api.revokeDevice(idNumber(d['id'])))) load();
   }
+  /// Clears test or mistaken sales made today and returns their stock. Bons that already
+  /// took a payment are skipped.
+  Future<void> purgeToday() async {
+    if (!await confirmAction(context, title: 'Hapus transaksi hari ini?', destructive: true, confirmLabel: 'Hapus permanen',
+      message: 'Semua transaksi hari ini dihapus permanen dan stok yang terjual dikembalikan, termasuk bon yang belum ada pembayarannya. '
+        'Bon yang sudah ada pembayarannya dilewati. Tindakan ini tidak bisa dibatalkan.')) { return; }
+    try {
+      final result = await widget.api.purgeTodaySales();
+      if (!mounted) return;
+      final skipped = (number(result['skipped']) ?? 0).toInt();
+      showNotice(context, skipped > 0
+        ? '${result['deleted']} transaksi dihapus, $skipped dilewati (sudah ada pembayaran bon).'
+        : '${result['deleted']} transaksi dihapus.', kind: NoticeKind.success);
+    } catch (e) { if (mounted) showError(context, e); }
+  }
+
+  /// Drops old history before a date. Stock stays as it is; unpaid bons go with it.
+  Future<void> purgeBefore() async {
+    String? before;
+    final picked = await showFormDialog(context, title: 'Hapus riwayat transaksi', saveLabel: 'Lanjut', fields: const [
+      FieldSpec('before', 'Hapus semua transaksi sebelum tanggal', kind: FieldKind.date, required: true),
+    ]);
+    before = picked?['before']?.toString();
+    if (before == null || !mounted) return;
+    if (!await confirmAction(context, title: 'Hapus riwayat sebelum ${dateText(DateTime.parse(before))}?', destructive: true, confirmLabel: 'Hapus permanen',
+      message: 'Semua transaksi sebelum tanggal ini dihapus permanen, termasuk bon yang belum lunas - piutangnya ikut hilang. '
+        'Tindakan ini tidak bisa dibatalkan.')) { return; }
+    try {
+      final result = await widget.api.purgeSalesBefore(before);
+      if (mounted) showNotice(context, '${result['deleted']} transaksi dihapus.', kind: NoticeKind.success);
+    } catch (e) { if (mounted) showError(context, e); }
+  }
+
   @override Widget build(BuildContext context) => ScreenBody(onRefresh: load, maxWidth: 900, children: [
     ScreenHeader('Pengaturan', 'Data toko, printer struk, dan perangkat yang terhubung.'),
     LoadSwitch(loading: loading, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -102,6 +136,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             DataCol('Terakhir aktif', (d) => d['lastUsedAt'] == null ? '—' : dateTimeLabel(d['lastUsedAt']), flex: 2),
             DataCol('Status', (d) => d['revokedAt'] == null ? 'Aktif' : 'Dicabut'),
           ]),
+        const SizedBox(height: Space.xl),
+        const ScreenHeader('Zona berbahaya', 'Tindakan permanen yang tidak bisa dibatalkan.'),
+        Container(
+          padding: const EdgeInsets.all(Space.lg),
+          decoration: BoxDecoration(color: surface, border: Border.all(color: errorColor.withValues(alpha: 0.5)), borderRadius: BorderRadius.circular(Corners.panel)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('Hapus transaksi hari ini', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: Space.xs),
+            const Text('Untuk membersihkan transaksi tes atau salah input. Stoknya dikembalikan; bon yang sudah dibayar sebagian dilewati.', style: TextStyle(color: muted)),
+            const SizedBox(height: Space.md),
+            Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(onPressed: purgeToday,
+              style: OutlinedButton.styleFrom(foregroundColor: errorColor), icon: const Icon(Icons.delete_sweep_outlined), label: const Text('Hapus transaksi hari ini'))),
+            const Divider(height: Space.xxl),
+            const Text('Hapus riwayat transaksi', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: Space.xs),
+            const Text('Hapus semua transaksi sebelum tanggal tertentu, termasuk bon yang belum lunas. Stok tidak berubah.', style: TextStyle(color: muted)),
+            const SizedBox(height: Space.md),
+            Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(onPressed: purgeBefore,
+              style: OutlinedButton.styleFrom(foregroundColor: errorColor), icon: const Icon(Icons.history_toggle_off), label: const Text('Hapus riwayat…'))),
+          ]),
+        ),
       ],
     ])),
   ]);

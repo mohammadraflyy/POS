@@ -93,12 +93,21 @@ class DataCol<T> {
 
 class DataView<T> extends StatelessWidget {
   const DataView({super.key, required this.rows, required this.columns, this.onTap, this.actions,
-    this.emptyTitle = 'Belum ada data', this.emptyMessage = 'Data akan tampil di sini.'});
+    this.emptyTitle = 'Belum ada data', this.emptyMessage = 'Data akan tampil di sini.', this.isSelected, this.onSelect, this.actionsWidth = 120});
   final List<T> rows;
   final List<DataCol<T>> columns;
   final void Function(T row)? onTap;
   final List<Widget> Function(T row)? actions;
   final String emptyTitle, emptyMessage;
+
+  /// Room for [actions] on wide screens; widen it for text buttons.
+  final double actionsWidth;
+
+  /// Both set: each row gets a checkbox, for actions on several rows at once.
+  final bool Function(T row)? isSelected;
+  final void Function(T row, bool selected)? onSelect;
+  bool get _selectable => isSelected != null && onSelect != null;
+  Widget _checkbox(T row) => SizedBox(width: 40, child: Checkbox(value: isSelected!(row), onChanged: (v) => onSelect!(row, v ?? false)));
   @override Widget build(BuildContext context) {
     if (rows.isEmpty) return EmptyPanel(icon: Icons.inbox_outlined, title: emptyTitle, message: emptyMessage);
     return LayoutBuilder(builder: (context, box) {
@@ -109,7 +118,10 @@ class DataView<T> extends StatelessWidget {
           child: Container(width: double.infinity, padding: const EdgeInsets.all(Space.lg),
             decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(columns.first.cell(row), style: Theme.of(context).textTheme.titleMedium),
+              Row(children: [
+                if (_selectable) _checkbox(row),
+                Expanded(child: Text(columns.first.cell(row), style: Theme.of(context).textTheme.titleMedium)),
+              ]),
               const SizedBox(height: Space.xs),
               Wrap(spacing: Space.lg, runSpacing: Space.xs, children: [
                 for (final col in columns.skip(1)) Text('${col.label}: ${col.cell(row)}', style: Theme.of(context).textTheme.bodySmall),
@@ -120,17 +132,19 @@ class DataView<T> extends StatelessWidget {
       return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
         clipBehavior: Clip.antiAlias, child: Column(children: [
           Container(color: canvas, padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Row(children: [
+            if (_selectable) const SizedBox(width: 40),
             for (final col in columns) Expanded(flex: col.flex, child: Text(col.label, textAlign: col.numeric ? TextAlign.end : TextAlign.start,
               style: const TextStyle(fontWeight: FontWeight.w600, color: muted, fontSize: 13))),
-            if (actions != null) const SizedBox(width: 120),
+            if (actions != null) SizedBox(width: actionsWidth),
           ])),
           for (final row in rows) InkWell(onTap: onTap == null ? null : () => onTap!(row), child: Container(
             padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
             decoration: const BoxDecoration(border: Border(top: BorderSide(color: lineColor))),
             child: Row(children: [
+              if (_selectable) _checkbox(row),
               for (final col in columns) Expanded(flex: col.flex, child: Text(col.cell(row), textAlign: col.numeric ? TextAlign.end : TextAlign.start,
                 style: col.numeric ? amountStyle.copyWith(fontWeight: FontWeight.w500) : null)),
-              if (actions != null) SizedBox(width: 120, child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions!(row))),
+              if (actions != null) SizedBox(width: actionsWidth, child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions!(row))),
             ]))),
         ]));
     });

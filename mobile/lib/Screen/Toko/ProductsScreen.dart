@@ -38,6 +38,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   List<Map<String, dynamic>> rows = [];
   String search = '';
   int page = 1, last = 1, total = 0, serial = 0;
+  final Set<int> selectedIds = {};
   bool loading = true;
   String? error;
   @override void initState() { super.initState(); load(); }
@@ -82,6 +83,24 @@ class _ProductsScreenState extends State<ProductsScreen> {
     if (mounted && await runAction(context, () => widget.api.deleteProduct(idNumber(p['id'])), success: 'Produk dihapus.')) load(target: page);
   }
 
+  /// Deletes every ticked product it can; those with sales or purchases are refused by the
+  /// server and listed, since their history must stay readable.
+  Future<void> removeSelected() async {
+    final count = selectedIds.length;
+    if (!await confirmAction(context, title: 'Hapus $count produk terpilih?', destructive: true, confirmLabel: 'Hapus',
+      message: 'Produk yang sudah punya riwayat transaksi tidak ikut terhapus. Nonaktifkan saja lewat Ubah.')) { return; }
+    try {
+      final result = await widget.api.bulkDeleteProducts(selectedIds.toList());
+      if (!mounted) return;
+      final blocked = (result['blocked'] as List? ?? const []).map((e) => e.toString()).toList();
+      setState(selectedIds.clear);
+      showNotice(context, blocked.isEmpty ? '${result['deleted']} produk dihapus.'
+        : '${result['deleted']} produk dihapus. ${blocked.length} tidak bisa dihapus karena sudah punya riwayat transaksi: ${blocked.join(', ')}.',
+        kind: blocked.isEmpty ? NoticeKind.success : NoticeKind.warning);
+      load(target: page);
+    } catch (e) { if (mounted) showError(context, e); }
+  }
+
   Future<void> import(String kind, String label) async {
     final file = await pickSpreadsheet();
     if (file == null || !mounted) return;
@@ -96,6 +115,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
   @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), children: [
     ScreenHeader('Produk', '$total produk. Harga dan stok di sini yang dipakai kasir.', actions: [
       if (widget.isAdmin) FilledButton.icon(onPressed: create, icon: const Icon(Icons.add), label: const Text('Produk baru')),
+      if (widget.isAdmin && selectedIds.isNotEmpty) OutlinedButton.icon(onPressed: removeSelected,
+        style: OutlinedButton.styleFrom(foregroundColor: errorColor), icon: const Icon(Icons.delete_outline), label: Text('Hapus terpilih (${selectedIds.length})')),
       if (widget.isAdmin && isDesktop) PopupMenuButton<(String, String)>(tooltip: 'Impor dari Excel',
         onSelected: (choice) => import(choice.$1, choice.$2),
         itemBuilder: (_) => const [
@@ -111,6 +132,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
     if (loading) const LinearProgressIndicator(minHeight: 2),
     LoadSwitch(loading: false, error: error, onRetry: load, child: DataView<Map<String, dynamic>>(rows: rows,
       emptyTitle: 'Produk tidak ditemukan', emptyMessage: 'Coba kata pencarian lain.',
+      isSelected: widget.isAdmin ? (p) => selectedIds.contains(idNumber(p['id'])) : null,
+      onSelect: widget.isAdmin ? (p, on) => setState(() => on ? selectedIds.add(idNumber(p['id'])) : selectedIds.remove(idNumber(p['id']))) : null,
       onTap: (p) async { await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(api: widget.api, productId: idNumber(p['id']), isAdmin: widget.isAdmin))); if (mounted) load(target: page); },
       actions: widget.isAdmin ? (p) => [
         IconButton(tooltip: 'Ubah', onPressed: () => edit(p), icon: const Icon(Icons.edit_outlined, size: 20)),
