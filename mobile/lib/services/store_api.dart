@@ -43,6 +43,7 @@ class StoreApi extends BusinessApi {
   Future<Object?> updateProduct(int id, Map<String, dynamic> body) => put('/v1/products/$id', body);
   Future<Object?> deleteProduct(int id) => delete('/v1/products/$id');
   Future<Map<String, dynamic>> bulkDeleteProducts(List<int> ids) async => jsonObject(await post('/v1/products/bulk-delete', {'ids': ids}));
+  Future<List<Map<String, dynamic>>> productsByIds(List<int> ids) async => jsonRows(await post('/v1/products/by-ids', {'ids': ids}));
   Future<Map<String, dynamic>> saveProducts(List<Map<String, dynamic>> rows) async => jsonObject(await post('/v1/products/bulk-save', {'rows': rows}));
   Future<Object?> addUnit(int productId, Map<String, dynamic> body) => post('/v1/products/$productId/units', body);
   Future<Object?> updateUnit(int productId, int unitRowId, Map<String, dynamic> body) => put('/v1/products/$productId/units/$unitRowId', body);

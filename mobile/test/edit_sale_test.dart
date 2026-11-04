@@ -117,4 +117,34 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async => db.close());
   });
+
+  testWidgets('mass input adds several products at once and refuses a bad row', (tester) async {
+    await start(tester, Menu.produk);
+    await tapText(tester, 'Input massal');
+    final cells = find.byType(TextField);
+    // row 1: a code that already exists, so the whole save is refused and the row is marked
+    await tester.enterText(cells.at(0), 'AQUAG');
+    await tester.enterText(cells.at(2), 'Galon kembar');
+    await tester.enterText(cells.at(6), '6000');
+    // row 2: a good new product
+    await tester.enterText(cells.at(8), 'ES01');
+    await tester.enterText(cells.at(10), 'Es Batu');
+    await tester.enterText(cells.at(13), '1000');
+    await tester.enterText(cells.at(14), '2000');
+    await tester.enterText(cells.at(15), '25');
+    await tapText(tester, 'Simpan 2 baris');
+    expect(find.textContaining('Baris 1:'), findsOneWidget);
+    expect(await tester.runAsync(() async => db.scalar<int>("SELECT count(*) FROM products WHERE kode_item = 'ES01'")), 0, reason: 'all or nothing');
+    await tapText(tester, 'Mengerti');
+
+    await tester.enterText(cells.at(0), 'GLN2');
+    await tapText(tester, 'Simpan 2 baris');
+    final added = await tester.runAsync(() async => db.select("SELECT kode_item, harga_jual, stok FROM products WHERE kode_item IN ('GLN2', 'ES01') ORDER BY kode_item"));
+    expect(added, [
+      {'kode_item': 'ES01', 'harga_jual': 200000, 'stok': 25},
+      {'kode_item': 'GLN2', 'harga_jual': 600000, 'stok': 0},
+    ]);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async => db.close());
+  });
 }

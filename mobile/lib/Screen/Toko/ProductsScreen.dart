@@ -6,6 +6,7 @@ import '../../services/store_api.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/ui.dart';
 import 'ProductDetailScreen.dart';
+import 'MassInputScreen.dart';
 
 /// Katalog: products on one tab, the shared unit list (Master Satuan) on the other.
 class ProductsHub extends StatelessWidget {
@@ -122,6 +123,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
     } catch (e) { if (mounted) showError(context, e); }
   }
 
+  /// The desktop's grid: empty for many new products, or filled with the ticked ones.
+  Future<void> massInput({bool ticked = false}) async {
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => MassInputScreen(api: widget.api, ids: ticked ? selectedIds.toList() : const [])));
+    if (changed == true && mounted) { setState(selectedIds.clear); load(target: page); }
+  }
+
   Future<void> import(String kind, String label) async {
     final file = await pickSpreadsheet();
     if (file == null || !mounted) return;
@@ -136,6 +143,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
   @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), children: [
     ScreenHeader('Produk', '$total produk. Harga dan stok di sini yang dipakai kasir.', actions: [
       if (widget.isAdmin) FilledButton.icon(onPressed: create, icon: const Icon(Icons.add), label: const Text('Produk baru')),
+      if (widget.isAdmin) OutlinedButton.icon(onPressed: () => massInput(), icon: const Icon(Icons.table_rows_outlined, size: 18), label: const Text('Input massal')),
+      if (widget.isAdmin && selectedIds.isNotEmpty) OutlinedButton.icon(onPressed: () => massInput(ticked: true), icon: const Icon(Icons.edit_outlined, size: 18), label: Text('Ubah massal (${selectedIds.length})')),
       if (widget.isAdmin && selectedIds.isNotEmpty) OutlinedButton.icon(onPressed: removeSelected,
         style: OutlinedButton.styleFrom(foregroundColor: errorColor), icon: const Icon(Icons.delete_outline), label: Text('Hapus terpilih (${selectedIds.length})')),
       if (widget.isAdmin && isDesktop) PopupMenuButton<(String, String)>(tooltip: 'Impor dari Excel',
