@@ -73,17 +73,23 @@ hapus transaksi hari ini / sebelum tanggal). Kasir di PC memakai tombol pintas
 desktop: End atau F12 bayar, F3 ubah jumlah, Alt+K kosongkan, F2/PageDown atau `/` cari.
 Installer Windows: `windows/installer/build.ps1`. 55 test lolos.
 
+**Ikut dari desktop sesudahnya (2026-11-05):** tombol pintas kasir dan bayar
+(PageUp Jumlah, PageDown/F2 cari, End/F12 bayar, F3, Alt+K, Alt+T/B/Q/R/S, Esc),
+pemindai barcode di mana saja (kasir dan pembelian), kolom Jumlah dan subtotal per
+baris, cetak struk dengan pertanyaan "Cetak struk #N?" sesudah simpan, edit nota,
+tanggal transaksi + biaya lain + keterangan, edit pembelian dan harga jual per baris
+pembelian, keranjang tersimpan otomatis, input/ubah massal produk, Ctrl+B menu.
+Tampilan didesain ulang dengan taste-skill (gaya achromatic ledger).
+
 **Sengaja tidak dibuat:**
 - Efisiensi harga. Di desktop juga disembunyikan (`EFISIENSI_HARGA_AKTIF = false`
   di `Rekap.tsx`). Servernya sudah siap kalau nanti mau ditampilkan.
 - Command palette dan Alt+P (pilih pelanggan). Di Flutter, pencarian ada di layar
   kasir dan pelanggan dipilih di layar bayar.
+- Draf Input massal untuk produk baru (desktop menyimpannya); keranjang kasir tersimpan.
 
-**Untuk tahap HP (belum):**
-- Tombol "jangan cetak struk" saat bayar dan kolom ubah harga jual saat pembelian.
-  Server sudah mendukung keduanya.
-- Kode server ikut terbawa ke APK walaupun tidak dipakai di Android. APK debug
-  naik dari 177 MB ke 217 MB, jadi perlu dipisah sebelum APK dibagikan.
+**Untuk tahap HP:** kode server ikut terbawa ke APK. APK rilis arm64 29,9 MB, server
+menyumbang sekitar 2-3 MB; dibiarkan, karena memisahkannya butuh dua titik masuk.
 
 ## Keputusan (2026-11-04)
 
