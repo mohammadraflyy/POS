@@ -76,8 +76,10 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
       final unit = unitRowId == null || unitRowId == idNumber(base?['id'] ?? -1) ? liveUnits.first : liveUnits.where((u) => u.id == unitRowId).firstOrNull;
       if (unit == null) throw ApiFailure('Nota ini tidak bisa diubah: satuan ${product.name} sudah dihapus.');
       final lineDiscount = number(item['diskon']) ?? 0;
+      final histPrice = number(item['hargaJual']);
       lines.add(LiveCartItem(product: product, unit: unit, quantity: number(item['qty']) ?? 1,
-        manualPrice: number(item['hargaJual']), discount: lineDiscount > 0 ? lineDiscount : null));
+        manualPrice: histPrice, discount: lineDiscount > 0 ? lineDiscount : null,
+        priceNote: histPrice != null ? 'Harga riwayat nota (${rupiah(histPrice)})' : 'Harga riwayat nota'));
     }
     store.startEdit(saleId: saleId, lines: lines,
       date: DateTime.tryParse(data['createdAt']?.toString() ?? '')?.toLocal() ?? DateTime.now(),

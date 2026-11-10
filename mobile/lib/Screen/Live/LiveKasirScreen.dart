@@ -53,16 +53,56 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
 
   void addOne(LiveProduct p, {LiveUnit? unit}) {
     final sold = unit ?? p.units.first;
-    final existing = widget.store.items.where((i) => i.product.id == p.id && i.unit.id == sold.id).toList();
-    final old = existing.isEmpty ? null : existing.first;
+    final isEditingSale = widget.store.editingSaleId != null;
+    final currentPrice = sold.price;
+    final existingLines = widget.store.items.where((i) => i.product.id == p.id && i.unit.id == sold.id).toList();
+
     try {
-      widget.store.put(LiveCartItem(product: p, unit: sold,
-        quantity: (old?.quantity ?? 0) + enteredQty, manualPrice: old?.manualPrice, discount: old?.discount));
+      if (isEditingSale && existingLines.isNotEmpty) {
+        final samePriceLine = existingLines.where((i) => (i.manualPrice ?? i.unit.price) == currentPrice).firstOrNull;
+        if (samePriceLine != null) {
+          widget.store.put(LiveCartItem(
+            product: p,
+            unit: sold,
+            quantity: samePriceLine.quantity + enteredQty,
+            manualPrice: samePriceLine.manualPrice,
+            discount: samePriceLine.discount,
+            priceNote: samePriceLine.priceNote,
+          ));
+        } else {
+          final histLine = existingLines.first;
+          final histPrice = histLine.manualPrice ?? histLine.unit.price;
+          final newLine = LiveCartItem(
+            product: p,
+            unit: sold,
+            quantity: enteredQty,
+            manualPrice: currentPrice,
+            priceNote: 'Tambahan baru · harga katalog (${rupiah(currentPrice)})',
+          );
+          widget.store.put(newLine);
+          showNotice(
+            context,
+            'Harga ${p.name} di katalog (${rupiah(currentPrice)}) berbeda dengan riwayat nota (${rupiah(histPrice)}). Tambahan otomatis dibuat di baris baru.',
+            kind: NoticeKind.info,
+          );
+        }
+      } else {
+        final old = existingLines.isEmpty ? null : existingLines.first;
+        widget.store.put(LiveCartItem(
+          product: p,
+          unit: sold,
+          quantity: (old?.quantity ?? 0) + enteredQty,
+          manualPrice: old?.manualPrice,
+          discount: old?.discount,
+          priceNote: old?.priceNote,
+        ));
+      }
       qty.value = const TextEditingValue(text: '1', selection: TextSelection.collapsed(offset: 1));
       HapticFeedback.lightImpact();
       SystemSound.play(SystemSoundType.click);
+    } catch (e) {
+      showError(context, e);
     }
-    catch (e) { showError(context, e); }
   }
   /// Enter in the search box: a barcode scanner types the code then Enter, so a single
   /// match goes straight into the cart and the box clears for the next scan.

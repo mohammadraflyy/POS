@@ -498,14 +498,14 @@ class ScreenBody extends StatelessWidget {
   @override Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final content = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
-    final list = ListView(physics: const AlwaysScrollableScrollPhysics(),
-      padding: wide ? const EdgeInsets.fromLTRB(Space.xxl, Space.xl, Space.xxl, Space.xxl) : const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.xl), children: [
-      if (maxWidth.isFinite)
-        Align(alignment: Alignment.topLeft, child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: content))
-      else
-        content,
-    ]);
-    return onRefresh == null ? list : RefreshIndicator(onRefresh: onRefresh!, child: list);
+    final scrollable = SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: wide ? const EdgeInsets.fromLTRB(Space.xxl, Space.xl, Space.xxl, Space.xxl) : const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.xl),
+      child: maxWidth.isFinite
+          ? Align(alignment: Alignment.topLeft, child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: content))
+          : content,
+    );
+    return onRefresh == null ? scrollable : RefreshIndicator(onRefresh: onRefresh!, child: scrollable);
   }
 }
 

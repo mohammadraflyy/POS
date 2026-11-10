@@ -154,6 +154,24 @@ class _CartLine extends StatelessWidget {
             const SizedBox(height: 3),
             Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}$tierBadge${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
               style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
+            if (item.priceNote != null && item.priceNote!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: item.priceNote!.contains('riwayat') ? pillWarningBg : pillPositiveBg,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  item.priceNote!,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: item.priceNote!.contains('riwayat') ? pillWarningInk : pillPositiveInk,
+                  ),
+                ),
+              ),
+            ],
             if (short) ...[const SizedBox(height: 2), Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))],
           ])),
           const SizedBox(width: Space.md),

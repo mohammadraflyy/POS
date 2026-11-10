@@ -31,7 +31,7 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
           ? null
           : inputDiscount(discount.text, baseAmount: (unitPrice * qtyVal).round());
       Navigator.pop(context, LiveCartItem(product: widget.product, unit: unit, quantity: qtyVal,
-        manualPrice: manualVal, discount: discVal));
+        manualPrice: manualVal, discount: discVal, priceNote: widget.existing?.priceNote));
     }
     catch (e) { setState(() => error = errorText(e)); showError(context, e); }
   }

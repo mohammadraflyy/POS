@@ -194,6 +194,7 @@ class LiveStore extends ChangeNotifier {
             'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
               'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor}]},
             'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
+            'priceNote': i.priceNote,
           }],
           'discount': q.discount, 'otherCharge': q.otherCharge, 'note': q.note, 'customer': q.customerName,
           if (q.saleDate != null) 'saleDate': q.saleDate!.toIso8601String(),
@@ -203,6 +204,7 @@ class LiveStore extends ChangeNotifier {
         'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
           'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor}]},
         'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
+        'priceNote': i.priceNote,
       }],
       'discount': discount, 'otherCharge': otherCharge, 'note': note, 'customer': customerName,
       if (saleDate != null) 'saleDate': saleDate!.toIso8601String(),
@@ -256,6 +258,7 @@ class LiveStore extends ChangeNotifier {
         quantity: entry['qty'] as num,
         manualPrice: entry['manualPrice'] as num?,
         discount: entry['discount'] as num?,
+        priceNote: entry['priceNote'] as String?,
       ));
     }
     return lines;
@@ -376,6 +379,7 @@ class LiveStore extends ChangeNotifier {
         discount: (existing.discount ?? 0) + (newItem.discount ?? 0) > 0
             ? (existing.discount ?? 0) + (newItem.discount ?? 0)
             : null,
+        priceNote: newItem.priceNote ?? existing.priceNote,
       );
       if (oldIdx >= 0) items.removeAt(oldIdx > dupIdx ? oldIdx : oldIdx);
     } else if (oldIdx >= 0) {

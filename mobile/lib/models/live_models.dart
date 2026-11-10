@@ -95,12 +95,20 @@ class LiveProduct {
   }
 }
 class LiveCartItem {
-  LiveCartItem({required this.product, required this.unit, required this.quantity, this.manualPrice, this.discount});
+  LiveCartItem({
+    required this.product,
+    required this.unit,
+    required this.quantity,
+    this.manualPrice,
+    this.discount,
+    this.priceNote,
+  });
   final LiveProduct product;
   final LiveUnit unit;
   final num quantity;
   final num? manualPrice, discount;
-  String get key => '${product.id}:${unit.id}';
+  final String? priceNote;
+  String get key => manualPrice != null ? '${product.id}:${unit.id}:$manualPrice' : '${product.id}:${unit.id}';
   Map<String, dynamic> toJson() => {
     'productId': product.id, 'productUnitId': unit.id, 'qty': quantity,
     if (manualPrice != null) 'hargaJual': manualPrice, if (discount != null) 'diskon': discount,
