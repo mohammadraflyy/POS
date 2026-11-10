@@ -71,8 +71,8 @@ class UpdaterService {
           if (asset is Map) {
             final name = asset['name']?.toString().toLowerCase() ?? '';
             final isApk = Platform.isAndroid && name.endsWith('.apk');
-            final isExe = (Platform.isWindows || !Platform.isAndroid) && (name.endsWith('.exe') || name.endsWith('.msix'));
-            if (isApk || isExe) {
+            final isWindowsPkg = (Platform.isWindows || !Platform.isAndroid) && (name.endsWith('.exe') || name.endsWith('.msix') || name.endsWith('.zip'));
+            if (isApk || isWindowsPkg) {
               downloadUrl = asset['browser_download_url']?.toString();
               assetName = asset['name']?.toString();
               assetSize = (asset['size'] as num?)?.toInt();
@@ -116,8 +116,17 @@ class UpdaterService {
       }
 
       final total = response.contentLength;
-      final tempDir = Directory.systemTemp;
-      final saveFile = File('${tempDir.path}/$fileName');
+      Directory saveDir = Directory.systemTemp;
+      if (Platform.isAndroid) {
+        try {
+          final paths = await _channel.invokeMethod<Map<Object?, Object?>>('paths');
+          final cachePath = paths?['cacheDir']?.toString();
+          if (cachePath != null && cachePath.isNotEmpty) {
+            saveDir = Directory(cachePath);
+          }
+        } catch (_) {}
+      }
+      final saveFile = File('${saveDir.path}/$fileName');
       final sink = saveFile.openWrite();
 
       var received = 0;

@@ -57,9 +57,41 @@ jobs:
           name: android-apk
           path: Point-of-Sales-Mobile.apk
 
+  build-windows:
+    name: Build Windows Desktop (Flutter)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Build Windows Desktop Release
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter build windows --release
+
+      - name: Archive Windows Artifact
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "mobile/build/windows/x64/runner/Release/*" -DestinationPath "Point-of-Sales-Windows.zip"
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop
+          path: Point-of-Sales-Windows.zip
+
   publish-release:
     name: Publish Release to GitHub
-    needs: [build-android]
+    needs: [build-android, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,6 +115,7 @@ jobs:
           name: Release ${{ steps.tag.outputs.name }}
           files: |
             android-apk/Point-of-Sales-Mobile.apk
+            windows-desktop/Point-of-Sales-Windows.zip
           generate_release_notes: true
           draft: false
           prerelease: false

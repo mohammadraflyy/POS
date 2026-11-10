@@ -19,13 +19,21 @@ class MainActivity : FlutterActivity() {
                     mapOf(
                         "nativeLibraryDir" to applicationInfo.nativeLibraryDir,
                         "filesDir" to filesDir.absolutePath,
+                        "cacheDir" to cacheDir.absolutePath,
                     ),
                 )
                 "installApk" -> {
                     val path = call.argument<String>("path")
                     if (path != null) {
                         try {
-                            val file = File(path)
+                            var file = File(path)
+                            val inCache = file.canonicalPath.startsWith(cacheDir.canonicalPath)
+                            val inFiles = file.canonicalPath.startsWith(filesDir.canonicalPath)
+                            if (!inCache && !inFiles) {
+                                val target = File(cacheDir, file.name)
+                                file.copyTo(target, overwrite = true)
+                                file = target
+                            }
                             val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
                             val intent = Intent(Intent.ACTION_VIEW).apply {
                                 setDataAndType(uri, "application/vnd.android.package-archive")
