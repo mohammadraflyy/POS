@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state/app_state.dart';
@@ -33,6 +34,7 @@ class _MainScreenState extends State<MainScreen> {
   String? _shopName;
   AppUpdateInfo? _availableUpdate;
   bool _dismissedUpdate = false;
+  Timer? _updateCheckTimer;
 
   @override
   void initState() {
@@ -40,10 +42,20 @@ class _MainScreenState extends State<MainScreen> {
     HardwareKeyboard.instance.addHandler(_handleKey);
     _loadShopName();
     _checkUpdateNotice();
+    // Cek pembaruan berkala setiap 30 menit jika aplikasi desktop/mobile terus menyala
+    _updateCheckTimer = Timer.periodic(const Duration(minutes: 30), (_) {
+      if (mounted && _availableUpdate == null) {
+        _checkUpdateNotice();
+      }
+    });
   }
 
   @override
-  void dispose() { HardwareKeyboard.instance.removeHandler(_handleKey); super.dispose(); }
+  void dispose() {
+    _updateCheckTimer?.cancel();
+    HardwareKeyboard.instance.removeHandler(_handleKey);
+    super.dispose();
+  }
 
   Future<void> _checkUpdateNotice() async {
     try {
