@@ -78,6 +78,9 @@ jobs:
           flutter pub get
           flutter build windows --release
 
+      - name: Install NSIS
+        run: choco install nsis -y
+
       - name: Build Windows Installer (.exe)
         shell: pwsh
         run: |
