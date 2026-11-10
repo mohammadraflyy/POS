@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../models/live_models.dart';
+import '../../services/barcode_burst.dart';
 import '../../services/store_api.dart';
+import '../../state/theme_controller.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/ui.dart';
+import '../Pairing/ScanScreen.dart';
 import 'RemoteAccessSection.dart';
 
 /// Store details, receipt printer, and the phones paired to this server.
@@ -55,17 +59,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final code = await widget.api.pairingCode();
       if (!mounted) return;
       final address = code['serverAddress'];
-      if (address == null) throw const FormatException('Server belum terhubung ke jaringan. Sambungkan PC ke Wi-Fi/LAN toko dulu.');
-      final payload = '{"address":"$address","code":"${code['code']}"}';
+      final pin = code['code']?.toString() ?? '';
+      final expiresAt = code['expiresAt'];
+      final payload = address == null ? null : '{"address":"$address","code":"$pin"}';
       await showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('Hubungkan HP baru'),
         content: SizedBox(width: 320, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          QrImageView(data: payload, size: 240, backgroundColor: Colors.white),
-          const SizedBox(height: Space.md),
-          SelectableText('Alamat $address\nKode ${code['code']}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (payload != null) ...[
+            QrImageView(data: payload, size: 240, backgroundColor: Colors.white),
+            const SizedBox(height: Space.md),
+          ] else Padding(
+            padding: const EdgeInsets.only(bottom: Space.md),
+            child: Text('Server belum terhubung ke jaringan Wi-Fi/LAN toko. Sambungkan PC ke jaringan agar QR muncul.',
+              textAlign: TextAlign.center, style: TextStyle(color: warningColor, fontSize: 13)),
+          ),
+          SelectableText('${address == null ? '' : 'Alamat $address\n'}Kode $pin', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (expiresAt != null) Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('Berlaku sampai ${dateTimeLabel(expiresAt)}', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12)),
+          ),
           const SizedBox(height: Space.sm),
           Text('Scan dari aplikasi di HP, lalu login dengan akun kasir. Kode berlaku 5 menit dan hanya sekali pakai.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 13)),
         ])),
-        actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Selesai'))]));
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: pin));
+              showNotice(context, 'Kode $pin disalin.', kind: NoticeKind.info);
+            },
+            icon: const Icon(Icons.copy, size: 16),
+            label: const Text('Salin kode'),
+          ),
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Selesai')),
+        ]));
       load();
     } catch (e) { if (mounted) showError(context, e); }
   }
@@ -124,6 +149,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           OutlinedButton.icon(onPressed: testing ? null : testPrint, icon: const Icon(Icons.print_outlined), label: Text(testing ? 'Mencetak…' : 'Tes cetak')),
         ]),
       ])),
+      const SizedBox(height: Space.xl),
+      const ScreenHeader('Tampilan', 'Pilih tema terang, gelap, atau mengikuti sistem.', section: true),
+      WhitePanel(child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: appTheme,
+        builder: (context, mode, _) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SegmentedButton<ThemeMode>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(value: ThemeMode.light, icon: const Icon(Icons.light_mode_outlined, size: 18), label: Text(ThemeController.labels[ThemeMode.light]!)),
+              ButtonSegment(value: ThemeMode.dark, icon: const Icon(Icons.dark_mode_outlined, size: 18), label: Text(ThemeController.labels[ThemeMode.dark]!)),
+              ButtonSegment(value: ThemeMode.system, icon: const Icon(Icons.brightness_auto_outlined, size: 18), label: Text(ThemeController.labels[ThemeMode.system]!)),
+            ],
+            selected: {mode},
+            onSelectionChanged: (s) => appTheme.choose(s.first),
+          ),
+          const SizedBox(height: Space.sm),
+          Text('Tersimpan di perangkat ini saja.', style: TextStyle(color: muted, fontSize: 12)),
+        ]),
+      )),
+      const SizedBox(height: Space.xl),
+      const ScreenHeader('Tes scanner barcode', 'Coba arahkan scanner ke barcode apa saja untuk memastikan terbaca.', section: true),
+      const _ScannerTestPanel(),
       if (widget.isAdmin) ...[
         const SizedBox(height: Space.xl),
         ScreenHeader('Perangkat terhubung', 'HP dan PC yang bisa mengakses server ini.', section: true, actions: [
@@ -212,4 +259,89 @@ class _UsersScreenState extends State<UsersScreen> {
         DataCol('Peran', (u) => _roles[u['role']] ?? text(u['role'])),
       ])),
   ]);
+}
+
+class _ScannerTestPanel extends StatefulWidget {
+  const _ScannerTestPanel();
+  @override State<_ScannerTestPanel> createState() => _ScannerTestPanelState();
+}
+
+class _ScannerTestPanelState extends State<_ScannerTestPanel> {
+  final _scanner = BarcodeBurst();
+  final _manual = TextEditingController();
+  String? _lastCode;
+  DateTime? _lastTime;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_onKey);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    _manual.dispose();
+    super.dispose();
+  }
+
+  bool _onKey(KeyEvent event) {
+    if (!mounted || ModalRoute.of(context)?.isCurrent == false) return false;
+    if (FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null) return false;
+    final res = _scanner.feed(event);
+    if (res.code != null) {
+      setState(() {
+        _lastCode = res.code;
+        _lastTime = DateTime.now();
+      });
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _scanCamera() async {
+    final code = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanScreen()));
+    if (code != null && mounted) {
+      setState(() {
+        _lastCode = code;
+        _lastTime = DateTime.now();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(children: [
+      Expanded(child: TextField(
+        controller: _manual,
+        onSubmitted: (v) {
+          if (v.trim().isEmpty) return;
+          setState(() {
+            _lastCode = v.trim();
+            _lastTime = DateTime.now();
+            _manual.clear();
+          });
+        },
+        decoration: const InputDecoration(
+          hintText: 'Klik di luar atau di sini lalu scan barcode…',
+          prefixIcon: Icon(Icons.qr_code_scanner, size: 20),
+        ),
+      )),
+      if (!isDesktop) ...[
+        const SizedBox(width: Space.sm),
+        OutlinedButton.icon(onPressed: _scanCamera, icon: const Icon(Icons.camera_alt_outlined, size: 18), label: const Text('Kamera')),
+      ],
+    ]),
+    const SizedBox(height: Space.sm),
+    Text(
+      _lastCode == null
+          ? 'Belum ada barcode yang dibaca.'
+          : 'Terakhir dibaca: $_lastCode (${timeText(_lastTime!)})',
+      style: TextStyle(
+        fontFamily: _lastCode == null ? null : monoFamily,
+        color: _lastCode == null ? muted : successColor,
+        fontWeight: _lastCode == null ? FontWeight.w400 : FontWeight.w600,
+      ),
+    ),
+  ]));
 }
