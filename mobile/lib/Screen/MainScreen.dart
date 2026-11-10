@@ -259,12 +259,41 @@ class _MainScreenState extends State<MainScreen> {
       ])));
     }
 
+    final offline = widget.app.notice != null;
     return Scaffold(
       appBar: AppBar(
         title: Text(menuInfo[_menu]!.title),
         actions: [
-          IconButton(onPressed: _account, tooltip: 'Akun & koneksi',
-            icon: widget.app.notice != null ? Icon(Icons.wifi_off, color: errorColor) : _Initial(widget.app.userName)),
+          IconButton(
+            onPressed: _account,
+            tooltip: widget.app.isDemo
+                ? 'Mode Demo'
+                : offline
+                    ? 'Server terputus'
+                    : 'Server terhubung (${widget.app.userName})',
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (offline)
+                  Icon(Icons.wifi_off, color: errorColor)
+                else
+                  _Initial(widget.app.userName),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: offline ? errorColor : successColor,
+                      border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 1.5),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(width: Space.xs),
         ]),
       body: SafeArea(top: false, child: Column(children: [

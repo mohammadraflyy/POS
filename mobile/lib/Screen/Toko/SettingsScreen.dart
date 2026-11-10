@@ -28,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Uint8List? _logoBytes;
   List<Map<String, dynamic>> printers = [], devices = [];
   bool loading = true, testing = false;
+  bool _showReceiptPreview = false;
   String? error;
   final _updater = UpdaterService();
   bool _checkingUpdate = false;
@@ -296,11 +297,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
               label: const Text('Ubah pengaturan struk'),
             ),
           OutlinedButton.icon(
+            onPressed: () => setState(() => _showReceiptPreview = !_showReceiptPreview),
+            icon: Icon(_showReceiptPreview ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
+            label: Text(_showReceiptPreview ? 'Tutup pratinjau' : 'Pratinjau struk'),
+          ),
+          OutlinedButton.icon(
             onPressed: testing ? null : testPrint,
             icon: const Icon(Icons.print_outlined, size: 18),
             label: Text(testing ? 'Mencetak…' : 'Tes cetak struk'),
           ),
         ]),
+        if (_showReceiptPreview) ...[
+          const SizedBox(height: Space.lg),
+          const Divider(),
+          const SizedBox(height: Space.sm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Pratinjau Hasil Struk', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              Text(settings['receiptWidth'] == '80 mm' ? 'Kertas 80 mm' : 'Kertas 58 mm', style: TextStyle(color: muted, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: Space.sm),
+          Center(
+            child: _ReceiptPaperPreview(
+              storeName: text(settings['namaToko'], 'NAMA TOKO'),
+              address: text(settings['alamat']),
+              phone: text(settings['telepon']),
+              footer: text(settings['pesanFooter'], 'Terima kasih atas kunjungan Anda'),
+              is80mm: settings['receiptWidth'] == '80 mm',
+              logoBytes: _logoBytes,
+            ),
+          ),
+        ],
       ])),
       const SizedBox(height: Space.xl),
       const ScreenHeader('Logo Toko', 'Logo yang tampil di bilah navigasi aplikasi, struk, dan menu.', section: true),
@@ -553,4 +582,111 @@ class _ScannerTestPanelState extends State<_ScannerTestPanel> {
       ),
     ),
   ]));
+}
+
+class _ReceiptPaperPreview extends StatelessWidget {
+  const _ReceiptPaperPreview({
+    required this.storeName,
+    required this.address,
+    required this.phone,
+    required this.footer,
+    required this.is80mm,
+    this.logoBytes,
+  });
+
+  final String storeName;
+  final String address;
+  final String phone;
+  final String footer;
+  final bool is80mm;
+  final Uint8List? logoBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    const mono = TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black87, height: 1.25);
+    const monoBold = TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black, height: 1.25);
+    const divider = Text('--------------------------------', style: mono, textAlign: TextAlign.center);
+
+    return Container(
+      width: is80mm ? 320 : 260,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 3)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (logoBytes != null) ...[
+            Center(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.memory(logoBytes!, width: 44, height: 44, fit: BoxFit.contain),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          Text(storeName.toUpperCase(), style: monoBold, textAlign: TextAlign.center),
+          if (address.isNotEmpty) Text(address, style: mono.copyWith(fontSize: 10), textAlign: TextAlign.center),
+          if (phone.isNotEmpty) Text('Telp: $phone', style: mono.copyWith(fontSize: 10), textAlign: TextAlign.center),
+          divider,
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('#1024', style: mono),
+              Text('10/11/26 14:30', style: mono),
+            ],
+          ),
+          const Text('Kasir: Admin', style: mono),
+          divider,
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Kopi Susu x1', style: mono),
+              Text('8.000', style: mono),
+            ],
+          ),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Mie Instan x2', style: mono),
+              Text('7.000', style: mono),
+            ],
+          ),
+          divider,
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('TOTAL', style: monoBold),
+              Text('Rp15.000', style: monoBold),
+            ],
+          ),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('TUNAI', style: mono),
+              Text('Rp20.000', style: mono),
+            ],
+          ),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('KEMBALI', style: mono),
+              Text('Rp5.000', style: mono),
+            ],
+          ),
+          divider,
+          if (footer.isNotEmpty) ...[
+            Text(footer, style: mono.copyWith(fontStyle: FontStyle.italic, fontSize: 10), textAlign: TextAlign.center),
+            const SizedBox(height: 4),
+          ],
+        ],
+      ),
+    );
+  }
 }

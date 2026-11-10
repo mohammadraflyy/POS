@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme.dart';
 import '../../models/live_models.dart';
 import '../../services/store_api.dart';
@@ -60,6 +61,17 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       if (mounted) await saveDownload(context, file, 'pengeluaran-${isoDate(range.start)}-${isoDate(range.end)}.xlsx');
     } catch (e) { if (mounted) showError(context, e); }
   }
+
+  Map<String, num> get categoryTotals {
+    final map = <String, num>{};
+    for (final r in rows) {
+      final cat = (r['kategori']?.toString() ?? 'Lainnya').trim();
+      final amount = number(r['jumlah']) ?? 0;
+      map[cat] = (map[cat] ?? 0) + amount;
+    }
+    return map;
+  }
+
   @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), maxWidth: 1000, children: [
     ScreenHeader('Pengeluaran', 'Total ${rupiah(totalJumlah)} pada ${rangeLabel(range)}. Belanja barang dicatat di Pembelian.', actions: [
       FilledButton.icon(onPressed: () => edit(), icon: const Icon(Icons.add), label: const Text('Catat')),
@@ -67,6 +79,26 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         icon: const Icon(Icons.date_range), label: Text(rangeLabel(range))),
       if (widget.isAdmin && isDesktop) OutlinedButton.icon(onPressed: export, icon: const Icon(Icons.download), label: const Text('Ekspor Excel')),
     ]),
+    DateQuickChips(selected: range, onChanged: (r) { if (r != null) { range = r; load(); } }),
+    const SizedBox(height: Space.sm),
+    if (categoryTotals.isNotEmpty) ...[
+      Wrap(
+        spacing: Space.xs,
+        runSpacing: Space.xs,
+        children: [
+          for (final entry in categoryTotals.entries)
+            ActionChip(
+              visualDensity: VisualDensity.compact,
+              label: Text('${entry.key}: ${rupiah(entry.value)}'),
+              onPressed: () {
+                search = entry.key;
+                load();
+              },
+            ),
+        ],
+      ),
+      const SizedBox(height: Space.sm),
+    ],
     SearchBox(onChanged: (v) { search = v; load(); }, hint: 'Cari kategori atau keterangan'),
     const SizedBox(height: Space.md),
     if (loading) const LinearProgressIndicator(minHeight: 2),
@@ -115,6 +147,8 @@ class _StockLedgerScreenState extends State<StockLedgerScreen> {
         icon: const Icon(Icons.date_range), label: Text(range == null ? 'Semua tanggal' : rangeLabel(range!))),
       if (range != null) TextButton(onPressed: () { range = null; load(); }, child: const Text('Hapus tanggal')),
     ]),
+    DateQuickChips(selected: range, allowAll: true, onChanged: (r) { range = r; load(); }),
+    const SizedBox(height: Space.sm),
     SearchBox(onChanged: (v) { search = v; load(); }, hint: 'Cari nama atau kode produk'),
     const SizedBox(height: Space.sm),
     Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
@@ -184,6 +218,33 @@ class _RekapScreenState extends State<RekapScreen> {
     final changed = await showEfisiensiHargaDialog(context, widget.api, initialCakupan: initialCakupan);
     if (changed == true && mounted) load();
   }
+
+  void shareRekapWhatsApp() {
+    if (data == null) return;
+    final summary = data!['summary'] is Map ? jsonObject(data!['summary']) : const <String, dynamic>{};
+    final laba = rupiah(summary['labaKotor']);
+    final omzetTunai = rupiah(summary['omzetTunai']);
+    final omzetNonTunai = rupiah(summary['omzetNonTunai']);
+    final totalTrx = text(summary['jumlahTransaksi'], '0');
+    final piutang = rupiah(summary['piutangBeredar']);
+    final period = rangeLabel(range);
+
+    final sb = StringBuffer();
+    sb.writeln('📊 *RINGKASAN REKAP PENJUALAN TOKO*');
+    sb.writeln('📅 Periode: $period');
+    sb.writeln('-----------------------------------');
+    sb.writeln('💰 *Laba Kotor:* $laba');
+    sb.writeln('💵 *Omzet Tunai:* $omzetTunai');
+    sb.writeln('💳 *Omzet Non-Tunai:* $omzetNonTunai');
+    sb.writeln('🧾 *Jumlah Transaksi:* $totalTrx');
+    sb.writeln('⏳ *Piutang Bon Beredar:* $piutang');
+    sb.writeln('-----------------------------------');
+    sb.writeln('_Dicetak otomatis dari POS Kasir Toko_');
+
+    Clipboard.setData(ClipboardData(text: sb.toString()));
+    showNotice(context, 'Teks rekap berhasil disalin ke clipboard! Siap ditempel di WhatsApp.', kind: NoticeKind.success);
+  }
+
   List<Map<String, dynamic>> rowsOf(String key) => data == null ? const [] : jsonRows(data![key]);
   Widget section(String title, Widget child) => Padding(padding: const EdgeInsets.only(top: Space.xl), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
     Text(title, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: Space.sm), child]));
@@ -213,10 +274,13 @@ class _RekapScreenState extends State<RekapScreen> {
       ScreenHeader('Rekap', 'Omzet dihitung saat uang diterima: bon masuk saat lunas.', actions: [
         OutlinedButton.icon(onPressed: () async { final picked = await pickRange(context, range); if (picked != null) { range = picked; load(); } },
           icon: const Icon(Icons.date_range), label: Text(rangeLabel(range))),
+        OutlinedButton.icon(onPressed: shareRekapWhatsApp, icon: const Icon(Icons.share_outlined), label: const Text('Bagi ke WA')),
         if (isDesktop) OutlinedButton.icon(onPressed: export, icon: const Icon(Icons.download), label: const Text('Ekspor Excel')),
         if (widget.isAdmin) OutlinedButton.icon(onPressed: () => openEfisiensi(), icon: const Icon(Icons.trending_up), label: const Text('Efisiensi harga')),
         OutlinedButton.icon(onPressed: () => showCostCorrectionHistory(context, widget.api), icon: const Icon(Icons.history), label: const Text('Riwayat koreksi HPP')),
       ]),
+      DateQuickChips(selected: range, onChanged: (r) { if (r != null) { range = r; load(); } }),
+      const SizedBox(height: Space.sm),
       LoadSwitch(loading: loading && data == null, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // the period's answer leads; the stock value lives with its own table below
         KpiStrip([

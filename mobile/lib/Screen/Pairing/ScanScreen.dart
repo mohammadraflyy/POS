@@ -185,7 +185,22 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.title)),
+    appBar: AppBar(
+      title: Text(widget.title),
+      actions: [
+        IconButton(
+          tooltip: 'Nyalakan/matikan lampu senter',
+          icon: const Icon(Icons.flashlight_on_outlined),
+          onPressed: () => _controller.toggleTorch(),
+        ),
+        IconButton(
+          tooltip: 'Ganti kamera depan/belakang',
+          icon: const Icon(Icons.flip_camera_android),
+          onPressed: _working || _done ? null : () => _retry(changeCamera: true),
+        ),
+        const SizedBox(width: Space.xs),
+      ],
+    ),
     backgroundColor: const Color(0xFF211D24),
     body: ValueListenableBuilder<MobileScannerState>(
       valueListenable: _controller,

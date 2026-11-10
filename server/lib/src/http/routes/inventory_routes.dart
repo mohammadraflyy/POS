@@ -57,7 +57,11 @@ void addInventoryRoutes(Router router, ApiContext ctx) {
   router.get('/v1/products', (Request request) {
     requireUser(ctx, request);
 
-    return json(listProducts(db, search: request.query('search') ?? request.query('q'), page: request.queryInt('page'), pageSize: request.queryIntOr('pageSize')));
+    return json(listProducts(db,
+        search: request.query('search') ?? request.query('q'),
+        page: request.queryInt('page'),
+        pageSize: request.queryIntOr('pageSize'),
+        stockFilter: request.query('stockFilter')));
   });
 
   router.get('/v1/products/search', (Request request) {

@@ -179,6 +179,45 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
     final updated = await editPurchaseItem(context, items[index]);
     if (mounted && updated != null) { setState(() { items[index] = updated; success = null; }); _saveDraft(); }
   }
+
+  Future<void> loadLowStockSuggestions() async {
+    try {
+      final res = await widget.api.products('', 1, pageSize: 50, stockFilter: 'warning');
+      final list = jsonRows(res);
+      if (!mounted) return;
+      if (list.isEmpty) {
+        showNotice(context, 'Tidak ada produk yang stoknya menipis saat ini.', kind: NoticeKind.info);
+        return;
+      }
+      var added = 0;
+      final existingIds = items.map((i) => i.product.id).toSet();
+      for (final p in list) {
+        final pid = idNumber(p['id']);
+        if (existingIds.contains(pid)) continue;
+        final units = [
+          LiveUnit(null, p['satuan']?.toString() ?? 'PCS', number(p['hargaJual']), cost: number(p['hargaPokok'])),
+        ];
+        final prod = LiveProduct(pid, p['namaItem']?.toString() ?? '', p['kodeItem']?.toString() ?? '', number(p['stok']), units);
+        items.add(PurchaseDraftItem(
+          prod,
+          units.first,
+          10,
+          number(p['hargaPokok']) ?? 0,
+          sellPrice: number(p['hargaJual']),
+        ));
+        added++;
+      }
+      if (added > 0) {
+        setState(() {});
+        _saveDraft();
+        showNotice(context, '$added produk dengan stok menipis dimasukkan ke daftar pembelian.', kind: NoticeKind.success);
+      } else {
+        showNotice(context, 'Semua produk yang stoknya menipis sudah ada di daftar pembelian.', kind: NoticeKind.info);
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
   Future<void> save() async {
     if (saving) return; setState(() { saving = true; error = null; success = null; });
     try {
@@ -226,7 +265,15 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
         subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name} × ${rupiah(items[i].price)} = ${rupiah(items[i].quantity * items[i].price)}${items[i].sellPrice == null ? '' : ' · jual jadi ${rupiah(items[i].sellPrice)}'}'),
         trailing: IconButton(tooltip: 'Hapus barang pembelian', onPressed: enabled ? () { setState(() => items.removeAt(i)); _saveDraft(); } : null, icon: const Icon(Icons.close)),
       ))),
-      OutlinedButton.icon(onPressed: !enabled ? null : () => addItem(), icon: const Icon(Icons.add), label: const Text('Tambah barang  ·  atau scan barcode')),
+      Wrap(
+        spacing: Space.sm,
+        runSpacing: Space.sm,
+        children: [
+          OutlinedButton.icon(onPressed: !enabled ? null : () => addItem(), icon: const Icon(Icons.add), label: const Text('Tambah barang  ·  atau scan barcode')),
+          if (widget.editing == null)
+            OutlinedButton.icon(onPressed: !enabled ? null : loadLowStockSuggestions, icon: const Icon(Icons.auto_awesome), label: const Text('Muat stok menipis')),
+        ],
+      ),
       const SizedBox(height: Space.lg), TextField(controller: paid, enabled: enabled, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Uang muka (opsional, Rp)', helperText: 'Kosong = lunas. Isi 0 untuk utang penuh.')),
       const SizedBox(height: Space.lg), TextField(controller: note, enabled: enabled, decoration: const InputDecoration(labelText: 'Catatan (opsional)')),
       const SizedBox(height: 16), Text('Jumlah akhir dihitung oleh PC saat penyimpanan.', style: TextStyle(color: muted, fontSize: 13)),

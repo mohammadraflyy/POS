@@ -43,6 +43,7 @@ class ProductsScreen extends StatefulWidget {
 class _ProductsScreenState extends State<ProductsScreen> {
   List<Map<String, dynamic>> rows = [];
   String search = '';
+  String stockFilter = '';
   int page = 1, last = 1, total = 0, pageSize = 25, serial = 0;
   final Set<int> selectedIds = {};
   bool loading = true;
@@ -67,7 +68,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Future<void> load({int target = 1}) async {
     final request = ++serial; setState(() { loading = true; error = null; });
     try {
-      final data = await widget.api.products(search, target, pageSize: pageSize);
+      final data = await widget.api.products(search, target, pageSize: pageSize, stockFilter: stockFilter.isEmpty ? null : stockFilter);
       if (mounted && request == serial) {
         setState(() { rows = jsonRows(data); page = (number(data['currentPage']) ?? target).toInt(); last = (number(data['lastPage']) ?? 1).toInt(); total = (number(data['total']) ?? 0).toInt(); });
       }
@@ -205,6 +206,34 @@ class _ProductsScreenState extends State<ProductsScreen> {
         },
       ),
     ]),
+    const SizedBox(height: Space.xs),
+    SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: const Text('Semua'),
+            selected: stockFilter == '',
+            onSelected: (_) { setState(() => stockFilter = ''); load(target: 1); },
+          ),
+          const SizedBox(width: Space.xs),
+          ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: const Text('Stok Menipis (≤5)'),
+            selected: stockFilter == 'low',
+            onSelected: (_) { setState(() => stockFilter = 'low'); load(target: 1); },
+          ),
+          const SizedBox(width: Space.xs),
+          ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: const Text('Stok Habis (0)'),
+            selected: stockFilter == 'out',
+            onSelected: (_) { setState(() => stockFilter = 'out'); load(target: 1); },
+          ),
+        ],
+      ),
+    ),
     if (!loading && rows.isEmpty && widget.isAdmin && RegExp(r'^\d{8,}$').hasMatch(search.trim())) Padding(
       padding: const EdgeInsets.only(top: Space.md),
       child: WhitePanel(child: Row(children: [

@@ -74,9 +74,129 @@ Future<(String, List<int>)?> pickImage() async {
 Future<DateTimeRange?> pickRange(BuildContext context, DateTimeRange? current) => showDateRangePicker(
   context: context, firstDate: DateTime(2020), lastDate: DateTime(DateTime.now().year + 1, 12, 31), initialDateRange: current);
 
+DateTimeRange today() {
+  final now = DateTime.now();
+  final d = DateTime(now.year, now.month, now.day);
+  return DateTimeRange(start: d, end: d);
+}
+
+DateTimeRange yesterday() {
+  final now = DateTime.now();
+  final d = DateTime(now.year, now.month, now.day - 1);
+  return DateTimeRange(start: d, end: d);
+}
+
+DateTimeRange last7Days() {
+  final now = DateTime.now();
+  final t = DateTime(now.year, now.month, now.day);
+  return DateTimeRange(start: t.subtract(const Duration(days: 6)), end: t);
+}
+
 DateTimeRange thisMonth() {
   final now = DateTime.now();
   return DateTimeRange(start: DateTime(now.year, now.month), end: DateTime(now.year, now.month + 1, 0));
+}
+
+DateTimeRange lastMonth() {
+  final now = DateTime.now();
+  return DateTimeRange(start: DateTime(now.year, now.month - 1, 1), end: DateTime(now.year, now.month, 0));
+}
+
+class DateQuickChips extends StatelessWidget {
+  const DateQuickChips({
+    super.key,
+    required this.selected,
+    required this.onChanged,
+    this.allowAll = false,
+  });
+
+  final DateTimeRange? selected;
+  final ValueChanged<DateTimeRange?> onChanged;
+  final bool allowAll;
+
+  static bool isSame(DateTimeRange a, DateTimeRange b) =>
+      a.start.year == b.start.year &&
+      a.start.month == b.start.month &&
+      a.start.day == b.start.day &&
+      a.end.year == b.end.year &&
+      a.end.month == b.end.month &&
+      a.end.day == b.end.day;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = today();
+    final y = yesterday();
+    final w = last7Days();
+    final m = thisMonth();
+    final lm = lastMonth();
+
+    final isToday = selected != null && isSame(selected!, t);
+    final isYesterday = selected != null && isSame(selected!, y);
+    final isWeek = selected != null && isSame(selected!, w);
+    final isMonth = selected != null && isSame(selected!, m);
+    final isLastMonth = selected != null && isSame(selected!, lm);
+    final isCustom = selected != null && !isToday && !isYesterday && !isWeek && !isMonth && !isLastMonth;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          if (allowAll) ...[
+            ChoiceChip(
+              visualDensity: VisualDensity.compact,
+              label: const Text('Semua'),
+              selected: selected == null,
+              onSelected: (_) => onChanged(null),
+            ),
+            const SizedBox(width: Space.xs),
+          ],
+          ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: const Text('Hari ini'),
+            selected: isToday,
+            onSelected: (_) => onChanged(t),
+          ),
+          const SizedBox(width: Space.xs),
+          ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: const Text('Kemarin'),
+            selected: isYesterday,
+            onSelected: (_) => onChanged(y),
+          ),
+          const SizedBox(width: Space.xs),
+          ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: const Text('7 Hari'),
+            selected: isWeek,
+            onSelected: (_) => onChanged(w),
+          ),
+          const SizedBox(width: Space.xs),
+          ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: const Text('Bulan ini'),
+            selected: isMonth,
+            onSelected: (_) => onChanged(m),
+          ),
+          const SizedBox(width: Space.xs),
+          ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: const Text('Bulan lalu'),
+            selected: isLastMonth,
+            onSelected: (_) => onChanged(lm),
+          ),
+          if (isCustom) ...[
+            const SizedBox(width: Space.xs),
+            ChoiceChip(
+              visualDensity: VisualDensity.compact,
+              label: Text(rangeLabel(selected!)),
+              selected: true,
+              onSelected: (_) {},
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 String rangeLabel(DateTimeRange range) => '${dateText(range.start)} – ${dateText(range.end)}';

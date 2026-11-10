@@ -7,6 +7,8 @@ class BusinessApi {
   Future<Object?> get(String path, [Map<String, String>? query]) => request(path, method: 'GET', query: query);
   Future<Object?> post(String path, [Map<String, dynamic>? body]) => request(path, method: 'POST', body: body);
   Future<Map<String, dynamic>> catalog(String q, int page) async => jsonObject(await get('/v1/catalog/search', {'q': q, 'page': '$page', 'pageSize': '24'}));
+  Future<Map<String, dynamic>> products(String search, int page, {int pageSize = 25, String? stockFilter}) async =>
+      jsonObject(await get('/v1/products', {'search': search, 'page': '$page', 'pageSize': '$pageSize', if (stockFilter != null) 'stockFilter': stockFilter}));
   Future<List<String>> customers() async {
     final result = jsonObject(await get('/v1/customers'));
     return (result['names'] as List).map((name) => name.toString()).toList();

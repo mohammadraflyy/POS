@@ -37,8 +37,8 @@ class StoreApi extends BusinessApi {
   Future<Map<String, dynamic>> purgeSalesBefore(String before) async => jsonObject(await post('/v1/sales-purge/before', {'before': before}));
 
   // --- products ---
-  Future<Map<String, dynamic>> products(String search, int page, {int pageSize = 25}) =>
-      getObject('/v1/products', _q({'search': search, 'page': page, 'pageSize': pageSize}));
+  Future<Map<String, dynamic>> products(String search, int page, {int pageSize = 25, String? stockFilter}) =>
+      getObject('/v1/products', _q({'search': search, 'page': page, 'pageSize': pageSize, 'stockFilter': stockFilter}));
   Future<Map<String, dynamic>> product(int id) => getObject('/v1/products/$id');
   Future<Map<String, dynamic>> productByBarcode(String code) => getObject('/v1/products/barcode/${Uri.encodeComponent(code)}');
   Future<Map<String, dynamic>> previewEfisiensiHarga(Map<String, dynamic> body) async =>

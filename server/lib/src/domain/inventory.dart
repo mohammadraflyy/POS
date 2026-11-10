@@ -42,11 +42,20 @@ String _likeClause() => '(p.kode_item LIKE ? OR p.nama_item LIKE ? OR p.barcode 
 
 List<Object?> _likeParams(String search) => List.filled(3, '%$search%');
 
-Map<String, Object?> listProducts(Db db, {String? search, int page = 1, int? pageSize}) {
+Map<String, Object?> listProducts(Db db, {String? search, int page = 1, int? pageSize, String? stockFilter}) {
   final size = pageSize != null && _validPageSizes.contains(pageSize) ? pageSize : _defaultPageSize;
   final currentPage = page < 1 ? 1 : page;
   final hasSearch = search != null && search.isNotEmpty;
-  final where = hasSearch ? 'WHERE ${_likeClause()}' : '';
+  final clauses = <String>[];
+  if (hasSearch) clauses.add(_likeClause());
+  if (stockFilter == 'out') {
+    clauses.add('p.stok <= 0');
+  } else if (stockFilter == 'low') {
+    clauses.add('p.stok > 0 AND p.stok <= 5000');
+  } else if (stockFilter == 'warning') {
+    clauses.add('p.stok <= 5000');
+  }
+  final where = clauses.isEmpty ? '' : 'WHERE ${clauses.join(' AND ')}';
   final params = hasSearch ? _likeParams(search) : <Object?>[];
   final total = db.scalar<int>('SELECT count(*) FROM products p $where', params) ?? 0;
   final rows = db.select('$_productListSelect $where ORDER BY p.nama_item LIMIT ? OFFSET ?', [...params, size, (currentPage - 1) * size]);
