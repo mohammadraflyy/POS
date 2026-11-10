@@ -41,11 +41,25 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Determine Version
+        id: ver
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            VER="${TAG#v}"
+          else
+            TAG="v1.0.${{ github.run_number }}"
+            VER="1.0.${{ github.run_number }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          sed -i "s/^version: .*/version: $VER+${{ github.run_number }}/" mobile/pubspec.yaml
+
       - name: Build Android Release APK
         working-directory: mobile
         run: |
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --dart-define=APP_VERSION=${{ steps.ver.outputs.version }} --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}
 
       - name: Prepare Android Artifact
         run: |
@@ -72,11 +86,26 @@ jobs:
       - name: Enable Windows Desktop
         run: flutter config --enable-windows-desktop
 
+      - name: Determine Version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}".StartsWith("refs/tags/")) {
+            $tag = "${{ github.ref }}".Substring(10)
+            $ver = $tag.TrimStart("vV")
+          } else {
+            $tag = "v1.0.${{ github.run_number }}"
+            $ver = "1.0.${{ github.run_number }}"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$ver" >> $env:GITHUB_OUTPUT
+          (Get-Content mobile/pubspec.yaml) -replace '^version: .*', "version: $ver+${{ github.run_number }}" | Set-Content mobile/pubspec.yaml
+
       - name: Build Windows Desktop Release
         working-directory: mobile
         run: |
           flutter pub get
-          flutter build windows --release
+          flutter build windows --release --dart-define=APP_VERSION=${{ steps.ver.outputs.version }} --build-name=${{ steps.ver.outputs.version }} --build-number=${{ github.run_number }}
 
       - name: Install NSIS
         run: choco install nsis -y

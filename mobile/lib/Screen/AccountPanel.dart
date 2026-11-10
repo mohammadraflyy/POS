@@ -8,8 +8,8 @@ import '../Widgets/admin.dart' show isDesktop;
 import '../Widgets/ui.dart';
 import '../services/updater_service.dart';
 
-/// The app's own version, as in pubspec.yaml.
-const mobileAppVersion = '1.0.0';
+/// The app's own version, dynamically passed or defaulted from UpdaterService.
+const mobileAppVersion = UpdaterService.currentAppVersion;
 
 /// Everything about this device and its session in one place: who is signed in, which
 /// shop and server it talks to and whether that works right now, the address phones

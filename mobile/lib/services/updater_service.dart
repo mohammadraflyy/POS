@@ -34,7 +34,7 @@ class UpdaterService {
   final String repository;
 
   static const _channel = MethodChannel('pos/native');
-  static const currentAppVersion = '1.0.0';
+  static const currentAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.0.7');
 
   /// Checks GitHub releases API for a newer version
   Future<AppUpdateInfo?> checkForUpdate({String? repo, String currentVersion = currentAppVersion}) async {

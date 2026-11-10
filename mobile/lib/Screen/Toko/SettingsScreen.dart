@@ -320,7 +320,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Icon(Icons.system_update_outlined, color: ink, size: 24),
           const SizedBox(width: Space.md),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Point of Sales v1.0.0', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            Text('Point of Sales v${UpdaterService.currentAppVersion}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
             const SizedBox(height: 2),
             Text(_updateStatus ?? 'Aplikasi siap memeriksa rilis terbaru.', style: TextStyle(color: muted, fontSize: 12)),
           ])),

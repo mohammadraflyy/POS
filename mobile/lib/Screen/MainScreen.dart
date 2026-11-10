@@ -11,6 +11,7 @@ import 'StockOpname/StockOpnameScreen.dart';
 import 'Live/LiveWorkspace.dart';
 import 'menus.dart';
 import 'AccountPanel.dart';
+import '../services/updater_service.dart';
 
 /// The shell. On a PC: an open plane - a labelled sidebar on the stone ground with the
 /// shop's mark and name at the top and the account at the bottom, no top bar, the screen
@@ -30,16 +31,69 @@ class _MainScreenState extends State<MainScreen> {
   late Menu _menu = widget.initialMenu;
   bool _railOnly = false;
   String? _shopName;
+  AppUpdateInfo? _availableUpdate;
+  bool _dismissedUpdate = false;
 
   @override
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKey);
     _loadShopName();
+    _checkUpdateNotice();
   }
 
   @override
   void dispose() { HardwareKeyboard.instance.removeHandler(_handleKey); super.dispose(); }
+
+  Future<void> _checkUpdateNotice() async {
+    try {
+      final info = await UpdaterService().checkForUpdate();
+      if (mounted && info != null && info.isNewer) {
+        setState(() => _availableUpdate = info);
+      }
+    } catch (_) {}
+  }
+
+  Widget? _updateBanner() {
+    if (_availableUpdate == null || _dismissedUpdate) return null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E3A8A),
+        border: Border(bottom: BorderSide(color: Colors.blue.shade300.withValues(alpha: 0.3))),
+      ),
+      child: Row(children: [
+        const Icon(Icons.system_update_outlined, color: Colors.white, size: 18),
+        const SizedBox(width: Space.md),
+        Expanded(
+          child: Text(
+            'Pembaruan v${_availableUpdate!.latestVersion} tersedia!',
+            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+          ),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: const Color(0xFF1E3A8A),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          onPressed: () => promptAppUpdate(context),
+          child: const Text('Perbarui Sekarang', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+          tooltip: 'Tutup notifikasi',
+          onPressed: () => setState(() => _dismissedUpdate = true),
+        ),
+      ]),
+    );
+  }
 
   /// The shop's own name heads the sidebar, so the screen belongs to this shop.
   Future<void> _loadShopName() async {
@@ -178,12 +232,17 @@ class _MainScreenState extends State<MainScreen> {
       padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 6),
       decoration: BoxDecoration(color: pillWarningBg, border: Border(bottom: BorderSide(color: noticeBorder))),
       child: Text('Mode demo · data contoh, tidak dikirim ke toko', style: TextStyle(fontSize: 12, color: pillWarningInk))) : null;
+    final updateBanner = _updateBanner();
 
     if (wide) {
       return Scaffold(body: SafeArea(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _sidebar(widget.app.isDemo ? primaryMenus : menus),
         const VerticalDivider(width: 1),
-        Expanded(child: Column(children: [if (demoBanner != null) demoBanner, Expanded(child: workspace)])),
+        Expanded(child: Column(children: [
+          if (updateBanner != null) updateBanner,
+          if (demoBanner != null) demoBanner,
+          Expanded(child: workspace),
+        ])),
       ])));
     }
 
@@ -195,7 +254,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: widget.app.notice != null ? Icon(Icons.wifi_off, color: errorColor) : _Initial(widget.app.userName)),
           const SizedBox(width: Space.xs),
         ]),
-      body: SafeArea(top: false, child: Column(children: [if (demoBanner != null) demoBanner, Expanded(child: workspace)])),
+      body: SafeArea(top: false, child: Column(children: [
+        if (updateBanner != null) updateBanner,
+        if (demoBanner != null) demoBanner,
+        Expanded(child: workspace),
+      ])),
       bottomNavigationBar: BottomNavBar(
         selectedIndex: barIndex,
         labels: [for (final menu in primaryMenus) menuInfo[menu]!.title, if (hasMore) 'Lainnya'],
