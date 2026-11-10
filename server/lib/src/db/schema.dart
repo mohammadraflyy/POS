@@ -9,6 +9,7 @@ const List<String> migrations = [
   _v1,
   _v2,
   _v3,
+  _v4,
 ];
 
 void migrate(Db db) {
@@ -73,6 +74,15 @@ CREATE TABLE IF NOT EXISTS sale_cost_corrections (
 );
 
 CREATE INDEX IF NOT EXISTS stock_movements_product_id_id_idx ON stock_movements (product_id, id);
+
+CREATE INDEX IF NOT EXISTS sales_created_at_idx ON sales (created_at);
+CREATE INDEX IF NOT EXISTS sales_metode_pembayaran_idx ON sales (metode_pembayaran);
+CREATE INDEX IF NOT EXISTS sale_items_sale_id_idx ON sale_items (sale_id);
+CREATE INDEX IF NOT EXISTS sale_items_product_id_idx ON sale_items (product_id);
+CREATE INDEX IF NOT EXISTS products_barcode_idx ON products (barcode);
+CREATE INDEX IF NOT EXISTS products_nama_item_idx ON products (nama_item);
+CREATE INDEX IF NOT EXISTS purchases_created_at_idx ON purchases (created_at);
+CREATE INDEX IF NOT EXISTS purchase_items_purchase_id_idx ON purchase_items (purchase_id);
 ''');
 }
 
@@ -377,4 +387,16 @@ CREATE TABLE IF NOT EXISTS store_logo (
   data blob NOT NULL,
   updated_at integer NOT NULL
 );
+''';
+
+/// High-performance indices for reports, cashiers, dashboard aggregation, and barcode scanning.
+const _v4 = '''
+CREATE INDEX IF NOT EXISTS sales_created_at_idx ON sales (created_at);
+CREATE INDEX IF NOT EXISTS sales_metode_pembayaran_idx ON sales (metode_pembayaran);
+CREATE INDEX IF NOT EXISTS sale_items_sale_id_idx ON sale_items (sale_id);
+CREATE INDEX IF NOT EXISTS sale_items_product_id_idx ON sale_items (product_id);
+CREATE INDEX IF NOT EXISTS products_barcode_idx ON products (barcode);
+CREATE INDEX IF NOT EXISTS products_nama_item_idx ON products (nama_item);
+CREATE INDEX IF NOT EXISTS purchases_created_at_idx ON purchases (created_at);
+CREATE INDEX IF NOT EXISTS purchase_items_purchase_id_idx ON purchase_items (purchase_id);
 ''';

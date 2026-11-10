@@ -59,6 +59,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       widget.store.put(LiveCartItem(product: p, unit: sold,
         quantity: (old?.quantity ?? 0) + enteredQty, manualPrice: old?.manualPrice, discount: old?.discount));
       qty.value = const TextEditingValue(text: '1', selection: TextSelection.collapsed(offset: 1));
+      HapticFeedback.lightImpact();
+      SystemSound.play(SystemSoundType.click);
     }
     catch (e) { showError(context, e); }
   }
@@ -100,12 +102,22 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       action = openPalette;
     } else if (alt && key == LogicalKeyboardKey.keyP) {
       action = pickCustomer;
-    } else if (key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown) {
+    } else if (key == LogicalKeyboardKey.f1 || key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown) {
       action = () { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); };
-    } else if (key == LogicalKeyboardKey.f12 || (key == LogicalKeyboardKey.end && !typing)) {
+    } else if (key == LogicalKeyboardKey.f4 || key == LogicalKeyboardKey.f12 || (key == LogicalKeyboardKey.end && !typing)) {
       action = pay;
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
+    } else if (alt && key == LogicalKeyboardKey.keyH) {
+      action = () {
+        if (widget.store.items.isNotEmpty) {
+          widget.store.holdCart();
+          showNotice(context, 'Transaksi ditahan (hold). Silakan layani antrean lain.', kind: NoticeKind.info);
+        } else if (widget.store.heldCarts.isNotEmpty) {
+          widget.store.restoreHeldCart(widget.store.heldCarts.length - 1);
+          showNotice(context, 'Transaksi dilanjutkan.', kind: NoticeKind.info);
+        }
+      };
     } else if (alt && key == LogicalKeyboardKey.keyK) {
       action = () => confirmClearCart(context, widget.store);
     }

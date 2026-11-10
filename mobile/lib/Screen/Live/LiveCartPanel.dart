@@ -27,10 +27,45 @@ class LiveCartPanel extends StatelessWidget {
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([store, store.guard]), builder: (context, _) => CartLayout(
     header: Row(children: [Expanded(child: Text(store.items.isEmpty ? 'Keranjang' : 'Keranjang · ${store.items.length} barang', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
+      if (store.items.isNotEmpty && store.editable && store.editingSaleId == null)
+        IconButton(
+          tooltip: 'Tahan transaksi ini (Alt+H)',
+          onPressed: () {
+            store.holdCart();
+            showNotice(context, 'Transaksi disimpan sementara (hold). Silakan layani antrean lain.', kind: NoticeKind.info);
+          },
+          icon: const Icon(Icons.pause_circle_outline, size: 20),
+        ),
       IconButton(tooltip: 'Kosongkan keranjang (Alt+K)', onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
         icon: const Icon(Icons.delete_outline)),
     ]),
     items: [
+      if (store.heldCarts.isNotEmpty)
+        Container(
+          margin: const EdgeInsets.only(bottom: Space.sm),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: pillWarningBg,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: pillWarningInk.withValues(alpha: 0.3)),
+          ),
+          child: Row(children: [
+            Icon(Icons.pause_circle_filled, size: 16, color: pillWarningInk),
+            const SizedBox(width: 6),
+            Expanded(child: Text('Tertahan (${store.heldCarts.length}): ${store.heldCarts.last['label']}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: pillWarningInk, fontSize: 12, fontWeight: FontWeight.w600))),
+            TextButton(
+              style: TextButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () => store.restoreHeldCart(store.heldCarts.length - 1),
+              child: Text('Lanjutkan', style: TextStyle(color: pillWarningInk, fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
+          ]),
+        ),
       if (store.customerName.isNotEmpty) Padding(padding: const EdgeInsets.only(top: Space.sm, bottom: Space.xs), child: Row(children: [
         Icon(Icons.person_outline, size: 16, color: muted), const SizedBox(width: 6),
         Expanded(child: Text('Pelanggan: ${store.customerName}', style: const TextStyle(fontSize: 13))),

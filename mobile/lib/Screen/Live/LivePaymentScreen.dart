@@ -143,6 +143,29 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
     return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}.${two(d.minute)}';
   }
 
+  List<int> _quickCashOptions(num total) {
+    final t = total.ceil();
+    if (t <= 0) return const [];
+    final set = <int>{};
+
+    if (t % 5000 != 0) set.add(t + (5000 - (t % 5000)));
+    if (t % 10000 != 0) set.add(t + (10000 - (t % 10000)));
+    if (t % 50000 != 0) set.add(t + (50000 - (t % 50000)));
+
+    const banknotes = [10000, 20000, 50000, 100000];
+    for (final b in banknotes) {
+      if (b > t) set.add(b);
+    }
+    if (t > 100000) {
+      final next50k = (t / 50000).ceil() * 50000;
+      if (next50k > t) set.add(next50k);
+      final next100k = (t / 100000).ceil() * 100000;
+      if (next100k > t) set.add(next100k);
+    }
+    final sorted = set.where((x) => x > t).toList()..sort();
+    return sorted.take(4).toList();
+  }
+
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([widget.store, widget.store.guard]), builder: (context, _) {
     final store = widget.store;
     final total = _total;
@@ -170,6 +193,25 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
           const SizedBox(width: Space.sm),
           Padding(padding: const EdgeInsets.only(top: 2), child: OutlinedButton(onPressed: sending || total == null ? null : () => setState(() => paid.text = _plain(total)), child: const Text('Uang pas'))),
         ]),
+        if (method == 'tunai' && total != null && total > 0) ...[
+          const SizedBox(height: Space.xs),
+          Wrap(
+            spacing: Space.xs,
+            runSpacing: Space.xs,
+            children: [
+              ActionChip(
+                avatar: const Icon(Icons.check, size: 14),
+                label: const Text('Uang Pas'),
+                onPressed: sending ? null : () => setState(() => paid.text = _plain(total)),
+              ),
+              for (final opt in _quickCashOptions(total))
+                ActionChip(
+                  label: Text(rupiah(opt)),
+                  onPressed: sending ? null : () => setState(() => paid.text = opt.toString()),
+                ),
+            ],
+          ),
+        ],
       ] else ...[
         const SizedBox(height: Space.lg),
         Text('Pastikan pembayaran ${methods[method]} sudah masuk ke rekening toko sebelum menyimpan. Aplikasi tidak membuat QR atau memproses transfer.', style: TextStyle(color: muted, fontSize: 13)),
@@ -198,7 +240,21 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       const SizedBox(height: Space.sm),
       SummaryRow('Subtotal · ${store.items.length} barang', rupiah(store.price?.subtotal)),
       if (lineDisc > 0) SummaryRow('Diskon barang', '-${rupiah(lineDisc)}'),
-      if ((store.price?.discount ?? 0) > 0) SummaryRow('Diskon nota', '-${rupiah(store.price?.discount)}'),
+      Row(children: [
+        Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))),
+        TextButton(
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), minimumSize: const Size(0, 26)),
+          onPressed: sending || !store.editable ? null : () async {
+            final val = await showDialog<num>(
+              context: context,
+              builder: (_) => _PaymentDiscountDialog(initial: store.discount, subtotal: store.price?.subtotal ?? 0),
+            );
+            if (val != null) store.setDiscount(val);
+          },
+          child: Text(store.discount == 0 ? 'Tambah' : '-${rupiah(store.discount)}',
+            style: amountStyle.copyWith(fontSize: 14, color: store.discount > 0 ? warningColor : dataHue)),
+        ),
+      ]),
       if (_charge > 0) SummaryRow('Biaya lain', rupiah(_charge)),
       const Divider(height: Space.lg),
       SummaryRow('Total', rupiah(total), strong: true, color: dataHue),
@@ -240,4 +296,42 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       })),
     ));
   });
+}
+
+class _PaymentDiscountDialog extends StatefulWidget {
+  const _PaymentDiscountDialog({required this.initial, required this.subtotal});
+  final num initial, subtotal;
+  @override State<_PaymentDiscountDialog> createState() => _PaymentDiscountDialogState();
+}
+class _PaymentDiscountDialogState extends State<_PaymentDiscountDialog> {
+  late final controller = TextEditingController(text: widget.initial == 0 ? '' : widget.initial.toString());
+  String? error;
+  @override void dispose() { controller.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Diskon Nota'),
+    content: TextField(
+      controller: controller,
+      autofocus: true,
+      keyboardType: TextInputType.text,
+      decoration: InputDecoration(labelText: 'Rupiah atau %', helperText: 'Contoh: 5000 atau 10%', errorText: error),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+      FilledButton(
+        onPressed: () {
+          if (controller.text.trim().isEmpty) {
+            Navigator.pop(context, 0);
+            return;
+          }
+          try {
+            Navigator.pop(context, inputDiscount(controller.text, baseAmount: widget.subtotal));
+          } catch (_) {
+            setState(() => error = 'Masukkan nominal rupiah atau persen (0-100%) yang valid.');
+            showError(context, error!);
+          }
+        },
+        child: const Text('Terapkan'),
+      ),
+    ],
+  );
 }

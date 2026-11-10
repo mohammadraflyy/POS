@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../core/format.dart';
 import '../../models/live_models.dart';
 import '../../services/business_api.dart';
 import '../../services/mobile_api.dart';
@@ -58,6 +60,48 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
     catch (e) { if (mounted) { setState(() { printed = false; printError = e.toString(); }); showError(context, e); } }
     finally { if (mounted) setState(() => printing = false); }
   }
+  void _copyReceiptText() {
+    final sale = detail?['sale'] is Map ? jsonObject(detail!['sale']) : detail;
+    if (sale == null) return;
+    final rawItems = detail?['items'] ?? sale['items'];
+    final lines = rawItems is List ? rawItems.whereType<Map>() : const <Map>[];
+    final buffer = StringBuffer();
+    buffer.writeln('================================');
+    buffer.writeln('POINT OF SALES — BUKTI TRANSAKSI');
+    buffer.writeln('================================');
+    buffer.writeln('Nota     : #${sale['nomorNota'] ?? sale['id'] ?? widget.id}');
+    buffer.writeln('Waktu    : ${dateTimeLabel(sale['createdAt'] ?? sale['tanggal'])}');
+    final cust = sale['namaPelanggan']?.toString().trim();
+    if (cust != null && cust.isNotEmpty) buffer.writeln('Pelanggan: $cust');
+    buffer.writeln('--------------------------------');
+    for (final item in lines) {
+      final name = item['namaItem'] ?? item['name'] ?? 'Barang';
+      final q = quantityText(item['qty']);
+      final unit = item['satuan'] ?? '';
+      final sub = rupiah(item['subtotal']);
+      buffer.writeln('$name');
+      buffer.writeln('  $q $unit × ${rupiah(item['hargaJual'])} = $sub');
+    }
+    buffer.writeln('--------------------------------');
+    buffer.writeln('Subtotal : ${rupiah(sale['subtotal'] ?? sale['total'])}');
+    final disc = number(sale['diskon']) ?? 0;
+    if (disc > 0) buffer.writeln('Diskon   : -${rupiah(disc)}');
+    final charge = number(sale['biayaLain']) ?? 0;
+    if (charge > 0) buffer.writeln('Biaya    : ${rupiah(charge)}');
+    buffer.writeln('TOTAL    : ${rupiah(sale['total'])}');
+    buffer.writeln('Metode   : ${(sale['metodePembayaran'] ?? 'Tunai').toString().toUpperCase()}');
+    buffer.writeln('Dibayar  : ${rupiah(sale['dibayar'])}');
+    final change = (number(sale['dibayar']) ?? 0) - (number(sale['total']) ?? 0);
+    if (change > 0 && sale['metodePembayaran'] == 'tunai') {
+      buffer.writeln('Kembali  : ${rupiah(change)}');
+    }
+    buffer.writeln('================================');
+    buffer.writeln('Terima kasih telah berbelanja!');
+
+    Clipboard.setData(ClipboardData(text: buffer.toString()));
+    showNotice(context, 'Teks struk berhasil disalin! Anda dapat menempelkannya ke WhatsApp.', kind: NoticeKind.success);
+  }
+
   @override Widget build(BuildContext context) {
     final sale = detail?['sale'] is Map ? jsonObject(detail!['sale']) : detail;
     final rawItems = detail?['items'] ?? sale?['items'];
@@ -122,7 +166,14 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
             if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
           } catch (e) { if (mounted) showError(context, e); }
         })],
-      const SizedBox(height: Space.xl), OutlinedButton.icon(onPressed: printing ? null : printAgain, icon: const Icon(Icons.print_outlined), label: Text(printing ? 'Mengirim ke printer…' : 'Cetak ulang di PC')),
+      const SizedBox(height: Space.xl),
+      OutlinedButton.icon(
+        onPressed: sale == null ? null : _copyReceiptText,
+        icon: const Icon(Icons.share_outlined, size: 18),
+        label: const Text('Salin teks struk (Kirim ke WhatsApp)'),
+      ),
+      const SizedBox(height: Space.sm),
+      OutlinedButton.icon(onPressed: printing ? null : printAgain, icon: const Icon(Icons.print_outlined), label: Text(printing ? 'Mengirim ke printer…' : 'Cetak ulang di PC')),
       const SizedBox(height: 12), TextButton(onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst), child: const Text('Kembali ke kasir')),
     ])))));
   }

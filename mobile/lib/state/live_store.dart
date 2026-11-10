@@ -95,6 +95,64 @@ class LiveStore extends ChangeNotifier {
     }
   }
 
+  /// Transaksi yang disimpan sementara (hold) agar kasir bisa melayani antrean berikutnya.
+  final List<Map<String, dynamic>> heldCarts = [];
+
+  bool holdCart({String? label}) {
+    if (items.isEmpty || editingSaleId != null) return false;
+    final data = _draftJson();
+    data['label'] = label ?? (customerName.isNotEmpty ? customerName : 'Antrean #${heldCarts.length + 1}');
+    data['heldAt'] = DateTime.now().toIso8601String();
+    heldCarts.add(data);
+    clear();
+    return true;
+  }
+
+  bool restoreHeldCart([int index = 0]) {
+    if (index < 0 || index >= heldCarts.length) return false;
+    final data = heldCarts.removeAt(index);
+    _applyDraftData(data);
+    _saveDraft();
+    return true;
+  }
+
+  int _applyDraftData(Map<String, dynamic> data) {
+    final lines = <LiveCartItem>[];
+    for (final entry in (data['items'] as List? ?? const []).whereType<Map>()) {
+      final p = Map<String, dynamic>.from(entry['product'] as Map);
+      final units = [
+        for (final u in (p['units'] as List).whereType<Map>())
+          LiveUnit(
+            u['id'] as int?,
+            u['name'] as String,
+            u['price'] as num?,
+            cost: u['cost'] as num?,
+            conversionFactor: (u['conversionFactor'] as int?) ?? 1,
+          ),
+      ];
+      final product = LiveProduct(p['id'] as int, p['name'] as String, p['code'] as String? ?? '', null, units, barcode: p['barcode'] as String?);
+      final unit = units.firstWhere((u) => u.id == entry['unitId'], orElse: () => units.first);
+      lines.add(LiveCartItem(
+        product: product,
+        unit: unit,
+        quantity: entry['qty'] as num,
+        manualPrice: entry['manualPrice'] as num?,
+        discount: entry['discount'] as num?,
+      ));
+    }
+    if (_closed) return 0;
+    items.clear();
+    items.addAll(lines);
+    discount = data['discount'] as num? ?? 0;
+    otherCharge = data['otherCharge'] as num? ?? 0;
+    note = data['note'] as String? ?? '';
+    customerName = data['customer'] as String? ?? '';
+    saleDate = data['saleDate'] == null ? null : DateTime.tryParse(data['saleDate'] as String);
+    reprice();
+    _emit();
+    return lines.length;
+  }
+
   /// Puts back the sale that was in progress when the app last closed. Returns how many
   /// lines came back. A draft that cannot be read is dropped rather than half-restored.
   Future<int> restoreDraft() async {
@@ -104,32 +162,7 @@ class LiveStore extends ChangeNotifier {
       final raw = await store.read();
       if (raw == null || raw.isEmpty) return 0;
       final data = jsonDecode(raw) as Map<String, dynamic>;
-      final lines = <LiveCartItem>[];
-      for (final entry in (data['items'] as List? ?? const []).whereType<Map>()) {
-        final p = Map<String, dynamic>.from(entry['product'] as Map);
-        final units = [
-          for (final u in (p['units'] as List).whereType<Map>())
-            LiveUnit(
-              u['id'] as int?,
-              u['name'] as String,
-              u['price'] as num?,
-              cost: u['cost'] as num?,
-              conversionFactor: (u['conversionFactor'] as int?) ?? 1,
-            ),
-        ];
-        final product = LiveProduct(p['id'] as int, p['name'] as String, p['code'] as String? ?? '', null, units, barcode: p['barcode'] as String?);
-        final unit = units.firstWhere((u) => u.id == entry['unitId'], orElse: () => units.first);
-        lines.add(LiveCartItem(product: product, unit: unit, quantity: entry['qty'] as num, manualPrice: entry['manualPrice'] as num?, discount: entry['discount'] as num?));
-      }
-      if (_closed) return 0;
-      items.addAll(lines);
-      discount = data['discount'] as num? ?? 0;
-      otherCharge = data['otherCharge'] as num? ?? 0;
-      note = data['note'] as String? ?? '';
-      customerName = data['customer'] as String? ?? '';
-      saleDate = data['saleDate'] == null ? null : DateTime.tryParse(data['saleDate'] as String);
-      reprice();
-      return lines.length;
+      return _applyDraftData(data);
     } catch (_) {
       await store.clear();
       return 0;

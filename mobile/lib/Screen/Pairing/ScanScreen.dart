@@ -101,6 +101,8 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       if (raw == null || raw.isEmpty) continue;
       _done = true; // Ignore repeated frames before navigating away.
       _wantRunning = false;
+      await HapticFeedback.mediumImpact();
+      SystemSound.play(SystemSoundType.click);
       await _syncCamera();
       if (mounted && !_closed) Navigator.of(context).pop(raw);
       return;
