@@ -473,6 +473,7 @@ void main() {
 
       await api.admin('PUT', '/v1/settings', {'namaToko': 'Toko Maju', 'receiptWidth': '80mm', 'printerName': 'POS-58', 'marginMinimalPersen': 15});
       expect(await api.kasir('GET', '/v1/settings'), {
+        'logoVersion': null,
         'namaToko': 'Toko Maju',
         'alamat': null,
         'telepon': null,
@@ -485,6 +486,26 @@ void main() {
 
       await api.kasir('POST', '/v1/printers/test');
       expect(api.printer.jobs.single.printer, 'POS-58');
+    });
+
+    test('the shop logo: admin uploads an image, everyone reads it, junk is refused', () async {
+      final api = Api();
+      final png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4];
+
+      expect((await api.call('GET', '/v1/settings/logo', token: api.kasirToken)).status, 404);
+      expect((await api.call('PUT', '/v1/settings/logo', token: api.kasirToken, body: png)).status, 403);
+      expect((await api.call('PUT', '/v1/settings/logo', token: api.adminToken, body: utf8.encode('bukan gambar'))).status, 400);
+
+      final saved = await api.call('PUT', '/v1/settings/logo', token: api.adminToken, body: png);
+      expect(saved.status, 200);
+      expect((await api.kasir('GET', '/v1/settings'))['logoVersion'], saved.body['logoVersion']);
+
+      final logo = await api.call('GET', '/v1/settings/logo', token: api.kasirToken);
+      expect(logo.raw.headers['content-type'], 'image/png');
+      expect(await logo.raw.read().expand((c) => c).toList(), png);
+
+      await api.admin('DELETE', '/v1/settings/logo');
+      expect((await api.kasir('GET', '/v1/settings'))['logoVersion'], isNull);
     });
 
     test('previews and applies a price raise, admin only', () async {

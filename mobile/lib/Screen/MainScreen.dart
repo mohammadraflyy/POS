@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state/app_state.dart';
 import '../core/theme.dart';
-import '../models/live_models.dart';
 import '../Widgets/BottomNavBar.dart';
 import '../Widgets/ui.dart';
 import 'Penjualan/KasirScreen.dart';
@@ -46,8 +45,8 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _loadShopName() async {
     if (widget.app.isDemo) return;
     try {
-      final settings = jsonObject(await widget.app.businessRequest('/v1/settings', method: 'GET'));
-      if (mounted) setState(() => _shopName = settings['namaToko']?.toString());
+      await widget.app.refreshBranding();
+      if (mounted) setState(() => _shopName = widget.app.shopName);
     } catch (_) {
       // the shell still works without it; the product name stands in
     }
@@ -84,11 +83,11 @@ class _MainScreenState extends State<MainScreen> {
   Widget _brand({required bool compact}) => Padding(
     padding: EdgeInsets.fromLTRB(compact ? 0 : Space.lg, Space.lg, compact ? 0 : Space.md, Space.lg),
     child: Row(mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
-      const BrandMark(size: 26),
+      BrandMark(size: 26, logo: widget.app.shopLogo),
       if (!compact) ...[
         const SizedBox(width: Space.md),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_shopName ?? 'Point of Sales', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, height: 1.3)),
+          Text(widget.app.shopName ?? _shopName ?? 'Point of Sales', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, height: 1.3)),
           Text(widget.app.isDemo ? 'Mode demo' : 'Point of Sales', style: TextStyle(fontSize: 12, color: muted)),
         ])),
       ],

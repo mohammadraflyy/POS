@@ -48,6 +48,36 @@ class AppState extends ChangeNotifier {
   bool get isDemo => mode == AppMode.demo;
   bool get hasStoredSession => _token != null && address != null;
 
+  /// The shop's name and logo from the PC, shown in the shell; null until loaded or when
+  /// the shop has not set one, and the default mark stands in.
+  String? shopName;
+  Uint8List? shopLogo;
+  Object? _logoVersion;
+
+  /// Reads the shop's name and, when it changed, its logo. Failures leave what was shown.
+  Future<void> refreshBranding() async {
+    if (mode != AppMode.connected) return;
+    final generation = _generation;
+    try {
+      final settings = await businessRequest('/v1/settings', method: 'GET');
+      if (settings is! Map || generation != _generation) return;
+      shopName = settings['namaToko']?.toString();
+      final version = settings['logoVersion'];
+      if (version == null) {
+        shopLogo = null;
+      } else if (version != _logoVersion || shopLogo == null) {
+        final file = await businessFile('/v1/settings/logo');
+        if (generation != _generation) return;
+        shopLogo = Uint8List.fromList(file.bytes);
+      }
+      _logoVersion = version;
+      notifyListeners();
+    } catch (_) {
+      // the shell works without it
+    }
+  }
+  void _clearBranding() { shopName = null; shopLogo = null; _logoVersion = null; }
+
   /// This phone can reach the PC from outside the shop.
   bool get hasRemoteAccess => remoteAddress != null && tailnet.supported;
   int get subtotal => cart.fold<int>(0, (sum, line) => sum + line.total);
@@ -116,7 +146,7 @@ class AppState extends ChangeNotifier {
   }
   Future<void> _signedIn(Uri base, String token, String name, Map<String, dynamic> user) async {
     await _forgetRemote();
-    address = base; _token = token; deviceName = name;
+    address = base; _token = token; deviceName = name; _clearBranding();
     await _save();
     _generation++;
     userName = user['name']?.toString() ?? user['username'].toString();
@@ -267,11 +297,11 @@ class AppState extends ChangeNotifier {
     try { await storage.clear(); } catch (_) { notice = 'Akses berakhir; penyimpanan perangkat tidak dapat dibersihkan. Coba keluar lagi.'; }
   }
   void startDemo() {
-    _generation++; demo = DemoStore(); cart.clear(); billDiscount = 0;
+    _generation++; demo = DemoStore(); cart.clear(); billDiscount = 0; _clearBranding();
     mode = AppMode.demo; notice = null; userName = 'Kasir Demo'; notifyListeners();
   }
   Future<void> logout() async {
-    _generation++; await _clearCredentials();
+    _generation++; await _clearCredentials(); _clearBranding();
     mode = AppMode.pairing; cart.clear(); billDiscount = 0; userName = ''; notifyListeners();
   }
   Future<Object?> businessRequest(String path, {required String method,

@@ -111,6 +111,9 @@ class StoreApi extends BusinessApi {
   Future<Object?> disableRemote() => delete('/v1/remote-access');
   Future<Map<String, dynamic>> settings() => getObject('/v1/settings');
   Future<Object?> saveSettings(Map<String, dynamic> body) => put('/v1/settings', body);
+  Future<FileResponse> logo() => file('/v1/settings/logo');
+  Future<void> uploadLogo(List<int> bytes) => file('/v1/settings/logo', method: 'PUT', upload: bytes);
+  Future<void> deleteLogo() => delete('/v1/settings/logo');
   Future<List<Map<String, dynamic>>> printers() => getRows('/v1/printers');
   Future<Object?> testPrint() => post('/v1/printers/test');
 }

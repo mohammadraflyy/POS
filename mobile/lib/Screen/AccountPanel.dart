@@ -103,7 +103,7 @@ class _AccountPanelState extends State<_AccountPanel> {
             const SizedBox(height: 4),
             Wrap(spacing: Space.sm, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Pill(app.isDemo ? 'Demo' : _role(app.role)),
-              Text(widget.shopName ?? 'Point of Sales', style: TextStyle(color: muted, fontSize: 13)),
+              Text(app.shopName ?? widget.shopName ?? 'Point of Sales', style: TextStyle(color: muted, fontSize: 13)),
             ]),
           ])),
         ]),

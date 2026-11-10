@@ -153,6 +153,42 @@ void addReportRoutes(Router router, ApiContext ctx) {
     return ok();
   });
 
+  // the shop's own logo: raw image bytes in and out
+  router.get('/v1/settings/logo', (Request request) {
+    requireUser(ctx, request);
+    final logo = getStoreLogo(db);
+
+    if (logo == null) {
+      return json({'error': 'Toko belum memasang logo.'}, status: 404);
+    }
+
+    return Response.ok(logo.bytes, headers: {'content-type': logo.mime, 'cache-control': 'no-cache'});
+  });
+
+  router.put('/v1/settings/logo', (Request request) async {
+    requireAdmin(ctx, request);
+    final bytes = <int>[];
+
+    await for (final chunk in request.read()) {
+      bytes.addAll(chunk);
+
+      if (bytes.length > maxLogoBytes) {
+        throw BadRequest('Logo terlalu besar (maksimal 2 MB).');
+      }
+    }
+
+    saveStoreLogo(db, bytes);
+
+    return ok({'ok': true, 'logoVersion': getStoreLogo(db)?.updatedAt});
+  });
+
+  router.delete('/v1/settings/logo', (Request request) {
+    requireAdmin(ctx, request);
+    deleteStoreLogo(db);
+
+    return ok();
+  });
+
   router.get('/v1/printers', (Request request) async {
     requireUser(ctx, request);
 

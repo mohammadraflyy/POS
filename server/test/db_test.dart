@@ -9,9 +9,9 @@ void main() {
     final db = Db.open(':memory:');
     final tables = db.select("select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name");
 
-    expect(tables.map((t) => t['name']), containsAll(['sales', 'remote_access']));
-    expect(tables, hasLength(23));
-    expect(db.scalar<int>('PRAGMA user_version'), 2);
+    expect(tables.map((t) => t['name']), containsAll(['sales', 'remote_access', 'store_logo']));
+    expect(tables, hasLength(24));
+    expect(db.scalar<int>('PRAGMA user_version'), 3);
     expect(db.scalar<int>('PRAGMA foreign_keys'), 1);
   });
 
@@ -50,16 +50,17 @@ void main() {
     final db = Db.open(':memory:');
     db.raw.execute('DROP TABLE sale_cost_corrections');
     db.raw.execute('DROP TABLE remote_access');
+    db.raw.execute('DROP TABLE store_logo');
     db.raw.execute('PRAGMA user_version = 0');
     db.insert("INSERT INTO categories (nama, created_at, updated_at) VALUES ('Existing', 0, 0)");
 
     // Re-running migrate on a user_version = 0 DB that already has products/categories preserves rows and adds missing tables.
     migrate(db);
 
-    expect(db.scalar<int>('PRAGMA user_version'), 2);
+    expect(db.scalar<int>('PRAGMA user_version'), 3);
     expect(db.select('SELECT nama FROM categories').map((r) => r['nama']), ['Existing']);
     final tables = db.select("SELECT name FROM sqlite_master WHERE type = 'table'").map((t) => t['name']).toList();
-    expect(tables, containsAll(['sale_cost_corrections', 'remote_access']));
+    expect(tables, containsAll(['sale_cost_corrections', 'remote_access', 'store_logo']));
     db.close();
   });
 }

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../core/format.dart';
@@ -144,35 +145,65 @@ class KpiStrip extends StatelessWidget {
   });
 }
 
-/// The app's mark: a till receipt (struk) with a torn edge, drawn in the shop's wine.
+/// The app's mark. With [logo] (the shop's own image, from Pengaturan) it shows that;
+/// otherwise the default: a till receipt with a torn edge on a rounded wine tile.
 class BrandMark extends StatelessWidget {
-  const BrandMark({super.key, this.size = 24});
+  const BrandMark({super.key, this.size = 24, this.logo});
   final double size;
+  final Uint8List? logo;
   @override
-  Widget build(BuildContext context) => SizedBox(width: size, height: size, child: CustomPaint(painter: _ReceiptPainter()));
+  Widget build(BuildContext context) {
+    final image = logo;
+    if (image != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.22),
+        child: Image.memory(image, width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true,
+          errorBuilder: (_, _, _) => BrandMark(size: size)),
+      );
+    }
+    return SizedBox(width: size, height: size, child: CustomPaint(painter: BrandMarkPainter(tile: dataHue)));
+  }
 }
 
-class _ReceiptPainter extends CustomPainter {
+/// [BrandMark]'s default, as a painter so the launcher icons are drawn from the same
+/// shapes (see `tool/make_icons_test.dart`).
+class BrandMarkPainter extends CustomPainter {
+  const BrandMarkPainter({required this.tile, this.paper = Colors.white, this.inset = 0});
+  final Color tile, paper;
+
+  /// Fraction of the size left empty around the tile (Android crops adaptive icons).
+  final double inset;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final w = size.width, h = size.height;
-    final left = w * 0.2, right = w * 0.8, top = h * 0.08, bottom = h * 0.9;
-    final teeth = 4;
+    final pad = size.width * inset;
+    final box = Rect.fromLTWH(pad, pad, size.width - pad * 2, size.height - pad * 2);
+    final w = box.width, h = box.height;
+    canvas.drawRRect(RRect.fromRectAndRadius(box, Radius.circular(w * 0.22)), Paint()..color = tile);
+
+    // the receipt: a white slip with a torn bottom edge
+    final left = box.left + w * 0.27, right = box.right - w * 0.27, top = box.top + h * 0.18, bottom = box.bottom - h * 0.16;
+    const teeth = 4;
     final step = (right - left) / teeth;
-    final paper = Path()..moveTo(left, top)..lineTo(right, top)..lineTo(right, bottom);
+    final slip = Path()..moveTo(left, top)..lineTo(right, top)..lineTo(right, bottom);
     for (var i = teeth; i > 0; i--) {
-      paper.lineTo(left + step * (i - 0.5), bottom - h * 0.08);
-      paper.lineTo(left + step * (i - 1), bottom);
+      slip.lineTo(left + step * (i - 0.5), bottom - h * 0.06);
+      slip.lineTo(left + step * (i - 1), bottom);
     }
-    paper.close();
-    canvas.drawPath(paper, Paint()..color = dataHue);
-    final line = Paint()..color = Colors.white..strokeWidth = h * 0.07..strokeCap = StrokeCap.round;
-    canvas.drawLine(Offset(left + w * 0.1, h * 0.3), Offset(right - w * 0.1, h * 0.3), line);
-    canvas.drawLine(Offset(left + w * 0.1, h * 0.46), Offset(right - w * 0.22, h * 0.46), line);
-    canvas.drawLine(Offset(left + w * 0.1, h * 0.62), Offset(right - w * 0.1, h * 0.62), line);
+    slip.close();
+    canvas.drawPath(slip, Paint()..color = paper..isAntiAlias = true);
+
+    // printed lines, and a bold total
+    final ink = Paint()..color = tile..strokeWidth = h * 0.045..strokeCap = StrokeCap.round;
+    final x0 = left + w * 0.08, x1 = right - w * 0.08;
+    canvas.drawLine(Offset(x0, top + h * 0.12), Offset(x1, top + h * 0.12), ink);
+    canvas.drawLine(Offset(x0, top + h * 0.22), Offset(x1 - w * 0.1, top + h * 0.22), ink);
+    canvas.drawLine(Offset(x0, top + h * 0.32), Offset(x1 - w * 0.04, top + h * 0.32), ink);
+    canvas.drawLine(Offset(x0 + w * 0.12, top + h * 0.46), Offset(x1, top + h * 0.46), ink..strokeWidth = h * 0.075);
   }
+
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant BrandMarkPainter old) => old.tile != tile || old.paper != paper || old.inset != inset;
 }
 
 class PageIntro extends StatelessWidget {

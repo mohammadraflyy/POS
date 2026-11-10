@@ -109,7 +109,7 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
       Menu.kartuStok => StockLedgerScreen(api: api),
       Menu.rekap => RekapScreen(api: api, onEditSale: admin ? _editSale : null, onOpenMenu: widget.onOpenMenu, isAdmin: admin),
       Menu.pengguna => UsersScreen(api: api, currentUserId: widget.app.userId),
-      Menu.pengaturan => SettingsScreen(api: api, isAdmin: admin),
+      Menu.pengaturan => SettingsScreen(api: api, isAdmin: admin, app: widget.app),
     };
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([guard, store]), builder: (context, _) => NoticeListener(

@@ -62,6 +62,15 @@ Future<(String, List<int>)?> pickSpreadsheet() async {
   return (file.name, await file.readAsBytes());
 }
 
+/// Lets the user pick an image file (PNG, JPG, WebP) for store logo.
+Future<(String, List<int>)?> pickImage() async {
+  final file = await openFile(acceptedTypeGroups: const [
+    XTypeGroup(label: 'Gambar (PNG, JPG, WebP)', extensions: ['png', 'jpg', 'jpeg', 'webp']),
+  ]);
+  if (file == null) return null;
+  return (file.name, await file.readAsBytes());
+}
+
 Future<DateTimeRange?> pickRange(BuildContext context, DateTimeRange? current) => showDateRangePicker(
   context: context, firstDate: DateTime(2020), lastDate: DateTime(DateTime.now().year + 1, 12, 31), initialDateRange: current);
 

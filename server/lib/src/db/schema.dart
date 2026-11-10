@@ -8,6 +8,7 @@ import 'db.dart';
 const List<String> migrations = [
   _v1,
   _v2,
+  _v3,
 ];
 
 void migrate(Db db) {
@@ -363,6 +364,17 @@ CREATE TABLE IF NOT EXISTS remote_access (
   oauth_client_id text NOT NULL,
   oauth_client_secret text NOT NULL,
   created_at integer NOT NULL,
+  updated_at integer NOT NULL
+);
+''';
+
+/// The shop's own logo, shown in the app instead of the default mark. Kept apart from
+/// `store_settings` so the desktop app's table stays exactly as it made it. One row at most.
+const _v3 = '''
+CREATE TABLE IF NOT EXISTS store_logo (
+  id integer PRIMARY KEY CHECK (id = 1),
+  mime text NOT NULL,
+  data blob NOT NULL,
   updated_at integer NOT NULL
 );
 ''';

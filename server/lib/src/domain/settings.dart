@@ -1,10 +1,64 @@
 import '../core/errors.dart';
 import '../db/db.dart';
 
+/// Largest logo accepted; a shop mark needs no more than a few hundred kilobytes.
+const maxLogoBytes = 2 * 1024 * 1024;
+
+/// The stored logo, or null when the shop uses the default mark.
+({String mime, List<int> bytes, int updatedAt})? getStoreLogo(Db db) {
+  final row = db.first('SELECT mime, data, updated_at FROM store_logo WHERE id = 1');
+  if (row == null) return null;
+
+  return (mime: row['mime'] as String, bytes: row['data'] as List<int>, updatedAt: row['updated_at'] as int);
+}
+
+/// Replaces the logo. Only PNG, JPEG, and WebP are taken, recognised by their bytes rather
+/// than a name the client sends.
+void saveStoreLogo(Db db, List<int> bytes) {
+  if (bytes.isEmpty) {
+    throw BusinessException('File logo kosong.');
+  }
+
+  if (bytes.length > maxLogoBytes) {
+    throw BusinessException('Logo terlalu besar (maksimal 2 MB).');
+  }
+
+  final mime = logoMimeType(bytes);
+  if (mime == null) {
+    throw BusinessException('Logo harus berupa gambar PNG, JPG, atau WebP.');
+  }
+
+  db.execute(
+    'INSERT INTO store_logo (id, mime, data, updated_at) VALUES (1, ?, ?, ?) '
+    'ON CONFLICT(id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at',
+    [mime, bytes, DateTime.now().millisecondsSinceEpoch],
+  );
+}
+
+void deleteStoreLogo(Db db) => db.execute('DELETE FROM store_logo WHERE id = 1');
+
+String? logoMimeType(List<int> b) {
+  bool starts(List<int> sig, [int offset = 0]) {
+    if (b.length < offset + sig.length) return false;
+    for (var i = 0; i < sig.length; i++) {
+      if (b[offset + i] != sig[i]) return false;
+    }
+    return true;
+  }
+
+  if (starts(const [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) return 'image/png';
+  if (starts(const [0xFF, 0xD8, 0xFF])) return 'image/jpeg';
+  if (starts(const [0x52, 0x49, 0x46, 0x46]) && starts(const [0x57, 0x45, 0x42, 0x50], 8)) return 'image/webp';
+  return null;
+}
+
 Map<String, Object?> getStoreSettings(Db db) {
   final row = db.first('SELECT * FROM store_settings ORDER BY id LIMIT 1');
+  final logo = db.first('SELECT updated_at FROM store_logo WHERE id = 1');
 
   return {
+    // changes whenever the logo does, so clients know when to fetch it again
+    'logoVersion': logo?['updated_at'],
     'namaToko': row?['nama_toko'] ?? 'Toko',
     'alamat': row?['alamat'],
     'telepon': row?['telepon'],

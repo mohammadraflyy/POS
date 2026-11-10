@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../models/live_models.dart';
 import '../../services/barcode_burst.dart';
 import '../../services/store_api.dart';
+import '../../state/app_state.dart';
 import '../../state/theme_controller.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/ui.dart';
@@ -14,14 +15,16 @@ import 'RemoteAccessSection.dart';
 
 /// Store details, receipt printer, and the phones paired to this server.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.api, required this.isAdmin});
+  const SettingsScreen({super.key, required this.api, required this.isAdmin, this.app});
   final StoreApi api;
   final bool isAdmin;
+  final AppState? app;
   @override State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
   Map<String, dynamic> settings = {};
+  Uint8List? _logoBytes;
   List<Map<String, dynamic>> printers = [], devices = [];
   bool loading = true, testing = false;
   String? error;
@@ -30,9 +33,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() { loading = true; error = null; });
     try {
       final s = await widget.api.settings();
+      Uint8List? logo;
+      if (s['logoVersion'] != null) {
+        try {
+          final res = await widget.api.logo();
+          logo = Uint8List.fromList(res.bytes);
+        } catch (_) {}
+      }
       final p = await widget.api.printers().catchError((Object _) => <Map<String, dynamic>>[]);
       final d = widget.isAdmin ? await widget.api.devices() : <Map<String, dynamic>>[];
-      if (mounted) setState(() { settings = s; printers = p; devices = d; });
+      if (mounted) setState(() { settings = s; _logoBytes = logo; printers = p; devices = d; });
     } catch (e) { if (mounted) setState(() => error = e.toString()); }
     finally { if (mounted) setState(() => loading = false); }
   }
@@ -47,7 +57,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
       FieldSpec('receiptWidth', 'Lebar kertas', kind: FieldKind.choice, required: true, initial: settings['receiptWidth'] ?? '58mm', choices: const {'58mm': '58 mm', '80mm': '80 mm'}),
       FieldSpec('marginMinimalPersen', 'Margin minimal (%)', kind: FieldKind.integer, initial: settings['marginMinimalPersen'], helper: 'Dipakai untuk rekomendasi harga jual'),
     ], onSave: (v) => widget.api.saveSettings(v));
-    if (values != null && mounted) { showNotice(context, 'Pengaturan disimpan.', kind: NoticeKind.success); load(); }
+    if (values != null && mounted) {
+      showNotice(context, 'Pengaturan disimpan.', kind: NoticeKind.success);
+      await widget.app?.refreshBranding();
+      load();
+    }
+  }
+
+  Future<void> _uploadLogo() async {
+    final picked = await pickImage();
+    if (picked == null || !mounted) return;
+    try {
+      await widget.api.uploadLogo(picked.$2);
+      if (mounted) {
+        showNotice(context, 'Logo toko berhasil diperbarui.', kind: NoticeKind.success);
+        await widget.app?.refreshBranding();
+        load();
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _deleteLogo() async {
+    if (!await confirmAction(context, title: 'Hapus logo toko?', destructive: true, confirmLabel: 'Hapus',
+      message: 'Aplikasi akan kembali menggunakan logo standar struk POS.')) { return; }
+    try {
+      await widget.api.deleteLogo();
+      if (mounted) {
+        showNotice(context, 'Logo toko dihapus.', kind: NoticeKind.info);
+        await widget.app?.refreshBranding();
+        load();
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
   }
   Future<void> testPrint() async {
     setState(() => testing = true);
@@ -148,6 +192,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (widget.isAdmin) OutlinedButton.icon(onPressed: editStore, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Ubah data toko')),
           OutlinedButton.icon(onPressed: testing ? null : testPrint, icon: const Icon(Icons.print_outlined), label: Text(testing ? 'Mencetak…' : 'Tes cetak')),
         ]),
+      ])),
+      const SizedBox(height: Space.xl),
+      const ScreenHeader('Logo Toko', 'Logo yang tampil di bilah navigasi aplikasi, struk, dan menu.', section: true),
+      WhitePanel(child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        BrandMark(size: 64, logo: _logoBytes),
+        const SizedBox(width: Space.lg),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_logoBytes != null ? 'Logo kustom aktif' : 'Menggunakan logo default',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+          const SizedBox(height: 4),
+          Text(_logoBytes != null
+            ? 'Format PNG, JPG, atau WebP (maksimal 2 MB).'
+            : 'Pasang logo tokomu agar tampil personal di aplikasi dan struk.',
+            style: TextStyle(color: muted, fontSize: 13)),
+          if (widget.isAdmin) ...[
+            const SizedBox(height: Space.md),
+            Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
+              OutlinedButton.icon(
+                onPressed: _uploadLogo,
+                icon: const Icon(Icons.upload_file_outlined, size: 18),
+                label: Text(_logoBytes != null ? 'Ganti logo' : 'Pilih logo…'),
+              ),
+              if (_logoBytes != null)
+                TextButton.icon(
+                  onPressed: _deleteLogo,
+                  style: TextButton.styleFrom(foregroundColor: errorColor),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Hapus logo'),
+                ),
+            ]),
+          ],
+        ])),
       ])),
       const SizedBox(height: Space.xl),
       const ScreenHeader('Tampilan', 'Pilih tema terang, gelap, atau mengikuti sistem.', section: true),
