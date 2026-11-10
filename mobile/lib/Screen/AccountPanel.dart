@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../state/theme_controller.dart';
 import '../Widgets/admin.dart' show isDesktop;
 import '../Widgets/ui.dart';
+import '../services/updater_service.dart';
 
 /// The app's own version, as in pubspec.yaml.
 const mobileAppVersion = '1.0.0';
@@ -166,6 +167,20 @@ class _AccountPanelState extends State<_AccountPanel> {
           _row('Aplikasi', 'Point of Sales $mobileAppVersion'),
           if (serverVersion != null) _row('Server', serverVersion!),
           _row('Perangkat', isDesktop ? 'PC (Windows)' : 'HP'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, Space.md),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  promptAppUpdate(context);
+                },
+                icon: const Icon(Icons.system_update_outlined, size: 16),
+                label: const Text('Periksa pembaruan rilis…'),
+              ),
+            ),
+          ),
         ]),
       ])),
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class AppUpdateInfo {
@@ -142,7 +143,11 @@ class UpdaterService {
       if (Platform.isAndroid) {
         await _channel.invokeMethod('installApk', {'path': saveFile.path});
       } else if (Platform.isWindows) {
-        await Process.start(saveFile.path, [], mode: ProcessStartMode.detached);
+        if (saveFile.path.toLowerCase().endsWith('.zip')) {
+          await Process.start('explorer.exe', ['/select,', saveFile.path]);
+        } else {
+          await Process.start(saveFile.path, [], mode: ProcessStartMode.detached);
+        }
       }
     } finally {
       client.close();
@@ -162,6 +167,211 @@ class UpdaterService {
       if (num1 != num2) return num1.compareTo(num2);
     }
     return 0;
+  }
+}
+
+/// Menampilkan dialog pengecekan dan instalasi pembaruan aplikasi baik di Desktop maupun Mobile
+Future<void> promptAppUpdate(BuildContext context, {bool notifyIfLatest = true}) async {
+  final updater = UpdaterService();
+  
+  // Tampilkan progress pengecekan
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => const Center(
+      child: Card(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 16),
+              Text('Memeriksa pembaruan rilis…'),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  AppUpdateInfo? info;
+  try {
+    info = await updater.checkForUpdate();
+  } catch (_) {}
+
+  if (!context.mounted) return;
+  Navigator.of(context, rootNavigator: true).pop(); // Tutup loading
+
+  if (info == null) {
+    if (context.mounted && notifyIfLatest) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Gagal Memeriksa'),
+          content: const Text('Tidak dapat terhubung ke server rilis GitHub. Pastikan perangkat terhubung ke internet.'),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mengerti')),
+          ],
+        ),
+      );
+    }
+    return;
+  }
+
+  if (!info.isNewer) {
+    if (context.mounted && notifyIfLatest) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Aplikasi Sudah Versi Terbaru'),
+          content: Text('Point of Sales Anda (v${info?.currentVersion}) sudah merupakan versi paling mutakhir.'),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tutup')),
+          ],
+        ),
+      );
+    }
+    return;
+  }
+
+  if (!context.mounted) return;
+
+  // Dialog konfirmasi rilis baru
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => _AppUpdateDialog(info: info!, updater: updater),
+  );
+}
+
+class _AppUpdateDialog extends StatefulWidget {
+  const _AppUpdateDialog({required this.info, required this.updater});
+  final AppUpdateInfo info;
+  final UpdaterService updater;
+
+  @override
+  State<_AppUpdateDialog> createState() => _AppUpdateDialogState();
+}
+
+class _AppUpdateDialogState extends State<_AppUpdateDialog> {
+  double? _progress;
+  bool _downloading = false;
+  String? _error;
+
+  Future<void> _startUpdate() async {
+    if (widget.info.downloadUrl == null || widget.info.fileName == null) {
+      _openInBrowser();
+      return;
+    }
+
+    setState(() {
+      _downloading = true;
+      _error = null;
+      _progress = 0.0;
+    });
+
+    try {
+      await widget.updater.downloadAndInstall(
+        downloadUrl: widget.info.downloadUrl!,
+        fileName: widget.info.fileName!,
+        onProgress: (received, total) {
+          if (mounted && total > 0) {
+            setState(() => _progress = received / total);
+          }
+        },
+      );
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _downloading = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  void _openInBrowser() {
+    final url = 'https://github.com/${widget.updater.repository}/releases/latest';
+    if (Platform.isWindows) {
+      Process.start('cmd.exe', ['/c', 'start', '', url]);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.system_update, color: Colors.blueAccent),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Pembaruan ${widget.info.releaseName}')),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Versi baru tersedia: v${widget.info.latestVersion} (versi saat ini: v${widget.info.currentVersion})',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            if (widget.info.changelog.isNotEmpty) ...[
+              const Text('Catatan Perubahan:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(maxHeight: 120),
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: SingleChildScrollView(
+                  child: Text(widget.info.changelog, style: const TextStyle(fontSize: 12)),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (_downloading) ...[
+              LinearProgressIndicator(value: _progress),
+              const SizedBox(height: 6),
+              Text(
+                'Mengunduh… ${((_progress ?? 0) * 100).toInt()}%',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (!_downloading) ...[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Nanti saja'),
+          ),
+          if (Platform.isWindows)
+            TextButton(
+              onPressed: _openInBrowser,
+              child: const Text('Buka di Browser'),
+            ),
+          FilledButton.icon(
+            onPressed: _startUpdate,
+            icon: const Icon(Icons.download, size: 16),
+            label: Text(widget.info.downloadUrl != null ? 'Unduh & Perbarui' : 'Lihat Rilis'),
+          ),
+        ],
+      ],
+    );
   }
 }
 

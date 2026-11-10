@@ -5,6 +5,7 @@ import '../../state/app_state.dart';
 import '../../Widgets/ui.dart';
 import 'ScanScreen.dart';
 import '../../Widgets/admin.dart' show isDesktop;
+import '../../services/updater_service.dart';
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key, required this.app});
   final AppState app;
@@ -84,6 +85,14 @@ class _PairingScreenState extends State<PairingScreen> {
         if (widget.app.hasStoredSession) SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : widget.app.restore, child: const Text('Coba koneksi tersimpan kembali'))),
         const SizedBox(height: 12), SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : widget.app.startDemo, child: const Text('Coba tampilan kasir • Mode demo'))),
         Text('Demo memakai data contoh. Transaksi tidak dikirim ke toko dan hilang saat demo dimulai ulang.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 13)),
+        const SizedBox(height: Space.lg),
+        Center(
+          child: TextButton.icon(
+            onPressed: () => promptAppUpdate(context),
+            icon: const Icon(Icons.system_update_outlined, size: 16),
+            label: const Text('Periksa pembaruan aplikasi', style: TextStyle(fontSize: 13)),
+          ),
+        ),
       ])),
     )));
     return form;
