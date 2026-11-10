@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../models/live_models.dart';
 import '../../services/barcode_burst.dart';
 import '../../services/store_api.dart';
+import '../../services/updater_service.dart';
 import '../../state/app_state.dart';
 import '../../state/theme_controller.dart';
 import '../../Widgets/admin.dart';
@@ -28,6 +29,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<Map<String, dynamic>> printers = [], devices = [];
   bool loading = true, testing = false;
   String? error;
+  final _updater = UpdaterService();
+  bool _checkingUpdate = false;
+  String? _updateStatus;
+  double? _downloadProgress;
   @override void initState() { super.initState(); load(); }
   Future<void> load() async {
     setState(() { loading = true; error = null; });
@@ -91,6 +96,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _checkAppUpdate() async {
+    setState(() { _checkingUpdate = true; _updateStatus = 'Menghubungi server rilis…'; });
+    try {
+      final info = await _updater.checkForUpdate();
+      if (!mounted) return;
+      if (info == null) {
+        setState(() { _updateStatus = 'Aplikasi sudah versi terbaru.'; });
+        showNotice(context, 'Aplikasi sudah versi terbaru.', kind: NoticeKind.info);
+        return;
+      }
+      if (info.isNewer && info.downloadUrl != null) {
+        setState(() { _updateStatus = 'Versi ${info.latestVersion} tersedia!'; });
+        final doUpdate = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('Pembaruan ${info.latestVersion} Tersedia'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Versi saat ini: ${info.currentVersion}'),
+                Text('Versi terbaru: ${info.latestVersion}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                if (info.changelog.isNotEmpty) ...[
+                  const SizedBox(height: Space.sm),
+                  const Text('Catatan Rilis:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  Text(info.changelog, maxLines: 5, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 13)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Nanti')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Perbarui Sekarang')),
+            ],
+          ),
+        );
+        if (doUpdate == true && mounted) {
+          setState(() { _downloadProgress = 0.0; _updateStatus = 'Mengunduh ${info.fileName ?? 'update'}…'; });
+          await _updater.downloadAndInstall(
+            downloadUrl: info.downloadUrl!,
+            fileName: info.fileName ?? 'Point-of-Sales-update.apk',
+            onProgress: (received, total) {
+              if (mounted && total > 0) {
+                setState(() => _downloadProgress = received / total);
+              }
+            },
+          );
+          if (mounted) {
+            setState(() { _downloadProgress = null; _updateStatus = 'Pembaruan siap dipasang.'; });
+          }
+        }
+      } else {
+        setState(() { _updateStatus = 'Aplikasi sudah versi terbaru (${info.currentVersion}).'; });
+        showNotice(context, 'Aplikasi sudah versi terbaru (${info.currentVersion}).', kind: NoticeKind.info);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _updateStatus = 'Gagal memeriksa rilis: $e'; });
+        showError(context, e);
+      }
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
     }
   }
   Future<void> testPrint() async {
@@ -244,6 +313,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Tersimpan di perangkat ini saja.', style: TextStyle(color: muted, fontSize: 12)),
         ]),
       )),
+      const SizedBox(height: Space.xl),
+      const ScreenHeader('Pembaruan Aplikasi', 'Periksa versi terbaru aplikasi dari rilis Git.', section: true),
+      WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.system_update_outlined, color: ink, size: 24),
+          const SizedBox(width: Space.md),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Point of Sales v1.0.0', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            const SizedBox(height: 2),
+            Text(_updateStatus ?? 'Aplikasi siap memeriksa rilis terbaru.', style: TextStyle(color: muted, fontSize: 12)),
+          ])),
+          OutlinedButton.icon(
+            onPressed: _checkingUpdate ? null : _checkAppUpdate,
+            icon: Icon(_checkingUpdate ? Icons.hourglass_top : Icons.refresh, size: 16),
+            label: Text(_checkingUpdate ? 'Memeriksa…' : 'Periksa'),
+          ),
+        ]),
+        if (_downloadProgress != null) ...[
+          const SizedBox(height: Space.md),
+          LinearProgressIndicator(value: _downloadProgress),
+          const SizedBox(height: 4),
+          Text('Mengunduh pembaruan… ${((_downloadProgress ?? 0) * 100).toInt()}%', style: TextStyle(color: muted, fontSize: 12)),
+        ],
+      ])),
       const SizedBox(height: Space.xl),
       const ScreenHeader('Tes scanner barcode', 'Coba arahkan scanner ke barcode apa saja untuk memastikan terbaca.', section: true),
       const _ScannerTestPanel(),
