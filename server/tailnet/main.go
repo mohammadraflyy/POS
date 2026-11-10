@@ -26,6 +26,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"strconv"
 	"sync"
@@ -72,6 +73,17 @@ func main() {
 		fail("posnet butuh -state dan salah satu dari -serve atau -dial")
 	}
 
+	if err := os.MkdirAll(*stateDir, 0700); err != nil {
+		fail(fmt.Sprintf("tidak bisa membuat folder state %s: %v", *stateDir, err))
+	}
+	_ = os.Setenv("TS_LOGS_DIR", *stateDir)
+	if os.Getenv("HOME") == "" {
+		_ = os.Setenv("HOME", *stateDir)
+	}
+	if os.Getenv("TMPDIR") == "" {
+		_ = os.Setenv("TMPDIR", *stateDir)
+	}
+
 	// the shop's traffic and logs stay between its own devices
 	envknob.SetNoLogsNoSupport()
 
@@ -100,7 +112,8 @@ func main() {
 // exitWhenParentGone ends the process once stdin reaches EOF. The app holds the other
 // end of the pipe, so EOF means it closed - or crashed - and nobody needs us anymore.
 func exitWhenParentGone(server *tsnet.Server) {
-	_, _ = io.Copy(io.Discard, bufio.NewReader(os.Stdin))
+	_, err := io.Copy(io.Discard, bufio.NewReader(os.Stdin))
+	emit("exit", map[string]any{"reason": "stdin_closed", "error": fmt.Sprint(err)})
 	_ = server.Close()
 	os.Exit(0)
 }
@@ -128,6 +141,39 @@ func waitUp(server *tsnet.Server) {
 
 		emit("waiting", map[string]any{"message": err.Error()})
 		time.Sleep(5 * time.Second)
+	}
+}
+
+// waitPeer waits until target's IP appears in the local tailnet peer map so that
+// tsnet's dialer routes the connection through netstack instead of the OS socket.
+func waitPeer(server *tsnet.Server, target string) {
+	host, _, err := net.SplitHostPort(target)
+	if err != nil {
+		return
+	}
+	targetIP, err := netip.ParseAddr(host)
+	if err != nil || !targetIP.IsValid() {
+		return
+	}
+	lc, err := server.LocalClient()
+	if err != nil {
+		return
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		st, err := lc.Status(ctx)
+		cancel()
+		if err == nil && st != nil {
+			for _, peer := range st.Peer {
+				for _, ip := range peer.TailscaleIPs {
+					if ip == targetIP {
+						return
+					}
+				}
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
 }
 
@@ -171,6 +217,7 @@ func runDial(server *tsnet.Server, target string) {
 
 	go func() {
 		waitUp(server)
+		waitPeer(server, target)
 		close(ready)
 	}()
 
@@ -187,7 +234,18 @@ func runDial(server *tsnet.Server, target string) {
 				return nil, ctx.Err()
 			}
 
-			return server.Dial(ctx, "tcp", target)
+			for {
+				c, err := server.Dial(ctx, "tcp", target)
+				if err == nil {
+					return c, nil
+				}
+				emit("dial_error", map[string]any{"target": target, "message": err.Error()})
+				select {
+				case <-ctx.Done():
+					return nil, err
+				case <-time.After(500 * time.Millisecond):
+				}
+			}
 		})
 	}
 }
@@ -197,7 +255,7 @@ func runDial(server *tsnet.Server, target string) {
 func forward(conn net.Conn, dial func(context.Context) (net.Conn, error)) {
 	defer conn.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
 	upstream, err := dial(ctx)
 	cancel()
 

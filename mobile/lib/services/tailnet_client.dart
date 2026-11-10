@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'mobile_api.dart' show ApiFailure;
 
@@ -28,6 +29,7 @@ class PosnetClient implements TailnetClient {
   static const _channel = MethodChannel('pos/native');
 
   Process? _process;
+  IOSink? _stdin;
   String? _target;
   int? _port;
   Future<int>? _starting;
@@ -63,10 +65,13 @@ class PosnetClient implements TailnetClient {
     if (!File(paths.executable).existsSync()) throw const ApiFailure('Komponen internet tidak ada di aplikasi ini. Pasang ulang aplikasi versi terbaru.');
     final process = await Process.start(paths.executable, ['-state', paths.state, '-hostname', hostname, '-dial', target],
       environment: {if (authKey != null) 'POSNET_AUTHKEY': authKey});
-    _process = process; _target = target;
+    _process = process; _stdin = process.stdin; _target = target;
     final listening = Completer<int>();
-    process.stderr.drain<void>();
+    process.stderr.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+      debugPrint('[posnet:err] $line');
+    });
     process.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+      debugPrint('[posnet] $line');
       final Object? event;
       try { event = jsonDecode(line); } on FormatException { return; }
       if (event is! Map) return;
@@ -80,8 +85,9 @@ class PosnetClient implements TailnetClient {
           if (!listening.isCompleted) listening.completeError(ApiFailure(event['message']?.toString() ?? 'Penghubung internet gagal.'));
       }
     });
-    process.exitCode.then((_) {
-      if (identical(_process, process)) { _process = null; _port = null; }
+    process.exitCode.then((code) {
+      debugPrint('[posnet] exited ($code)');
+      if (identical(_process, process)) { _process = null; _stdin = null; _port = null; }
       if (!listening.isCompleted) listening.completeError(const ApiFailure('Penghubung internet berhenti.'));
     });
     try {
@@ -95,10 +101,11 @@ class PosnetClient implements TailnetClient {
   @override
   Future<void> stop({bool forget = false}) async {
     final process = _process;
-    _process = null; _port = null; _target = null;
+    final stdin = _stdin;
+    _process = null; _stdin = null; _port = null; _target = null;
     if (process != null) {
       // closing stdin tells posnet to leave cleanly; kill is the backstop
-      process.stdin.close().ignore();
+      (stdin ?? process.stdin).close().ignore();
       await process.exitCode.timeout(const Duration(seconds: 3), onTimeout: () { process.kill(); return -1; });
     }
     if (forget && supported) {

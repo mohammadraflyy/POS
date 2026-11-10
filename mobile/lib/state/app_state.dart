@@ -158,11 +158,14 @@ class AppState extends ChangeNotifier {
         return result;
       } on ApiFailure catch (e) {
         if (!e.unreachable || !hasRemoteAccess) rethrow;
-        final result = await call(await _remoteBase());
+        final result = await _callRemote(call);
         if (!viaInternet) { viaInternet = true; notifyListeners(); }
         return result;
       }
     }
+    return _callRemote(call);
+  }
+  Future<T> _callRemote<T>(Future<T> Function(Uri base) call) async {
     try {
       return await call(await _remoteBase());
     } on ApiFailure catch (e) {
