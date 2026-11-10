@@ -35,18 +35,48 @@ class RunningServer {
   }
 }
 
-/// The first non-internal IPv4 address - what a phone on the same Wi-Fi should dial.
-/// Null when the PC is on no network.
+/// The best non-internal IPv4 address - what a phone on the same Wi-Fi/LAN should dial.
+/// Ignores virtual switches (WSL, Hyper-V, Docker, VirtualBox, VMware, Tailscale) and
+/// prefers Wi-Fi / Ethernet private LAN addresses. Null when the PC is on no network.
 Future<String?> lanAddress() async {
   try {
     final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+    final candidates = <({String ip, int score})>[];
 
     for (final interface in interfaces) {
+      final lower = interface.name.toLowerCase();
+      final isVirtual = lower.contains('wsl') ||
+          lower.contains('vethernet') ||
+          lower.contains('hyper-v') ||
+          lower.contains('docker') ||
+          lower.contains('virtual') ||
+          lower.contains('vmware') ||
+          lower.contains('tailscale') ||
+          lower.contains('loopback');
+
       for (final address in interface.addresses) {
-        if (!address.isLoopback && !address.isLinkLocal) {
-          return address.address;
+        if (address.isLoopback || address.isLinkLocal) continue;
+        final ip = address.address;
+        if (ip.startsWith('169.254.') || ip.startsWith('100.')) continue;
+
+        var score = isVirtual ? -100 : 10;
+        if (lower.contains('wi-fi') || lower.contains('wlan') || lower.contains('wireless')) {
+          score += 5;
+        } else if (lower.contains('ethernet') || lower.contains('eth')) {
+          score += 3;
         }
+        if (ip.startsWith('192.168.')) {
+          score += 4;
+        } else if (ip.startsWith('10.')) {
+          score += 2;
+        }
+        candidates.add((ip: ip, score: score));
       }
+    }
+
+    if (candidates.isNotEmpty) {
+      candidates.sort((a, b) => b.score.compareTo(a.score));
+      return candidates.first.ip;
     }
   } on Object {
     // no network: callers show "not connected" rather than an error

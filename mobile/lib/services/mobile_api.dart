@@ -24,17 +24,21 @@ abstract class JsonTransport {
 class IoJsonTransport implements JsonTransport {
   @override
   Future<ApiResponse> send(String method, Uri uri, Map<String, String> headers, Map<String, dynamic>? body) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final isLocalTunnel = Platform.isAndroid && uri.host == '127.0.0.1';
+    final connectTimeout = isLocalTunnel ? const Duration(seconds: 30) : const Duration(seconds: 6);
+    final totalTimeout = isLocalTunnel ? const Duration(seconds: 45) : const Duration(seconds: 12);
+    final client = HttpClient()..connectionTimeout = connectTimeout;
     var connected = false;
     try {
       return await (() async {
         final request = await client.openUrl(method, uri);
-        connected = true;
+        if (!isLocalTunnel) connected = true;
         request.followRedirects = false;
         headers.forEach(request.headers.set);
         request.headers.contentType = ContentType.json;
         if (body != null) request.write(jsonEncode(body));
         final response = await request.close();
+        connected = true;
         final bytes = <int>[];
         await for (final chunk in response) {
           bytes.addAll(chunk);
@@ -42,13 +46,13 @@ class IoJsonTransport implements JsonTransport {
         }
         final parsed = jsonDecode(utf8.decode(bytes));
         return ApiResponse(response.statusCode, parsed);
-      })().timeout(const Duration(seconds: 15));
+      })().timeout(totalTimeout);
     } on TimeoutException {
       throw ApiFailure('PC belum merespons. Pastikan PC aktif dan berada di jaringan yang sama.', unreachable: !connected);
     } on SocketException {
       throw ApiFailure('Tidak dapat terhubung ke PC. Periksa alamat, Wi-Fi, dan firewall port 48950.', unreachable: !connected);
     } on HttpException {
-      throw const ApiFailure('Koneksi ke PC terputus. Silakan periksa jaringan.');
+      throw ApiFailure('Koneksi ke PC terputus. Silakan periksa jaringan.', unreachable: !connected);
     } on FormatException {
       throw const ApiFailure('Respons bukan JSON API mobile yang valid. Periksa alamat PC.');
     } finally {

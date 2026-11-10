@@ -187,11 +187,14 @@ class AppState extends ChangeNotifier {
     unawaited(_save().catchError((Object _) {}));
   }
 
+  bool _maintainingRemote = false;
+
   /// While on the shop's Wi-Fi, keeps this phone's way in from outside in step with the
   /// PC: asks for it when the PC offers it, drops it when the PC switched it off. Out of
   /// the shop, looks for the Wi-Fi again so requests go back the short way.
   Future<void> _maintainRemote() async {
-    if (!tailnet.supported || mode != AppMode.connected || address == null || _token == null) return;
+    if (_maintainingRemote || !tailnet.supported || mode != AppMode.connected || address == null || _token == null) return;
+    _maintainingRemote = true;
     final generation = _generation;
     try {
       if (viaInternet) {
@@ -223,6 +226,8 @@ class AppState extends ChangeNotifier {
       unawaited(_remoteBase().then((_) {}, onError: (Object _) {}));
     } catch (_) {
       // the next check tries again; the shop's Wi-Fi keeps working either way
+    } finally {
+      _maintainingRemote = false;
     }
   }
   Future<void> _forgetRemote() async {
@@ -276,6 +281,9 @@ class AppState extends ChangeNotifier {
       final result = await _routed((base) => api.requestRaw(base: base, path: path, method: method,
         token: _token, query: query, body: body));
       if (generation != _generation) throw const ApiFailure('Sesi perangkat telah berubah.');
+      if (!viaInternet && (!hasRemoteAccess || !_remoteJoined)) {
+        unawaited(_maintainRemote());
+      }
       return result;
     } on ApiFailure catch (e) {
       if (e.unauthorized && generation == _generation) {
