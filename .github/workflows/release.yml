@@ -78,16 +78,17 @@ jobs:
           flutter pub get
           flutter build windows --release
 
-      - name: Archive Windows Artifact
+      - name: Build Windows Installer (.exe)
         shell: pwsh
         run: |
-          Compress-Archive -Path "mobile/build/windows/x64/runner/Release/*" -DestinationPath "Point-of-Sales-Windows.zip"
+          powershell -ExecutionPolicy Bypass -File mobile/windows/installer/build.ps1 -SkipFlutterBuild
+          cp mobile/build/installer/Point-of-Sales-Setup-*.exe Point-of-Sales-Desktop-Setup.exe
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-desktop
-          path: Point-of-Sales-Windows.zip
+          path: Point-of-Sales-Desktop-Setup.exe
 
   publish-release:
     name: Publish Release to GitHub
@@ -115,7 +116,7 @@ jobs:
           name: Release ${{ steps.tag.outputs.name }}
           files: |
             android-apk/Point-of-Sales-Mobile.apk
-            windows-desktop/Point-of-Sales-Windows.zip
+            windows-desktop/Point-of-Sales-Desktop-Setup.exe
           generate_release_notes: true
           draft: false
           prerelease: false
