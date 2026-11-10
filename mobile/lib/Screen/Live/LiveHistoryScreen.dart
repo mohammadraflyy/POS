@@ -39,8 +39,21 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
 
   static String _status(Map<String, dynamic> row) {
     if (row['status'] == 'dibatalkan') return 'Dibatalkan';
-    if (row['metodePembayaran'] == 'bon' && (number(row['dibayar']) ?? 0) < (number(row['total']) ?? 0)) return 'Belum lunas';
+    final sisa = (number(row['total']) ?? 0) - (number(row['dibayar']) ?? 0);
+    if (row['metodePembayaran'] == 'bon' && sisa > 0) return 'Belum lunas · Sisa ${rupiah(sisa)}';
     return 'Selesai';
+  }
+
+  static String _itemsSummary(Map<String, dynamic> row) {
+    final items = row['items'];
+    if (items is! List || items.isEmpty) return '—';
+    final parts = <String>[];
+    for (final raw in items.whereType<Map>()) {
+      final name = (raw['namaItem'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      parts.add('$name ×${quantityText(raw['qty'])}');
+    }
+    return parts.isEmpty ? '—' : parts.join(', ');
   }
 
   Future<void> _open(Map<String, dynamic> row) async {
@@ -65,6 +78,7 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
       for (final entry in _methods.entries) ChoiceChip(label: Text(entry.value), selected: method == entry.key, showCheckmark: false, onSelected: (_) { method = entry.key; load(); }),
       const SizedBox(width: Space.sm),
       FilterChip(label: const Text('Sembunyikan yang batal'), selected: status == 'selesai', onSelected: (v) { status = v ? 'selesai' : ''; load(); }),
+      FilterChip(label: const Text('Hanya yang batal'), selected: status == 'dibatalkan', onSelected: (v) { status = v ? 'dibatalkan' : ''; load(); }),
     ]),
     const SizedBox(height: Space.md),
     if (loading) const LinearProgressIndicator(minHeight: 2),
@@ -74,9 +88,11 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
       DataCol('Nota', (r) => r['nomorNota']?.toString() ?? '#${r['saleId'] ?? r['id'] ?? ''}'),
       DataCol('Waktu', (r) => dateTimeLabel(r['createdAt'] ?? r['tanggal']), flex: 2),
       DataCol('Pelanggan', (r) => text(r['namaPelanggan'], 'Umum'), flex: 2),
+      DataCol('Barang', _itemsSummary, flex: 2),
       DataCol('Metode', (r) => _methods[r['metodePembayaran']] ?? text(r['metodePembayaran'])),
-      DataCol('Status', _status),
+      DataCol('Status', _status, flex: 2),
       DataCol('Total', (r) => rupiah(r['total']), numeric: true, flex: 2),
+      DataCol('Laba', (r) => r['status'] == 'dibatalkan' ? '—' : rupiah(r['laba']), numeric: true, flex: 2),
     ]),
     Pager(page: page, last: last, busy: loading, onPage: (p) => load(target: p)),
   ]);

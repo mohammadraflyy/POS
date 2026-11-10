@@ -82,19 +82,33 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
         if (sale['keterangan'] != null) SummaryRow('Keterangan', sale['keterangan'].toString()), const Divider(),
         for (final line in lines) Padding(padding: const EdgeInsets.only(bottom: 14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text((line['namaItem'] ?? line['productName'] ?? line['namaProduk'] ?? 'Barang #${line['productId'] ?? ''}').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
-          Text('${quantityText(line['qty'])} ${(line['namaSatuan'] ?? line['satuan'] ?? '').toString()} • ${rupiah(line['hargaJual'])}', style: TextStyle(color: muted)),
+          Text('${quantityText(line['qty'])} ${(line['namaSatuan'] ?? line['satuan'] ?? '').toString()} • ${rupiah(line['hargaJual'])}${line['priceSource'] == 'price_tier' ? ' · grosir' : line['priceSource'] == 'manual' ? ' · manual' : ''}${(number(line['diskon']) ?? 0) > 0 ? ' · diskon ${rupiah(line['diskon'])}' : ''}', style: TextStyle(color: muted)),
           if (line['subtotal'] != null || line['total'] != null) SummaryRow('Jumlah', rupiah(line['subtotal'] ?? line['total'])),
         ])), const Divider(),
+        if ((number(sale['diskon']) ?? 0) > 0) SummaryRow('Diskon nota', '-${rupiah(sale['diskon'])}'),
+        if ((number(sale['biayaLain']) ?? 0) > 0) SummaryRow('Biaya lain', rupiah(sale['biayaLain'])),
         SummaryRow('Total', rupiah(sale['total'] ?? widget.confirmation?['total']), strong: true),
+        if (sale['status'] != 'dibatalkan' && sale['modal'] != null) SummaryRow('Modal barang', rupiah(sale['modal'])),
+        if (sale['status'] != 'dibatalkan' && sale['laba'] != null) SummaryRow('Laba', rupiah(sale['laba']), color: (number(sale['laba']) ?? 0) < 0 ? errorColor : null),
         if (sale['dibayar'] != null) SummaryRow('Dibayar', rupiah(sale['dibayar'])),
         if (sale['metodePembayaran'] == 'bon' && (number(sale['total']) ?? 0) > (number(sale['dibayar']) ?? 0))
           SummaryRow('Sisa piutang', rupiah((number(sale['total']) ?? 0) - (number(sale['dibayar']) ?? 0)), color: errorColor),
         if (sale['kembalian'] != null) SummaryRow('Kembalian', rupiah(sale['kembalian'])),
         if (payments is List && payments.isNotEmpty) ...[const Divider(), const Text('Cicilan bon', style: TextStyle(fontWeight: FontWeight.w700)),
-          for (final p in payments.whereType<Map>()) SummaryRow((p['tanggal'] ?? p['createdAt'] ?? '').toString(), rupiah(p['jumlah'])),
+          for (final p in payments.whereType<Map>()) () {
+            final ket = (p['keterangan'] ?? '').toString().trim();
+            final label = (p['tanggal'] ?? p['createdAt'] ?? '').toString();
+            return SummaryRow(ket.isEmpty ? label : '$label · $ket', rupiah(p['jumlah']));
+          }(),
         ],
         if (edits is List && edits.isNotEmpty) ...[const Divider(), Text('${edits.length} perubahan tercatat di PC'),
-          for (final e in edits.whereType<Map>()) Text('${e['createdAt'] ?? e['tanggal'] ?? ''} • ${e['keterangan'] ?? e['reason'] ?? 'Perubahan transaksi'}', style: TextStyle(color: muted, fontSize: 13)),
+          for (final e in edits.whereType<Map>()) () {
+            final who = (e['kasirName'] ?? '').toString().trim();
+            final diff = e['totalSebelum'] != null && e['totalSesudah'] != null
+                ? ' (${rupiah(e['totalSebelum'])} → ${rupiah(e['totalSesudah'])})'
+                : '';
+            return Text('${dateTimeLabel(e['createdAt'] ?? e['tanggal'])}${who.isEmpty ? '' : ' · $who'} • ${e['keterangan'] ?? e['reason'] ?? 'Perubahan transaksi'}$diff', style: TextStyle(color: muted, fontSize: 13));
+          }(),
         ],
       ])),
       if (detail == null && widget.confirmation != null) SummaryRow('Total tersimpan', rupiah(widget.confirmation!['total']), strong: true),
