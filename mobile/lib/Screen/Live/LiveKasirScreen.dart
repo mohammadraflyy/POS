@@ -359,7 +359,9 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.md, Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (editBanner != null) ...[editBanner, const SizedBox(height: Space.md)], searchRow, keys])),
+          if (editBanner != null) ...[editBanner, const SizedBox(height: Space.md)],
+          if (queueTabs != null) ...[queueTabs, const SizedBox(height: Space.sm)],
+          searchRow, keys])),
         const Divider(),
         Expanded(child: list),
       ]));

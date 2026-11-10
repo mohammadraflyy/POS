@@ -164,19 +164,21 @@ class _MainScreenState extends State<MainScreen> {
   Widget _navRow(Menu menu, {required bool compact}) {
     final selected = menu == _menu;
     final info = menuInfo[menu]!;
+    final activeBg = isDark ? raised : primaryInk;
+    final activeFg = onPrimary;
     final row = Material(
-      color: selected ? activePill : Colors.transparent,
+      color: selected ? activeBg : Colors.transparent,
       borderRadius: BorderRadius.circular(Corners.control),
       child: InkWell(
         borderRadius: BorderRadius.circular(Corners.control),
         onTap: () => _open(menu),
         child: SizedBox(height: 38, child: Row(mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
           if (!compact) const SizedBox(width: 12),
-          Icon(info.icon, size: 19, color: selected ? ink : muted),
+          Icon(info.icon, size: 19, color: selected ? activeFg : muted),
           if (!compact) ...[
             const SizedBox(width: 12),
             Expanded(child: Text(info.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 14, color: selected ? ink : secondaryInk, fontWeight: selected ? FontWeight.w600 : FontWeight.w400))),
+              style: TextStyle(fontSize: 14, color: selected ? activeFg : secondaryInk, fontWeight: selected ? FontWeight.w600 : FontWeight.w400))),
           ],
         ])),
       ),

@@ -161,23 +161,29 @@ class KpiStrip extends StatelessWidget {
   const KpiStrip(this.items, {super.key});
   final List<Kpi> items;
 
-  Widget _cell(BuildContext context, Kpi kpi) => Padding(
-    padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.lg),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      Text(kpi.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 13)),
-      const SizedBox(height: 6),
-      FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(kpi.value,
-        style: (kpi.lead ? moneyStyle : amountStyle).copyWith(fontSize: kpi.lead ? 30 : 22, color: kpi.color ?? ink, height: 1.15))),
-      if (kpi.caption != null) ...[const SizedBox(height: 4), Text(kpi.caption!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
-    ]),
-  );
+  Widget _cell(BuildContext context, Kpi kpi) {
+    final topStripeColor = kpi.color ?? (kpi.lead ? dataHue : (kpi.label.toLowerCase().contains('laba') ? successColor : kpi.label.toLowerCase().contains('piutang') ? warningColor : dataHue));
+    return Stack(children: [
+      Positioned(top: 0, left: 0, right: 0, height: 3, child: Container(color: topStripeColor)),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg + 2, Space.lg, Space.lg),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(kpi.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 6),
+          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(kpi.value,
+            style: (kpi.lead ? moneyStyle : amountStyle).copyWith(fontSize: kpi.lead ? 30 : 22, color: kpi.color ?? ink, height: 1.15))),
+          if (kpi.caption != null) ...[const SizedBox(height: 4), Text(kpi.caption!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
+        ]),
+      ),
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
     final narrow = box.maxWidth < 600;
     final decoration = BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel));
     if (!narrow) {
-      return Container(decoration: decoration, child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      return Container(decoration: decoration, clipBehavior: Clip.antiAlias, child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         for (var i = 0; i < items.length; i++) ...[
           if (i > 0) const VerticalDivider(width: 1),
           Expanded(flex: items[i].lead ? 4 : 3, child: _cell(context, items[i])),
@@ -193,7 +199,7 @@ class KpiStrip extends StatelessWidget {
         if (pair.length == 2) ...[const VerticalDivider(width: 1), Expanded(child: _cell(context, pair[1]))],
       ])));
     }
-    return Container(decoration: decoration, child: Column(children: rows));
+    return Container(decoration: decoration, clipBehavior: Clip.antiAlias, child: Column(children: rows));
   });
 }
 

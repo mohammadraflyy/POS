@@ -45,6 +45,11 @@ void main() {
 
   Future<void> tapText(WidgetTester tester, String label) async {
     final target = find.text(label).evaluate().isNotEmpty ? find.text(label) : find.textContaining(label);
+    if (find.byType(Scrollable).evaluate().isNotEmpty) {
+      try {
+        await tester.scrollUntilVisible(target.last, 200, scrollable: find.byType(Scrollable).first);
+      } catch (_) {}
+    }
     await tester.ensureVisible(target.last);
     await tester.tap(target.last);
     await settle(tester);

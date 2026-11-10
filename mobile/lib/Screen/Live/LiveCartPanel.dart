@@ -121,7 +121,15 @@ class LiveCartPanel extends StatelessWidget {
       ]),
       // the answer figure: the bill, in the shop's one hue; an empty cart is a real Rp0, not a dash
       SummaryRow('Total', store.items.isEmpty ? rupiah(0) : rupiah(store.price?.total), strong: true, color: store.items.isEmpty ? muted : dataHue), const SizedBox(height: Space.lg),
-      SizedBox(width: double.infinity, child: FilledButton(onPressed: store.canCheckout ? () => openPayment(context, store) : null, style: FilledButton.styleFrom(minimumSize: const Size(44, 44)), child: Text(isDesktop ? 'Bayar  ·  End' : 'Bayar'))),
+      SizedBox(width: double.infinity, child: FilledButton(
+        onPressed: store.canCheckout ? () => openPayment(context, store) : null,
+        style: FilledButton.styleFrom(minimumSize: const Size(44, 46), elevation: 1),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.check_circle_outline, size: 18),
+          const SizedBox(width: Space.sm),
+          Text(isDesktop ? 'Bayar  ·  End' : 'Bayar'),
+        ]),
+      )),
     ]),
   ));
 }
@@ -141,16 +149,22 @@ class _CartLine extends StatelessWidget {
     final tierBadge = priceSource == 'price_tier' ? ' · grosir' : priceSource == 'manual' ? ' · manual' : '';
     final short = line?['stokCukup'] == false;
     return InkWell(
+      borderRadius: BorderRadius.circular(Corners.control),
       onTap: !store.editable ? null : () async {
         final result = await editLiveItem(context, item.product, existing: item);
         if (result != null && context.mounted) { try { store.replace(item, result); } catch (e) { showError(context, e); } }
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        decoration: BoxDecoration(
+          color: surface,
+          border: Border.all(color: ruleColor),
+          borderRadius: BorderRadius.circular(Corners.control),
+        ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
             const SizedBox(height: 3),
             Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}$tierBadge${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
               style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
@@ -175,7 +189,7 @@ class _CartLine extends StatelessWidget {
             if (short) ...[const SizedBox(height: 2), Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))],
           ])),
           const SizedBox(width: Space.md),
-          Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w500)),
+          Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(width: Space.xs),
           SizedBox(width: 28, height: 22, child: IconButton(padding: EdgeInsets.zero, iconSize: 16, onPressed: store.editable ? () => store.remove(item) : null,
             tooltip: 'Hapus ${item.product.name}', style: IconButton.styleFrom(minimumSize: const Size(24, 24), foregroundColor: muted, tapTargetSize: MaterialTapTargetSize.shrinkWrap),

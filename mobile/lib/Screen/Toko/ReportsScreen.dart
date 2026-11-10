@@ -274,7 +274,16 @@ class _RekapScreenState extends State<RekapScreen> {
       ScreenHeader('Rekap', 'Omzet dihitung saat uang diterima: bon masuk saat lunas.', actions: [
         OutlinedButton.icon(onPressed: () async { final picked = await pickRange(context, range); if (picked != null) { range = picked; load(); } },
           icon: const Icon(Icons.date_range), label: Text(rangeLabel(range))),
-        OutlinedButton.icon(onPressed: shareRekapWhatsApp, icon: const Icon(Icons.share_outlined), label: const Text('Bagi ke WA')),
+        OutlinedButton.icon(
+          onPressed: shareRekapWhatsApp,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFF15803D),
+            side: const BorderSide(color: Color(0xFF86EFAC)),
+            backgroundColor: const Color(0xFFF0FDF4),
+          ),
+          icon: const Icon(Icons.share_outlined, size: 18),
+          label: const Text('Bagi ke WA'),
+        ),
         if (isDesktop) OutlinedButton.icon(onPressed: export, icon: const Icon(Icons.download), label: const Text('Ekspor Excel')),
         if (widget.isAdmin) OutlinedButton.icon(onPressed: () => openEfisiensi(), icon: const Icon(Icons.trending_up), label: const Text('Efisiensi harga')),
         OutlinedButton.icon(onPressed: () => showCostCorrectionHistory(context, widget.api), icon: const Icon(Icons.history), label: const Text('Riwayat koreksi HPP')),
