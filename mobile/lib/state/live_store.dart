@@ -6,6 +6,33 @@ import '../models/live_models.dart';
 import '../services/business_api.dart';
 import '../services/mobile_api.dart';
 import '../services/mutation_guard.dart';
+class CartQueue {
+  CartQueue({
+    required this.id,
+    required this.name,
+    List<LiveCartItem>? items,
+    this.customerName = '',
+    this.discount = 0,
+    this.otherCharge = 0,
+    this.note = '',
+    this.saleDate,
+    this.price,
+  }) : items = items ?? [];
+
+  final String id;
+  String name;
+  final List<LiveCartItem> items;
+  String customerName;
+  num discount;
+  num otherCharge;
+  String note;
+  DateTime? saleDate;
+  ServerPrice? price;
+
+  String get label => customerName.isNotEmpty ? customerName : name;
+  int get itemCount => items.fold(0, (acc, item) => acc + (item.quantity.toInt()));
+}
+
 class LiveStore extends ChangeNotifier {
   LiveStore(this.api, this.guard, {this.drafts, bool Function()? viaInternet}) : _viaInternet = viaInternet;
   final BusinessApi api;
@@ -40,7 +67,14 @@ class LiveStore extends ChangeNotifier {
   /// Chosen at the till with Alt+P, as on the desktop; empty means "Umum".
   String customerName = '';
 
-  void setCustomer(String name) { customerName = name.trim(); _saveDraft(); _emit(); }
+  void setCustomer(String name) {
+    customerName = name.trim();
+    if (activeQueueIndex >= 0 && activeQueueIndex < queues.length) {
+      queues[activeQueueIndex].customerName = customerName;
+    }
+    _saveDraft();
+    _emit();
+  }
 
   // --- editing a saved sale ---
 
@@ -60,17 +94,120 @@ class LiveStore extends ChangeNotifier {
     _emit();
   }
 
+  // --- Multi-Antrean / Cart Queues ---
+
+  int activeQueueIndex = 0;
+  final List<CartQueue> queues = [CartQueue(id: '1', name: 'Antrean 1')];
+
+  CartQueue get activeQueue => queues.isEmpty
+      ? CartQueue(id: '1', name: 'Antrean 1')
+      : queues[activeQueueIndex.clamp(0, queues.length - 1)];
+
+  void _syncActiveQueue() {
+    if (activeQueueIndex >= 0 && activeQueueIndex < queues.length) {
+      final q = queues[activeQueueIndex];
+      q.items.clear();
+      q.items.addAll(items);
+      q.customerName = customerName;
+      q.discount = discount;
+      q.otherCharge = otherCharge;
+      q.note = note;
+      q.saleDate = saleDate;
+      q.price = price;
+    }
+  }
+
+  void _loadFromQueue(CartQueue q) {
+    items.clear();
+    items.addAll(q.items);
+    customerName = q.customerName;
+    discount = q.discount;
+    otherCharge = q.otherCharge;
+    note = q.note;
+    saleDate = q.saleDate;
+    price = q.price;
+    _revision++;
+    reprice();
+  }
+
+  void switchQueue(int index) {
+    if (index == activeQueueIndex || index < 0 || index >= queues.length) return;
+    _syncActiveQueue();
+    activeQueueIndex = index;
+    _loadFromQueue(queues[index]);
+    _saveDraft();
+    _emit();
+  }
+
+  void newQueue({String? name}) {
+    _syncActiveQueue();
+    final nextNum = queues.length + 1;
+    final q = CartQueue(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name ?? 'Antrean $nextNum',
+    );
+    queues.add(q);
+    activeQueueIndex = queues.length - 1;
+    _loadFromQueue(q);
+    _saveDraft();
+    _emit();
+  }
+
+  bool removeQueue(int index) {
+    if (queues.length <= 1) {
+      clear();
+      return false;
+    }
+    if (index < 0 || index >= queues.length) return false;
+
+    _syncActiveQueue();
+    queues.removeAt(index);
+    if (activeQueueIndex >= queues.length) {
+      activeQueueIndex = queues.length - 1;
+    } else if (activeQueueIndex > index) {
+      activeQueueIndex--;
+    }
+    _loadFromQueue(queues[activeQueueIndex]);
+    _saveDraft();
+    _emit();
+    return true;
+  }
+
+  /// Tahan transaksi saat ini dan buat antrean baru
+  bool holdCart({String? label}) {
+    if (items.isEmpty || editingSaleId != null) return false;
+    newQueue(name: label);
+    return true;
+  }
+
   // --- the draft: the sale in progress survives a closed app, as on the desktop ---
 
-  Map<String, dynamic> _draftJson() => {
-    'items': [for (final i in items) {
-      'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
-        'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor}]},
-      'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
-    }],
-    'discount': discount, 'otherCharge': otherCharge, 'note': note, 'customer': customerName,
-    if (saleDate != null) 'saleDate': saleDate!.toIso8601String(),
-  };
+  Map<String, dynamic> _draftJson() {
+    _syncActiveQueue();
+    return {
+      'activeQueueIndex': activeQueueIndex,
+      'queues': [
+        for (final q in queues) {
+          'id': q.id,
+          'name': q.name,
+          'items': [for (final i in q.items) {
+            'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
+              'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor}]},
+            'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
+          }],
+          'discount': q.discount, 'otherCharge': q.otherCharge, 'note': q.note, 'customer': q.customerName,
+          if (q.saleDate != null) 'saleDate': q.saleDate!.toIso8601String(),
+        }
+      ],
+      'items': [for (final i in items) {
+        'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
+          'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor}]},
+        'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
+      }],
+      'discount': discount, 'otherCharge': otherCharge, 'note': note, 'customer': customerName,
+      if (saleDate != null) 'saleDate': saleDate!.toIso8601String(),
+    };
+  }
 
   /// Saves shortly after a change; never while a saved nota is being edited (that one
   /// lives on the server already). An empty sale removes the draft.
@@ -85,7 +222,9 @@ class LiveStore extends ChangeNotifier {
     final store = drafts;
     if (store == null || editingSaleId != null) return;
     try {
-      if (items.isEmpty && discount == 0 && otherCharge == 0 && note.trim().isEmpty && saleDate == null && customerName.isEmpty) {
+      _syncActiveQueue();
+      final allEmpty = queues.every((q) => q.items.isEmpty && q.discount == 0 && q.otherCharge == 0 && q.note.trim().isEmpty && q.saleDate == null && q.customerName.isEmpty);
+      if (allEmpty && items.isEmpty && discount == 0 && otherCharge == 0 && note.trim().isEmpty && saleDate == null && customerName.isEmpty) {
         await store.clear();
       } else {
         await store.write(jsonEncode(_draftJson()));
@@ -95,30 +234,9 @@ class LiveStore extends ChangeNotifier {
     }
   }
 
-  /// Transaksi yang disimpan sementara (hold) agar kasir bisa melayani antrean berikutnya.
-  final List<Map<String, dynamic>> heldCarts = [];
-
-  bool holdCart({String? label}) {
-    if (items.isEmpty || editingSaleId != null) return false;
-    final data = _draftJson();
-    data['label'] = label ?? (customerName.isNotEmpty ? customerName : 'Antrean #${heldCarts.length + 1}');
-    data['heldAt'] = DateTime.now().toIso8601String();
-    heldCarts.add(data);
-    clear();
-    return true;
-  }
-
-  bool restoreHeldCart([int index = 0]) {
-    if (index < 0 || index >= heldCarts.length) return false;
-    final data = heldCarts.removeAt(index);
-    _applyDraftData(data);
-    _saveDraft();
-    return true;
-  }
-
-  int _applyDraftData(Map<String, dynamic> data) {
+  List<LiveCartItem> _parseCartLines(List? raw) {
     final lines = <LiveCartItem>[];
-    for (final entry in (data['items'] as List? ?? const []).whereType<Map>()) {
+    for (final entry in (raw ?? const []).whereType<Map>()) {
       final p = Map<String, dynamic>.from(entry['product'] as Map);
       final units = [
         for (final u in (p['units'] as List).whereType<Map>())
@@ -140,6 +258,33 @@ class LiveStore extends ChangeNotifier {
         discount: entry['discount'] as num?,
       ));
     }
+    return lines;
+  }
+
+  int _applyDraftData(Map<String, dynamic> data) {
+    if (data['queues'] is List && (data['queues'] as List).isNotEmpty) {
+      queues.clear();
+      for (final rawQ in (data['queues'] as List).whereType<Map>()) {
+        final qItems = _parseCartLines(rawQ['items'] as List?);
+        final q = CartQueue(
+          id: rawQ['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          name: rawQ['name']?.toString() ?? 'Antrean ${queues.length + 1}',
+          items: qItems,
+          customerName: (rawQ['customer'] as String?) ?? '',
+          discount: (rawQ['discount'] as num?) ?? 0,
+          otherCharge: (rawQ['otherCharge'] as num?) ?? 0,
+          note: (rawQ['note'] as String?) ?? '',
+          saleDate: rawQ['saleDate'] == null ? null : DateTime.tryParse(rawQ['saleDate'] as String),
+        );
+        queues.add(q);
+      }
+      final targetIdx = (data['activeQueueIndex'] as num? ?? 0).toInt();
+      activeQueueIndex = (targetIdx >= 0 && targetIdx < queues.length) ? targetIdx : 0;
+      _loadFromQueue(queues[activeQueueIndex]);
+      return items.length;
+    }
+
+    final lines = _parseCartLines(data['items'] as List?);
     if (_closed) return 0;
     items.clear();
     items.addAll(lines);
@@ -148,6 +293,18 @@ class LiveStore extends ChangeNotifier {
     note = data['note'] as String? ?? '';
     customerName = data['customer'] as String? ?? '';
     saleDate = data['saleDate'] == null ? null : DateTime.tryParse(data['saleDate'] as String);
+    queues.clear();
+    queues.add(CartQueue(
+      id: '1',
+      name: 'Antrean 1',
+      items: List.of(items),
+      customerName: customerName,
+      discount: discount,
+      otherCharge: otherCharge,
+      note: note,
+      saleDate: saleDate,
+    ));
+    activeQueueIndex = 0;
     reprice();
     _emit();
     return lines.length;
@@ -230,7 +387,7 @@ class LiveStore extends ChangeNotifier {
   }
   void remove(LiveCartItem item) { if (!editable) return; items.remove(item); reprice(); }
   void setDiscount(num value) { if (!editable) return; discount = value; reprice(); }
-  void clear() { if (!editable) return; items.clear(); discount = 0; _resetDetails(); reprice(); }
+  void clear() { if (!editable) return; items.clear(); discount = 0; _resetDetails(); _syncActiveQueue(); reprice(); }
   void reprice() {
     _saveDraft();
     _debounce?.cancel(); final revision = ++_revision;
@@ -280,7 +437,14 @@ class LiveStore extends ChangeNotifier {
       rethrow;
     }
     // Already committed: clear cart even if the printer reports failure.
-    items.clear(); discount = 0; _resetDetails(); price = null; priceError = null; _revision++; catalogRevision++; _emit();
+    if (queues.length > 1) {
+      queues.removeAt(activeQueueIndex);
+      if (activeQueueIndex >= queues.length) activeQueueIndex = queues.length - 1;
+      _loadFromQueue(queues[activeQueueIndex]);
+    } else {
+      items.clear(); discount = 0; _resetDetails(); price = null; priceError = null; _revision++; catalogRevision++;
+    }
+    _emit();
     // the sale is on the server now: the draft has done its job
     _draftTimer?.cancel();
     try { await drafts?.clear(); } catch (_) {}

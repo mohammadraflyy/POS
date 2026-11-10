@@ -15,6 +15,29 @@ Future<void> confirmClearCart(BuildContext context, LiveStore store) async {
   if (yes == true) store.clear();
 }
 
+Future<void> _confirmCloseQueue(BuildContext context, LiveStore store, int index) async {
+  final q = store.queues[index];
+  if (q.items.isNotEmpty) {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hapus ${q.label}?'),
+        content: Text('Antrean ini berisi ${q.items.length} barang belanjaan. Yakin ingin menghapus antrean ini?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: errorColor),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus Antrean'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true) return;
+  }
+  store.removeQueue(index);
+}
+
 class LiveCartPanel extends StatelessWidget {
   const LiveCartPanel({super.key, required this.store});
   final LiveStore store;
@@ -26,46 +49,57 @@ class LiveCartPanel extends StatelessWidget {
     if (value != null) store.setDiscount(value);
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([store, store.guard]), builder: (context, _) => CartLayout(
-    header: Row(children: [Expanded(child: Text(store.items.isEmpty ? 'Keranjang' : 'Keranjang · ${store.items.length} barang', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
-      if (store.items.isNotEmpty && store.editable && store.editingSaleId == null)
-        IconButton(
-          tooltip: 'Tahan transaksi ini (Alt+H)',
-          onPressed: () {
-            store.holdCart();
-            showNotice(context, 'Transaksi disimpan sementara (hold). Silakan layani antrean lain.', kind: NoticeKind.info);
-          },
-          icon: const Icon(Icons.pause_circle_outline, size: 20),
-        ),
-      IconButton(tooltip: 'Kosongkan keranjang (Alt+K)', onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
-        icon: const Icon(Icons.delete_outline)),
-    ]),
-    items: [
-      if (store.heldCarts.isNotEmpty)
-        Container(
-          margin: const EdgeInsets.only(bottom: Space.sm),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: pillWarningBg,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: pillWarningInk.withValues(alpha: 0.3)),
-          ),
-          child: Row(children: [
-            Icon(Icons.pause_circle_filled, size: 16, color: pillWarningInk),
-            const SizedBox(width: 6),
-            Expanded(child: Text('Tertahan (${store.heldCarts.length}): ${store.heldCarts.last['label']}',
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: pillWarningInk, fontSize: 12, fontWeight: FontWeight.w600))),
-            TextButton(
-              style: TextButton.styleFrom(
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              onPressed: () => store.restoreHeldCart(store.heldCarts.length - 1),
-              child: Text('Lanjutkan', style: TextStyle(color: pillWarningInk, fontWeight: FontWeight.bold, fontSize: 12)),
+    header: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (store.queues.length > 1) ...[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (var i = 0; i < store.queues.length; i++) ...[
+                  _CartQueueTab(
+                    queue: store.queues[i],
+                    isActive: i == store.activeQueueIndex,
+                    canClose: store.queues.length > 1,
+                    onTap: () => store.switchQueue(i),
+                    onClose: () => _confirmCloseQueue(context, store, i),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                IconButton(
+                  tooltip: 'Tambah antrean baru',
+                  icon: const Icon(Icons.add, size: 18),
+                  style: IconButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(4),
+                    minimumSize: const Size(28, 28),
+                  ),
+                  onPressed: store.editable ? () => store.newQueue() : null,
+                ),
+              ],
             ),
-          ]),
-        ),
+          ),
+          const SizedBox(height: Space.xs),
+        ],
+        Row(children: [
+          Expanded(child: Text(store.items.isEmpty ? 'Keranjang' : 'Keranjang · ${store.items.length} barang', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
+          if (store.editable && store.editingSaleId == null)
+            IconButton(
+              tooltip: 'Tahan antrean saat ini & buka baru (Alt+H)',
+              onPressed: () {
+                store.newQueue();
+                showNotice(context, 'Antrean baru dibuka. Transaksi sebelumnya tersimpan di tab.', kind: NoticeKind.info);
+              },
+              icon: const Icon(Icons.add_shopping_cart, size: 20),
+            ),
+          IconButton(tooltip: 'Kosongkan keranjang (Alt+K)', onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
+            icon: const Icon(Icons.delete_outline)),
+        ]),
+      ],
+    ),
+    items: [
       if (store.customerName.isNotEmpty) Padding(padding: const EdgeInsets.only(top: Space.sm, bottom: Space.xs), child: Row(children: [
         Icon(Icons.person_outline, size: 16, color: muted), const SizedBox(width: 6),
         Expanded(child: Text('Pelanggan: ${store.customerName}', style: const TextStyle(fontSize: 13))),
@@ -129,6 +163,70 @@ class _CartLine extends StatelessWidget {
             tooltip: 'Hapus ${item.product.name}', style: IconButton.styleFrom(minimumSize: const Size(24, 24), foregroundColor: muted, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
             icon: const Icon(Icons.close))),
         ]),
+      ),
+    );
+  }
+}
+
+class _CartQueueTab extends StatelessWidget {
+  const _CartQueueTab({
+    required this.queue,
+    required this.isActive,
+    required this.canClose,
+    required this.onTap,
+    required this.onClose,
+  });
+
+  final CartQueue queue;
+  final bool isActive;
+  final bool canClose;
+  final VoidCallback onTap;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = queue.items.length;
+    final title = queue.label;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: isActive ? dataHue.withValues(alpha: 0.12) : surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isActive ? dataHue : ruleColor,
+              width: isActive ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                count > 0 ? '$title ($count)' : title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                  color: isActive ? dataHue : ink,
+                ),
+              ),
+              if (canClose) ...[
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: onClose,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Icon(Icons.close, size: 14, color: isActive ? dataHue : muted),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

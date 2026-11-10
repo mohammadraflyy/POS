@@ -111,12 +111,18 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     } else if (alt && key == LogicalKeyboardKey.keyH) {
       action = () {
         if (widget.store.items.isNotEmpty) {
-          widget.store.holdCart();
-          showNotice(context, 'Transaksi ditahan (hold). Silakan layani antrean lain.', kind: NoticeKind.info);
-        } else if (widget.store.heldCarts.isNotEmpty) {
-          widget.store.restoreHeldCart(widget.store.heldCarts.length - 1);
-          showNotice(context, 'Transaksi dilanjutkan.', kind: NoticeKind.info);
+          widget.store.newQueue();
+          showNotice(context, 'Antrean baru dibuka. Transaksi sebelumnya tersimpan di tab.', kind: NoticeKind.info);
+        } else if (widget.store.queues.length > 1) {
+          final nextIdx = (widget.store.activeQueueIndex + 1) % widget.store.queues.length;
+          widget.store.switchQueue(nextIdx);
+          showNotice(context, 'Beralih ke ${widget.store.activeQueue.label}.', kind: NoticeKind.info);
         }
+      };
+    } else if (alt && key == LogicalKeyboardKey.keyT) {
+      action = () {
+        widget.store.newQueue();
+        showNotice(context, 'Antrean baru dibuka.', kind: NoticeKind.info);
       };
     } else if (alt && key == LogicalKeyboardKey.keyK) {
       action = () => confirmClearCart(context, widget.store);
@@ -226,8 +232,46 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       const SizedBox(width: Space.xs),
       IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
     ]);
-    final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+K kosongkan',
+    final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+H tahan/ganti antrean · Alt+T antrean baru · Alt+K kosongkan',
       style: TextStyle(color: muted, fontSize: 12))) : const SizedBox.shrink();
+    final queueTabs = widget.store.queues.length > 1 ? Container(
+      padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.sm, Space.xs),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < widget.store.queues.length; i++) ...[
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                backgroundColor: i == widget.store.activeQueueIndex ? primaryInk : surface,
+                side: BorderSide(color: i == widget.store.activeQueueIndex ? primaryInk : lineColor),
+                label: Text(
+                  widget.store.queues[i].label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: i == widget.store.activeQueueIndex ? FontWeight.w600 : FontWeight.normal,
+                    color: i == widget.store.activeQueueIndex ? onPrimary : ink,
+                  ),
+                ),
+                onPressed: () => widget.store.switchQueue(i),
+              ),
+              const SizedBox(width: 6),
+            ],
+            IconButton(
+              tooltip: 'Tambah antrean baru (Alt+T)',
+              icon: const Icon(Icons.add, size: 18),
+              style: IconButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(4),
+                minimumSize: const Size(28, 28),
+              ),
+              onPressed: widget.store.editable ? () => widget.store.newQueue() : null,
+            ),
+          ],
+        ),
+      ),
+    ) : null;
     final list = CustomScrollView(slivers: [
       if (loading) const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),
       if (error != null) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: EmptyPanel(icon: Icons.wifi_off, title: 'Katalog belum dimuat', message: error!, action: OutlinedButton(onPressed: () => load(), child: const Text('Coba lagi')))))
@@ -259,6 +303,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     if (!wide) {
       return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Column(children: [
         if (editBanner != null) Padding(padding: const EdgeInsets.fromLTRB(Space.md, Space.md, Space.md, 0), child: editBanner),
+        if (queueTabs != null) queueTabs,
         Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: searchRow),
         const Divider(),
         Expanded(child: ColoredBox(color: surface, child: list)),
