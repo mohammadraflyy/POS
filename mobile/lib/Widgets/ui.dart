@@ -273,13 +273,24 @@ class PageIntro extends StatelessWidget {
 
 /// A bounded reading/form width that still fills the available scroll height.
 class WorkArea extends StatelessWidget {
-  const WorkArea({super.key, required this.child, this.maxWidth = 760});
+  const WorkArea({super.key, required this.child, this.maxWidth = double.infinity});
   final Widget child;
   final double maxWidth;
   // inner lists pad 16; on a PC 16 more puts the content on the same 32px left edge as ScreenBody
-  @override Widget build(BuildContext context) => Align(alignment: Alignment.topLeft,
-    child: Padding(padding: EdgeInsets.only(left: MediaQuery.sizeOf(context).width >= 900 ? Space.lg : 0, top: MediaQuery.sizeOf(context).width >= 900 ? Space.lg : 0),
-      child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child)));
+  @override Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final inner = maxWidth.isFinite
+        ? Align(alignment: Alignment.topLeft, child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: child))
+        : child;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: wide ? Space.lg : 0,
+        top: wide ? Space.lg : 0,
+        right: wide ? Space.lg : 0,
+      ),
+      child: inner,
+    );
+  }
 }
 
 /// The phone's cart bar: the count and the total, one tap to the cart.

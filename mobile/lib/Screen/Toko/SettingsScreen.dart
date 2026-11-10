@@ -261,7 +261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) { if (mounted) showError(context, e); }
   }
 
-  @override Widget build(BuildContext context) => ScreenBody(onRefresh: load, maxWidth: 900, children: [
+  @override Widget build(BuildContext context) => ScreenBody(onRefresh: load, children: [
     ScreenHeader('Pengaturan', 'Data toko, printer struk, dan perangkat yang terhubung.'),
     LoadSwitch(loading: loading, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const ScreenHeader('Data Toko', 'Identitas toko, alamat operasional, kontak, dan margin penjualan.', section: true),
@@ -485,7 +485,7 @@ class _UsersScreenState extends State<UsersScreen> {
       message: 'Akun ini tidak bisa login lagi. Transaksi yang pernah dibuatnya tetap ada.')) { return; }
     if (mounted && await runAction(context, () => widget.api.deleteUser(idNumber(user['id'])))) load();
   }
-  @override Widget build(BuildContext context) => ScreenBody(onRefresh: load, maxWidth: 900, children: [
+  @override Widget build(BuildContext context) => ScreenBody(onRefresh: load, children: [
     ScreenHeader('Pengguna', 'Akun kasir dan admin.', actions: [
       FilledButton.icon(onPressed: () => edit(), icon: const Icon(Icons.person_add_alt), label: const Text('Pengguna baru')),
     ]),

@@ -325,7 +325,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
       }), success: 'Satuan diaktifkan.')) { load(); }
     }
   }
-  @override Widget build(BuildContext context) => ScreenBody(onRefresh: load, maxWidth: 900, children: [
+  @override Widget build(BuildContext context) => ScreenBody(onRefresh: load, children: [
     ScreenHeader('Master Satuan', 'Daftar satuan yang bisa dipakai produk.', actions: [
       if (widget.isAdmin) FilledButton.icon(onPressed: () => edit(), icon: const Icon(Icons.add), label: const Text('Satuan baru')),
     ]),

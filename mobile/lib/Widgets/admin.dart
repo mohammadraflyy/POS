@@ -491,15 +491,19 @@ class ScreenHeader extends StatelessWidget {
 
 /// Scrollable page body with a consistent width and padding.
 class ScreenBody extends StatelessWidget {
-  const ScreenBody({super.key, required this.children, this.maxWidth = 1320, this.onRefresh});
+  const ScreenBody({super.key, required this.children, this.maxWidth = double.infinity, this.onRefresh});
   final List<Widget> children;
   final double maxWidth;
   final Future<void> Function()? onRefresh;
   @override Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
+    final content = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
     final list = ListView(physics: const AlwaysScrollableScrollPhysics(),
       padding: wide ? const EdgeInsets.fromLTRB(Space.xxl, Space.xl, Space.xxl, Space.xxl) : const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.xl), children: [
-      Align(alignment: Alignment.topLeft, child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children))),
+      if (maxWidth.isFinite)
+        Align(alignment: Alignment.topLeft, child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: content))
+      else
+        content,
     ]);
     return onRefresh == null ? list : RefreshIndicator(onRefresh: onRefresh!, child: list);
   }

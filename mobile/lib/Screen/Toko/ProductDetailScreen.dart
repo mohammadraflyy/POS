@@ -114,7 +114,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final tiers = detail == null ? const <Map<String, dynamic>>[] : jsonRows(detail!['priceTiers']);
     final history = detail == null ? const <Map<String, dynamic>>[] : jsonRows(detail!['priceHistory']);
     String unitName(Object? unitRowId) => units.firstWhere((u) => u['id'] == unitRowId, orElse: () => {'satuan': '—'})['satuan'].toString();
-    return Scaffold(appBar: AppBar(title: Text(detail?['namaItem']?.toString() ?? 'Produk')), body: ScreenBody(onRefresh: load, maxWidth: 1000, children: [
+    return Scaffold(appBar: AppBar(title: Text(detail?['namaItem']?.toString() ?? 'Produk')), body: ScreenBody(onRefresh: load, children: [
       LoadSwitch(loading: loading, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ScreenHeader(section: true, 'Satuan', 'Kode ${detail?['kodeItem'] ?? ''}. Harga pokok tiap satuan ikut bergerak saat pembelian.', actions: [
           if (widget.isAdmin) FilledButton.icon(onPressed: () => editUnit(), icon: const Icon(Icons.add), label: const Text('Tambah satuan')),

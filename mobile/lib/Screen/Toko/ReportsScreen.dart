@@ -72,7 +72,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     return map;
   }
 
-  @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), maxWidth: 1000, children: [
+  @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), children: [
     ScreenHeader('Pengeluaran', 'Total ${rupiah(totalJumlah)} pada ${rangeLabel(range)}. Belanja barang dicatat di Pembelian.', actions: [
       FilledButton.icon(onPressed: () => edit(), icon: const Icon(Icons.add), label: const Text('Catat')),
       OutlinedButton.icon(onPressed: () async { final picked = await pickRange(context, range); if (picked != null) { range = picked; load(); } },

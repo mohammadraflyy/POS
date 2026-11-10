@@ -110,7 +110,7 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
     final items = detail == null ? const <Map<String, dynamic>>[] : jsonRows(detail!['items']);
     final total = number(detail?['total']) ?? 0;
     final paid = (number(detail?['uangMuka']) ?? 0) + (number(detail?['cicilan']) ?? 0);
-    return Scaffold(appBar: AppBar(title: Text('Pembelian #${widget.id}')), body: ScreenBody(onRefresh: load, maxWidth: 900, children: [
+    return Scaffold(appBar: AppBar(title: Text('Pembelian #${widget.id}')), body: ScreenBody(onRefresh: load, children: [
       LoadSwitch(loading: loading, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         WhitePanel(child: Column(children: [
           SummaryRow('Tanggal', text(detail?['tanggal'])),
@@ -325,7 +325,7 @@ class _PartiesScreenState extends State<PartiesScreen> {
       message: widget.customers ? 'Riwayat penjualannya tetap ada dengan nama yang tercatat saat itu.' : 'Pembelian dari supplier ini tetap ada, tanpa nama supplier.')) { return; }
     if (mounted && await runAction(context, () => widget.customers ? widget.api.deleteCustomer(idNumber(row['id'])) : widget.api.deleteSupplier(idNumber(row['id'])))) load(target: page);
   }
-  @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), maxWidth: 1000, children: [
+  @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), children: [
     ScreenHeader(widget.customers ? 'Pelanggan' : 'Supplier', widget.customers ? 'Pelanggan yang dipilih di kasir dan bon.' : 'Pemasok barang untuk pembelian.', actions: [
       FilledButton.icon(onPressed: () => edit(), icon: const Icon(Icons.add), label: Text('Tambah $label')),
     ]),
