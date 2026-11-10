@@ -6,6 +6,7 @@ import '../../models/live_models.dart';
 import '../../services/store_api.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/charts.dart';
+import '../../Widgets/ui.dart';
 
 const _hari = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
 const _bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -165,11 +166,21 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         const SizedBox(height: 6),
       ]));
 
+    final sumToday = today.fold<num>(0, (s, h) => s + h.value);
+    final sumBefore = before.fold<num>(0, (s, h) => s + h.value);
+    final growth = sumBefore > 0 ? ((sumToday - sumBefore) / sumBefore * 100).round() : null;
+
     final chart = SectionCard(title: 'Penjualan per jam',
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 10, height: 10, color: dataHue), const SizedBox(width: 6), const Text('Hari ini'),
+        if (growth != null) ...[
+          TrendBadge(value: '${growth >= 0 ? '+' : ''}$growth%', isUp: growth >= 0),
+          const SizedBox(width: Space.md),
+        ],
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: dataHue, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 6), const Text('Hari ini'),
         const SizedBox(width: Space.md),
-        Container(width: 12, height: 2, color: comparisonInk), const SizedBox(width: 6),
+        Container(width: 12, height: 3, decoration: BoxDecoration(color: comparisonInk, borderRadius: BorderRadius.circular(1))),
+        const SizedBox(width: 6),
         Text(compareDate == null ? 'Minggu lalu' : _tanggalPendek(compareDate)),
       ]),
       child: HourlyBars(today: today, comparison: before, currentHour: now.hour, height: 220));
@@ -179,10 +190,20 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     final stock = SectionCard(title: 'Stok menipis', padded: false,
       trailing: Text(lowStock.isEmpty ? 'tidak ada di bawah 5' : '${lowStock.length} barang di bawah 5'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (lowStock.isEmpty && stockRows.isNotEmpty) Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, 6),
+        if (lowStock.isEmpty && stockRows.isNotEmpty) Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, 6),
           child: Text('Stok paling sedikit saat ini:', style: TextStyle(color: muted, fontSize: 12))),
-        for (final (i, r) in stockRows.indexed) LedgerRow(first: i == 0, label: text(r['namaItem']), subline: text(r['kodeItem']),
-          value: '${quantityText(r['stok'])} ${text(r['satuan'], '')}', valueColor: (number(r['stok']) ?? 0) <= 0 ? errorColor : ink),
+        for (final (i, r) in stockRows.indexed) LedgerRow(
+          first: i == 0,
+          label: text(r['namaItem']),
+          subline: text(r['kodeItem']),
+          value: '${quantityText(r['stok'])} ${text(r['satuan'], '')}',
+          valueColor: (number(r['stok']) ?? 0) <= 0 ? errorColor : (number(r['stok']) ?? 0) <= 5 ? warningColor : ink,
+          trailing: (number(r['stok']) ?? 0) <= 0
+              ? Pill('Habis', color: errorColor)
+              : (number(r['stok']) ?? 0) <= 5
+                  ? Pill('Sisa ${quantityText(r['stok'])}', color: warningColor)
+                  : null,
+        ),
       ]));
 
     final best = SectionCard(title: 'Paling laku hari ini', padded: false,
@@ -195,10 +216,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     final recent = SectionCard(title: 'Nota terakhir', padded: false,
       child: latest.isEmpty
         ? Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: Text('Belum ada nota.', style: TextStyle(color: muted)))
-        : Column(children: [for (final (i, r) in latest.indexed) LedgerRow(first: i == 0,
+        : Column(children: [for (final (i, r) in latest.indexed) LedgerRow(
+            first: i == 0,
             label: text(r['itemSummary']),
-            subline: '${_saleTime(r['createdAt'])} · ${metodeLabel[r['metodePembayaran']] ?? text(r['metodePembayaran'])}${_bonStatus(r)}',
-            value: rupiah(r['total']))]));
+            subline: '${_saleTime(r['createdAt'])} · ${metodeLabel[r['metodePembayaran']] ?? text(r['metodePembayaran'])}',
+            value: rupiah(r['total']),
+            trailing: _bonPill(r),
+          )]));
 
     return ScreenBody(onRefresh: load, children: [
       ScreenHeader('Hari ini', finding, actions: [
@@ -269,10 +293,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     return parsed == null ? '—' : timeText(parsed.toLocal());
   }
 
-  static String _bonStatus(Map<String, dynamic> r) {
-    if (r['status'] == 'dibatalkan') return ' · batal';
-    if (r['metodePembayaran'] != 'bon') return '';
-    return (number(r['dibayar']) ?? 0) < (number(r['total']) ?? 0) ? ' · belum lunas' : ' · lunas';
+  static Widget _bonPill(Map<String, dynamic> r) {
+    if (r['status'] == 'dibatalkan') return const Pill('Batal', color: Color(0xFFDC2626));
+    if (r['metodePembayaran'] != 'bon') return const Pill('Lunas', color: Color(0xFF16A34A));
+    final dibayar = number(r['dibayar']) ?? 0;
+    final total = number(r['total']) ?? 0;
+    return dibayar < total ? const Pill('Belum Lunas', color: Color(0xFFD97706)) : const Pill('Lunas', color: Color(0xFF16A34A));
   }
 }
 
@@ -283,10 +309,13 @@ class _MoneyFigures extends StatelessWidget {
   final num masuk, laba, piutang;
   final int notes;
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
-    Widget cell(String label, String value, {String? caption, bool lead = false, Color? color}) => Padding(
+    Widget cell(String label, String value, {String? caption, bool lead = false, Color? color, Widget? badge}) => Padding(
       padding: const EdgeInsets.fromLTRB(Space.lg, 18, Space.lg, 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
+        Row(children: [
+          Expanded(child: Text(label, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500))),
+          if (badge != null) badge,
+        ]),
         const SizedBox(height: 6),
         FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
           child: Text(value, style: (lead ? moneyStyle : amountStyle).copyWith(fontSize: lead ? 32 : 22, color: color ?? ink, height: 1.15))),
@@ -294,9 +323,30 @@ class _MoneyFigures extends StatelessWidget {
       ]));
     final lead = cell('Uang masuk', rupiah(masuk), caption: 'tunai + QRIS + transfer', lead: true);
     final rest = [
-      cell('Laba kotor', rupiah(laba), caption: 'dari uang yang masuk', color: laba < 0 ? errorColor : ink),
-      cell('Nota', '$notes', caption: notes == 0 ? 'belum ada penjualan' : 'hari ini'),
-      cell('Piutang bon', rupiah(piutang), caption: 'semua pelanggan, belum lunas'),
+      cell(
+        'Laba kotor',
+        rupiah(laba),
+        caption: laba > 0 ? 'surplus keuntungan hari ini' : laba < 0 ? 'mengalami rugi operasional' : 'belum ada laba',
+        color: laba > 0 ? successColor : laba < 0 ? errorColor : ink,
+        badge: laba > 0
+            ? const TrendBadge(value: 'Untung', isUp: true)
+            : laba < 0
+                ? const TrendBadge(value: 'Minus', isNegative: true)
+                : null,
+      ),
+      cell(
+        'Nota',
+        '$notes',
+        caption: notes == 0 ? 'belum ada penjualan' : 'selesai hari ini',
+        badge: notes > 0 ? Pill('$notes nota', color: successColor) : null,
+      ),
+      cell(
+        'Piutang bon',
+        rupiah(piutang),
+        caption: piutang > 0 ? 'tagihan belum lunas' : 'semua bon telah lunas',
+        color: piutang > 0 ? warningColor : ink,
+        badge: piutang > 0 ? Pill('Tertunda', color: warningColor) : Pill('Lunas', color: successColor),
+      ),
     ];
     if (box.maxWidth < 600) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

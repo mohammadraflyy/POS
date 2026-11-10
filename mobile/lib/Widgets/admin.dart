@@ -414,10 +414,11 @@ class SectionCard extends StatelessWidget {
 /// Rows inside a [SectionCard]: a label (and an optional grey subline) on the left, the
 /// figure right-aligned on one edge, a rule between rows.
 class LedgerRow extends StatelessWidget {
-  const LedgerRow({super.key, required this.label, required this.value, this.subline, this.leading, this.first = false, this.valueColor});
+  const LedgerRow({super.key, required this.label, required this.value, this.subline, this.leading, this.trailing, this.first = false, this.valueColor});
   final String label, value;
   final String? subline;
   final Widget? leading;
+  final Widget? trailing;
   final bool first;
   final Color? valueColor;
   @override Widget build(BuildContext context) => Container(
@@ -431,6 +432,7 @@ class LedgerRow extends StatelessWidget {
       ])),
       const SizedBox(width: Space.md),
       Text(value, style: amountStyle.copyWith(fontSize: 14, color: valueColor ?? ink)),
+      if (trailing != null) ...[const SizedBox(width: Space.sm), trailing!],
     ]),
   );
 }

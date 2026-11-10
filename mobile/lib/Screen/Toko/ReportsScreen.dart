@@ -221,11 +221,12 @@ class _RekapScreenState extends State<RekapScreen> {
         // the period's answer leads; the stock value lives with its own table below
         KpiStrip([
           Kpi('Laba kotor', rupiah(summary['labaKotor']), lead: true, caption: rangeLabel(range),
-            color: (number(summary['labaKotor']) ?? 0) < 0 ? errorColor : null),
+            color: (number(summary['labaKotor']) ?? 0) < 0 ? errorColor : successColor),
           Kpi('Omzet tunai', rupiah(summary['omzetTunai']), caption: 'termasuk pelunasan bon'),
           Kpi('Omzet QRIS & transfer', rupiah(summary['omzetNonTunai'])),
           Kpi('Transaksi', text(summary['jumlahTransaksi'], '0')),
-          Kpi('Piutang beredar', rupiah(summary['piutangBeredar']), caption: 'semua bon belum lunas'),
+          Kpi('Piutang beredar', rupiah(summary['piutangBeredar']), caption: 'semua bon belum lunas',
+            color: (number(summary['piutangBeredar']) ?? 0) > 0 ? warningColor : null),
         ]),
         if (rowsOf('labaPerHari').isNotEmpty) section('Laba per hari', WhitePanel(child: Builder(builder: (context) {
           // every day of the period up to today, on a time scale: a day with no sale is an empty slot, not a skipped one
@@ -238,13 +239,14 @@ class _RekapScreenState extends State<RekapScreen> {
         }))),
         if (penjelasan.isNotEmpty) section('Asal laba', WhitePanel(child: Column(children: [
           SummaryRow('Penjualan kotor', rupiah(penjelasan['penjualanKotor'])),
-          SummaryRow('Diskon barang', _minus(penjelasan['diskonItem'])),
-          SummaryRow('Diskon nota', _minus(penjelasan['diskonNota'])),
+          SummaryRow('Diskon barang', _minus(penjelasan['diskonItem']), color: (number(penjelasan['diskonItem']) ?? 0) > 0 ? errorColor : null),
+          SummaryRow('Diskon nota', _minus(penjelasan['diskonNota']), color: (number(penjelasan['diskonNota']) ?? 0) > 0 ? errorColor : null),
           SummaryRow('Omzet', rupiah(penjelasan['omzet'])),
           SummaryRow('Modal barang', _minus(penjelasan['modal'])),
-          SummaryRow('Laba kotor', rupiah(penjelasan['labaKotor']), strong: true),
+          SummaryRow('Laba kotor', rupiah(penjelasan['labaKotor']), strong: true,
+            color: (number(penjelasan['labaKotor']) ?? 0) >= 0 ? successColor : errorColor),
           if ((number(penjelasan['jumlahBarisRugi']) ?? 0) > 0)
-            SummaryRow('${penjelasan['jumlahBarisRugi']} baris terjual rugi', rupiah(penjelasan['totalRugi']), color: errorColor),
+            SummaryRow('${penjelasan['jumlahBarisRugi']} baris terjual rugi (minus)', '-${rupiah(penjelasan['totalRugi'])}', color: errorColor),
         ]))),
         if (rugi.isNotEmpty) section(rugi.length < (number(penjelasan['jumlahBarisRugi']) ?? 0) ? 'Terjual di bawah modal (${rugi.length} terbesar)' : 'Terjual di bawah modal',
           DataView<Map<String, dynamic>>(rows: rugi, actionsWidth: 360,

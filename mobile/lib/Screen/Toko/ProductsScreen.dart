@@ -223,10 +223,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
       isSelected: widget.isAdmin ? (p) => selectedIds.contains(idNumber(p['id'])) : null,
       onSelect: widget.isAdmin ? (p, on) => setState(() => on ? selectedIds.add(idNumber(p['id'])) : selectedIds.remove(idNumber(p['id']))) : null,
       onTap: (p) async { await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(api: widget.api, productId: idNumber(p['id']), isAdmin: widget.isAdmin))); if (mounted) load(target: page); },
-      actions: widget.isAdmin ? (p) => [
-        IconButton(tooltip: 'Ubah', onPressed: () => edit(p), icon: const Icon(Icons.edit_outlined, size: 20)),
-        IconButton(tooltip: 'Hapus', onPressed: () => remove(p), icon: const Icon(Icons.delete_outline, size: 20)),
-      ] : null,
+      actions: widget.isAdmin ? (p) {
+        final s = number(p['stok']) ?? 0;
+        return [
+          if (s <= 0) const Pill('Habis', color: Color(0xFFDC2626))
+          else if (s <= 5) Pill('Sisa ${quantityText(s)}', color: Color(0xFFD97706)),
+          IconButton(tooltip: 'Ubah', onPressed: () => edit(p), icon: const Icon(Icons.edit_outlined, size: 20)),
+          IconButton(tooltip: 'Hapus', onPressed: () => remove(p), icon: const Icon(Icons.delete_outline, size: 20)),
+        ];
+      } : null,
+      actionsWidth: 180,
       columns: [
         DataCol('Produk', (p) => '${p['namaItem']}${p['isActive'] == false ? ' (nonaktif)' : ''}', flex: 4),
         DataCol('Kode', (p) => text(p['kodeItem']), flex: 2),
@@ -236,7 +242,13 @@ class _ProductsScreenState extends State<ProductsScreen> {
           final t = (number(p['priceTiersCount']) ?? 0).toInt();
           return '$u satuan${t > 0 ? ' · $t grosir' : ''}';
         }, flex: 2),
-        DataCol('Stok', (p) => '${quantityText(p['stok'])} ${text(p['satuan'], '')}', numeric: true, flex: 2),
+        DataCol('Stok', (p) {
+          final s = number(p['stok']) ?? 0;
+          final str = '${quantityText(p['stok'])} ${text(p['satuan'], '')}';
+          if (s <= 0) return '$str (Habis)';
+          if (s <= 5) return '$str (Menipis)';
+          return str;
+        }, numeric: true, flex: 2),
         DataCol('Harga pokok', (p) => rupiah(p['hargaPokok']), numeric: true, flex: 2),
         DataCol('Harga jual', (p) => rupiah(p['hargaJual']), numeric: true, flex: 2),
       ])),

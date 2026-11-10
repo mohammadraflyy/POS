@@ -44,7 +44,17 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
     ]),
     if (loading) const LinearProgressIndicator(minHeight: 2),
     LoadSwitch(loading: false, error: error, onRetry: load, child: DataView<Map<String, dynamic>>(rows: rows, onTap: open,
-      emptyTitle: 'Belum ada pembelian', columns: [
+      emptyTitle: 'Belum ada pembelian',
+      actions: (r) {
+        final sisa = number(r['sisa']) ?? 0;
+        return [
+          sisa > 0
+              ? const Pill('Belum lunas', color: Color(0xFFD97706))
+              : const Pill('Lunas', color: Color(0xFF16A34A)),
+        ];
+      },
+      actionsWidth: 120,
+      columns: [
         DataCol('No.', (r) => '#${r['id']}'),
         DataCol('Tanggal', (r) => text(r['tanggal'])),
         DataCol('Supplier', (r) => text(r['supplierName'], 'Tanpa supplier'), flex: 2),
@@ -237,11 +247,17 @@ class _SupplierDebtScreenState extends State<SupplierDebtScreen> {
           Text('Faktur belum lunas', style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: Space.sm),
           DataView<Map<String, dynamic>>(rows: invoices, emptyTitle: 'Semua faktur lunas',
             onTap: openInvoice,
-            actionsWidth: 340,
-            actions: (i) => [
-              TextButton(onPressed: () => openInvoice(i), child: const Text('Edit faktur')),
-              TextButton(onPressed: () => setSisa(i), child: const Text('Ubah sisa')),
-            ],
+            actionsWidth: 380,
+            actions: (i) {
+              final sisa = number(i['sisa']) ?? 0;
+              return [
+                sisa > 0
+                    ? const Pill('Belum lunas', color: Color(0xFFD97706))
+                    : const Pill('Lunas', color: Color(0xFF16A34A)),
+                TextButton(onPressed: () => openInvoice(i), child: const Text('Edit faktur')),
+                TextButton(onPressed: () => setSisa(i), child: const Text('Ubah sisa')),
+              ];
+            },
             columns: [
               DataCol('Faktur', (i) => '#${i['purchaseId']}'),
               DataCol('Tanggal', (i) => text(i['tanggal'])),

@@ -10,7 +10,7 @@ void showError(BuildContext context, Object error) {
 }
 
 /// A status mark inside a row or beside a value: a pale tint with dark text of the same
-/// hue. [color] picks the pair (success, error, warning); anything else is neutral.
+/// hue and subtle matching border. [color] picks the pair (success, error, warning); anything else is neutral.
 class Pill extends StatelessWidget {
   const Pill(this.label, {super.key, this.color, this.icon});
   final String label;
@@ -26,12 +26,64 @@ class Pill extends StatelessWidget {
   Widget build(BuildContext context) {
     final (bg, fg) = _pair;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(Corners.chip)),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: fg.withValues(alpha: 0.22), width: 1),
+      ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) ...[Icon(icon, size: 13, color: fg), const SizedBox(width: 4)],
-        Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w500))),
+        if (icon != null) ...[Icon(icon, size: 12, color: fg), const SizedBox(width: 4)],
+        Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600))),
       ]),
+    );
+  }
+}
+
+/// A trend badge for increases (up/green), drops (down/red), or negative balances.
+class TrendBadge extends StatelessWidget {
+  const TrendBadge({
+    super.key,
+    required this.value,
+    this.isUp,
+    this.isNegative = false,
+    this.prefix,
+  });
+  final String value;
+  final bool? isUp;
+  final bool isNegative;
+  final String? prefix;
+
+  @override
+  Widget build(BuildContext context) {
+    final up = isUp ?? !isNegative;
+    final bg = up ? pillPositiveBg : pillNegativeBg;
+    final fg = up ? pillPositiveInk : pillNegativeInk;
+    final icon = up ? Icons.trending_up_rounded : Icons.trending_down_rounded;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: fg.withValues(alpha: 0.25), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: fg),
+          const SizedBox(width: 4),
+          if (prefix != null) ...[
+            Text(prefix!, style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 2),
+          ],
+          Text(
+            value,
+            style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.bold, fontFamily: fontFamily),
+          ),
+        ],
+      ),
     );
   }
 }

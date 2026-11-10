@@ -56,6 +56,13 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
     return parts.isEmpty ? '—' : parts.join(', ');
   }
 
+  static Widget _statusBadge(Map<String, dynamic> r) {
+    if (r['status'] == 'dibatalkan') return const Pill('Batal', color: Color(0xFFDC2626));
+    final sisa = (number(r['total']) ?? 0) - (number(r['dibayar']) ?? 0);
+    if (r['metodePembayaran'] == 'bon' && sisa > 0) return const Pill('Belum Lunas', color: Color(0xFFD97706));
+    return const Pill('Lunas', color: Color(0xFF16A34A));
+  }
+
   Future<void> _open(Map<String, dynamic> row) async {
     try {
       final id = idNumber(row['saleId'] ?? row['id']);
@@ -84,7 +91,7 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
     if (loading) const LinearProgressIndicator(minHeight: 2),
     if (error != null) EmptyPanel(icon: Icons.wifi_off, title: 'Riwayat belum dimuat', message: error!, action: OutlinedButton(onPressed: () => load(), child: const Text('Coba lagi')))
     else if (!loading && rows.isEmpty) const EmptyPanel(icon: Icons.receipt_long_outlined, title: 'Tidak ada nota', message: 'Tidak ada nota yang cocok dengan pencarian atau filter ini.')
-    else if (rows.isNotEmpty) DataView<Map<String, dynamic>>(rows: rows, onTap: _open, columns: [
+    else if (rows.isNotEmpty) DataView<Map<String, dynamic>>(rows: rows, onTap: _open, actions: (r) => [_statusBadge(r)], actionsWidth: 110, columns: [
       DataCol('Nota', (r) => r['nomorNota']?.toString() ?? '#${r['saleId'] ?? r['id'] ?? ''}'),
       DataCol('Waktu', (r) => dateTimeLabel(r['createdAt'] ?? r['tanggal']), flex: 2),
       DataCol('Pelanggan', (r) => text(r['namaPelanggan'], 'Umum'), flex: 2),
