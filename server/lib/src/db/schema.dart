@@ -15,10 +15,64 @@ void migrate(Db db) {
 
   for (var version = current; version < migrations.length; version++) {
     db.transaction(() {
-      db.raw.execute(migrations[version]);
+      if (version == 0 && _hasExistingDesktopSchema(db)) {
+        _upgradeExistingDesktopSchemaToV1(db);
+      } else {
+        db.raw.execute(migrations[version]);
+      }
       db.raw.execute('PRAGMA user_version = ${version + 1}');
     });
   }
+}
+
+bool _hasExistingDesktopSchema(Db db) =>
+    db.first("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'products'") != null;
+
+/// Brings an existing `desktop-node` Drizzle database (`user_version = 0`) up to `_v1`
+/// in-place without recreating tables or touching existing rows.
+void _upgradeExistingDesktopSchemaToV1(Db db) {
+  bool hasColumn(String table, String column) =>
+      db.select('PRAGMA table_info($table)').any((r) => r['name'] == column);
+
+  if (!hasColumn('store_settings', 'margin_minimal_persen')) {
+    db.raw.execute('ALTER TABLE store_settings ADD margin_minimal_persen integer DEFAULT 10 NOT NULL');
+  }
+  if (!hasColumn('sales', 'biaya_lain')) {
+    db.raw.execute('ALTER TABLE sales ADD biaya_lain integer DEFAULT 0 NOT NULL');
+  }
+
+  db.raw.execute('''
+CREATE TABLE IF NOT EXISTS device_tokens (
+  id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  nama_perangkat text,
+  token_hash text NOT NULL,
+  last_used_at integer,
+  revoked_at integer,
+  created_at integer NOT NULL,
+  updated_at integer NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS device_tokens_token_hash_unique ON device_tokens (token_hash);
+
+CREATE TABLE IF NOT EXISTS sale_cost_corrections (
+  id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+  batch_id text NOT NULL,
+  sale_id integer NOT NULL,
+  sale_item_id integer NOT NULL,
+  product_id integer NOT NULL,
+  nama_item text NOT NULL,
+  satuan text NOT NULL,
+  qty integer NOT NULL,
+  harga_pokok_lama integer NOT NULL,
+  harga_pokok_baru integer NOT NULL,
+  user_id integer NOT NULL,
+  admin_name text NOT NULL,
+  alasan text NOT NULL,
+  created_at integer NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS stock_movements_product_id_id_idx ON stock_movements (product_id, id);
+''');
 }
 
 const _v1 = '''
@@ -304,7 +358,7 @@ CREATE TABLE store_settings (
 /// Access from outside the shop over Tailscale: the shop's OAuth client, which mints a
 /// key for the PC and for every phone that pairs. One row at most.
 const _v2 = '''
-CREATE TABLE remote_access (
+CREATE TABLE IF NOT EXISTS remote_access (
   id integer PRIMARY KEY CHECK (id = 1),
   oauth_client_id text NOT NULL,
   oauth_client_secret text NOT NULL,

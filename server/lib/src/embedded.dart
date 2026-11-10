@@ -19,10 +19,25 @@ class PortInUseException implements Exception {
   String toString() => 'Port $port sedang dipakai aplikasi lain. Tutup POS Desktop yang lama, lalu buka aplikasi ini lagi.';
 }
 
-/// Where the shop's data lives on Windows: `%APPDATA%\point_of_sales\pos.sqlite`.
-/// A different folder from the desktop app's `%APPDATA%\point-of-sale`, so the two can
-/// never open the same file.
-String defaultShopDbPath() => '${Platform.environment['APPDATA'] ?? Directory.current.path}\\point_of_sales\\pos.sqlite';
+/// Where the shop's data lives on Windows.
+/// Uses the existing `desktop-node\dev.sqlite` directly when present on disk, falling back
+/// to `%APPDATA%\point_of_sales\pos.sqlite`.
+String defaultShopDbPath() {
+  final candidates = [
+    r'C:\Work\POS\desktop-node\dev.sqlite',
+    '${Directory.current.path}\\desktop-node\\dev.sqlite',
+    '${Directory.current.path}\\..\\desktop-node\\dev.sqlite',
+  ];
+
+  for (final candidate in candidates) {
+    final file = File(candidate);
+    if (file.existsSync()) {
+      return file.absolute.path;
+    }
+  }
+
+  return '${Platform.environment['APPDATA'] ?? Directory.current.path}\\point_of_sales\\pos.sqlite';
+}
 
 /// The desktop app's database, read once on first run.
 String defaultLegacyDbPath() => '${Platform.environment['APPDATA'] ?? Directory.current.path}\\point-of-sale\\pos.sqlite';

@@ -1,5 +1,6 @@
 import 'package:pos_server/src/db/db.dart';
 import 'package:pos_server/src/db/demo_seed.dart';
+import 'package:pos_server/src/db/schema.dart';
 import 'package:pos_server/src/domain/kasir.dart';
 import 'package:test/test.dart';
 
@@ -42,6 +43,23 @@ void main() {
     expect(lines, hasLength(1));
     expect((lines.first as Map)['hargaPokok'], isNotNull);
     expect(res['modal'], ((firstProduct['harga_pokok'] as int) * 2) / 100);
+    db.close();
+  });
+
+  test('upgrades an existing desktop-node Drizzle database (user_version = 0) in-place without recreating tables', () {
+    final db = Db.open(':memory:');
+    db.raw.execute('DROP TABLE sale_cost_corrections');
+    db.raw.execute('DROP TABLE remote_access');
+    db.raw.execute('PRAGMA user_version = 0');
+    db.insert("INSERT INTO categories (nama, created_at, updated_at) VALUES ('Existing', 0, 0)");
+
+    // Re-running migrate on a user_version = 0 DB that already has products/categories preserves rows and adds missing tables.
+    migrate(db);
+
+    expect(db.scalar<int>('PRAGMA user_version'), 2);
+    expect(db.select('SELECT nama FROM categories').map((r) => r['nama']), ['Existing']);
+    final tables = db.select("SELECT name FROM sqlite_master WHERE type = 'table'").map((t) => t['name']).toList();
+    expect(tables, containsAll(['sale_cost_corrections', 'remote_access']));
     db.close();
   });
 }
