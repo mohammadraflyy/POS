@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
@@ -11,30 +12,111 @@ const _bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 
 String _tanggalPanjang(DateTime d) => '${_hari[d.weekday - 1]}, ${d.day} ${_bulan[d.month - 1]}';
 String _tanggalPendek(DateTime d) => '${_hari[d.weekday - 1]} ${d.day} ${_bulan[d.month - 1].substring(0, 3)}';
 String _jam(int hour) => '${hour.toString().padLeft(2, '0')}.00';
+String _formatJam(DateTime d) =>
+    '${d.hour.toString().padLeft(2, '0')}.${d.minute.toString().padLeft(2, '0')}.${d.second.toString().padLeft(2, '0')}';
 
 /// The shop's day. Its one question: "how much money came in today, and where is it?"
 /// The answer is the biggest figure, with the drawer strip (cash in the drawer, QRIS and
 /// transfer in the bank, bon sold today with nothing paid yet) right under it, and the
 /// hours beside last week's as the evidence.
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.api});
+  const DashboardScreen({super.key, required this.api, this.active = true});
   final StoreApi api;
+  final bool active;
   @override State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
   Map<String, dynamic>? data;
   DateTime? loadedAt;
   bool loading = true;
   String? error;
-  @override void initState() { super.initState(); load(); }
-  Future<void> load() async {
-    setState(() { loading = data == null; error = null; });
+  Timer? _refreshTimer;
+  bool _fetching = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    load();
+    _syncTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active != oldWidget.active) {
+      _syncTimer();
+      if (widget.active) {
+        load(silent: data != null);
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (widget.active) {
+        load(silent: data != null);
+        _startTimer();
+      }
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _stopTimer();
+    }
+  }
+
+  void _syncTimer() {
+    if (widget.active) {
+      _startTimer();
+    } else {
+      _stopTimer();
+    }
+  }
+
+  void _startTimer() {
+    _stopTimer();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (mounted && widget.active && !_fetching) {
+        load(silent: true);
+      }
+    });
+  }
+
+  void _stopTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _stopTimer();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> load({bool silent = false}) async {
+    if (_fetching) return;
+    _fetching = true;
+    if (!silent) {
+      setState(() { loading = data == null; error = null; });
+    }
     try {
       final result = await widget.api.dashboard();
-      if (mounted) setState(() { data = result; loadedAt = DateTime.now(); });
-    } catch (e) { if (mounted) setState(() => error = e.toString()); }
-    finally { if (mounted) setState(() => loading = false); }
+      if (mounted) {
+        setState(() {
+          data = result;
+          loadedAt = DateTime.now();
+          error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted && (!silent || data == null)) {
+        setState(() => error = e.toString());
+      }
+    } finally {
+      _fetching = false;
+      if (mounted) setState(() => loading = false);
+    }
   }
 
   @override Widget build(BuildContext context) {
@@ -67,7 +149,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       : '${_tanggalPanjang(now)} · $notes nota · jam tersibuk ${_jam(busiest!.hour)} (${rupiah(busiest.value)})';
 
     final money = SectionCard(title: 'Uang hari ini', padded: false,
-      trailing: loadedAt == null ? null : Text('diperbarui ${timeText(loadedAt!)}'),
+      trailing: loadedAt == null ? null : Text('diperbarui ${_formatJam(loadedAt!)}'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const Divider(),
         _MoneyFigures(masuk: masuk, laba: laba, notes: notes, piutang: number(summary['piutangBeredar']) ?? 0),
@@ -120,7 +202,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return ScreenBody(onRefresh: load, children: [
       ScreenHeader('Hari ini', finding, actions: [
-        OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh, size: 18), label: const Text('Muat ulang')),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFA5D6A7)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF2E7D32),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'Realtime',
+                style: TextStyle(
+                  color: Color(0xFF1B5E20),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: () => load(),
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text('Muat ulang'),
+        ),
       ]),
       LoadSwitch(loading: loading, error: error, onRetry: load, child: LayoutBuilder(builder: (context, box) {
         final wide = box.maxWidth >= 900;

@@ -100,7 +100,7 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
       ])),
       Menu.opname => WorkArea(child: LiveOpnameScreen(api: api, guard: guard, onSaved: store.stockChanged)),
       Menu.riwayat => LiveHistoryScreen(api: api, isAdmin: admin, onEditSale: admin ? _editSale : null),
-      Menu.dashboard => DashboardScreen(api: api),
+      Menu.dashboard => DashboardScreen(api: api, active: widget.menu == Menu.dashboard),
       Menu.produk => ProductsHub(api: api, isAdmin: admin, active: widget.menu == Menu.produk),
       Menu.hutang => SupplierDebtScreen(api: api, guard: guard, onChanged: store.stockChanged),
       Menu.supplier => PartiesScreen(api: api, isAdmin: admin, customers: false),
