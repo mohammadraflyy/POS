@@ -30,3 +30,14 @@ yarn-error.log
 /.superpowers
 /.playwright-mcp
 .code-graph/
+*.apk
+*.exe
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+desktop-node/tailnet/
+server/dev.sqlite*
+desktop-node/dev.sqlite*
+mobile/build/
+desktop-node/dist/
+desktop-node/out/

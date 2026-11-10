@@ -27,7 +27,7 @@ class AppUpdateInfo {
 }
 
 class UpdaterService {
-  UpdaterService({this.repository = 'owner/point-of-sales'});
+  UpdaterService({this.repository = 'mohammadraflyy/POS'});
 
   /// Default GitHub repository in format `owner/repo`
   final String repository;
@@ -155,3 +155,4 @@ class UpdaterService {
     return 0;
   }
 }
+
