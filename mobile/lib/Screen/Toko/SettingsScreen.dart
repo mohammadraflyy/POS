@@ -51,20 +51,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) { if (mounted) setState(() => error = e.toString()); }
     finally { if (mounted) setState(() => loading = false); }
   }
-  Future<void> editStore() async {
-    final values = await showFormDialog(context, title: 'Data toko & struk', fields: [
+  Future<void> editStoreData() async {
+    final values = await showFormDialog(context, title: 'Data Toko', fields: [
       FieldSpec('namaToko', 'Nama toko', required: true, initial: settings['namaToko']),
-      FieldSpec('alamat', 'Alamat', initial: settings['alamat']),
-      FieldSpec('telepon', 'Telepon', initial: settings['telepon']),
-      FieldSpec('pesanFooter', 'Pesan di bawah struk', initial: settings['pesanFooter']),
+      FieldSpec('alamat', 'Alamat toko', initial: settings['alamat']),
+      FieldSpec('telepon', 'Nomor telepon / WhatsApp', initial: settings['telepon']),
+      FieldSpec('marginMinimalPersen', 'Margin minimal (%)', kind: FieldKind.integer, initial: settings['marginMinimalPersen'], helper: 'Dipakai untuk rekomendasi harga jual'),
+    ], onSave: (v) {
+      final merged = Map<String, dynamic>.from(settings)..addAll(v);
+      return widget.api.saveSettings(merged);
+    });
+    if (values != null && mounted) {
+      showNotice(context, 'Data toko berhasil disimpan.', kind: NoticeKind.success);
+      await widget.app?.refreshBranding();
+      load();
+    }
+  }
+
+  Future<void> editReceiptSettings() async {
+    final values = await showFormDialog(context, title: 'Pengaturan Struk & Printer', fields: [
       FieldSpec('printerName', 'Printer struk', kind: FieldKind.choice, initial: settings['printerName'],
         choices: {null: 'Printer default Windows', for (final p in printers) p['name']: p['name'].toString()}),
-      FieldSpec('receiptWidth', 'Lebar kertas', kind: FieldKind.choice, required: true, initial: settings['receiptWidth'] ?? '58mm', choices: const {'58mm': '58 mm', '80mm': '80 mm'}),
-      FieldSpec('marginMinimalPersen', 'Margin minimal (%)', kind: FieldKind.integer, initial: settings['marginMinimalPersen'], helper: 'Dipakai untuk rekomendasi harga jual'),
-    ], onSave: (v) => widget.api.saveSettings(v));
+      FieldSpec('receiptWidth', 'Lebar kertas kasir', kind: FieldKind.choice, required: true, initial: settings['receiptWidth'] ?? '58mm', choices: const {'58mm': '58 mm', '80mm': '80 mm'}),
+      FieldSpec('pesanFooter', 'Pesan di bawah struk', kind: FieldKind.multiline, initial: settings['pesanFooter'], helper: 'Contoh: Terima kasih atas kunjungan Anda'),
+    ], onSave: (v) {
+      final merged = Map<String, dynamic>.from(settings)..addAll(v);
+      return widget.api.saveSettings(merged);
+    });
     if (values != null && mounted) {
-      showNotice(context, 'Pengaturan disimpan.', kind: NoticeKind.success);
-      await widget.app?.refreshBranding();
+      showNotice(context, 'Pengaturan struk berhasil disimpan.', kind: NoticeKind.success);
       load();
     }
   }
@@ -248,18 +263,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override Widget build(BuildContext context) => ScreenBody(onRefresh: load, maxWidth: 900, children: [
     ScreenHeader('Pengaturan', 'Data toko, printer struk, dan perangkat yang terhubung.'),
     LoadSwitch(loading: loading, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ScreenHeader('Data Toko', 'Identitas toko, alamat operasional, kontak, dan margin penjualan.', section: true),
       WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SummaryRow('Nama toko', text(settings['namaToko'])),
         SummaryRow('Alamat', text(settings['alamat'])),
         SummaryRow('Telepon', text(settings['telepon'])),
-        SummaryRow('Pesan struk', text(settings['pesanFooter'])),
-        SummaryRow('Printer', text(settings['printerName'], 'Printer default Windows')),
-        SummaryRow('Lebar kertas', text(settings['receiptWidth'])),
         SummaryRow('Margin minimal', '${settings['marginMinimalPersen'] ?? 10}%'),
+        if (widget.isAdmin) ...[
+          const SizedBox(height: Space.md),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: editStoreData,
+              icon: const Icon(Icons.storefront_outlined, size: 18),
+              label: const Text('Ubah data toko'),
+            ),
+          ),
+        ],
+      ])),
+      const SizedBox(height: Space.xl),
+      const ScreenHeader('Pengaturan Struk & Printer', 'Konfigurasi printer kasir, ukuran kertas struk, dan pesan bawah nota.', section: true),
+      WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SummaryRow('Printer struk', text(settings['printerName'], 'Printer default Windows')),
+        SummaryRow('Lebar kertas', text(settings['receiptWidth'], '58 mm')),
+        SummaryRow('Pesan struk', text(settings['pesanFooter'])),
         const SizedBox(height: Space.md),
         Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
-          if (widget.isAdmin) OutlinedButton.icon(onPressed: editStore, icon: const Icon(Icons.edit_outlined, size: 18), label: const Text('Ubah data toko')),
-          OutlinedButton.icon(onPressed: testing ? null : testPrint, icon: const Icon(Icons.print_outlined), label: Text(testing ? 'Mencetak…' : 'Tes cetak')),
+          if (widget.isAdmin)
+            OutlinedButton.icon(
+              onPressed: editReceiptSettings,
+              icon: const Icon(Icons.receipt_long_outlined, size: 18),
+              label: const Text('Ubah pengaturan struk'),
+            ),
+          OutlinedButton.icon(
+            onPressed: testing ? null : testPrint,
+            icon: const Icon(Icons.print_outlined, size: 18),
+            label: Text(testing ? 'Mencetak…' : 'Tes cetak struk'),
+          ),
         ]),
       ])),
       const SizedBox(height: Space.xl),

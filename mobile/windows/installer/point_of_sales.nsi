@@ -50,9 +50,8 @@ VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 ${APP_NAME}"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "Indonesian"
 
-; A running copy holds its files (and the database) open: ask the cashier to close it
-; rather than killing it mid-sale. Windows refuses to open a running .exe for writing,
-; which tells us without shelling out to tasklist.
+; A running copy holds its files (and the database) open: ask to close it automatically
+; or manually, so the cashier can finish any sale before replacing files.
 !macro RequireAppClosed
   ${Do}
     ${IfNot} ${FileExists} "$INSTDIR\${APP_EXE}"
@@ -64,8 +63,19 @@ VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 ${APP_NAME}"
       FileClose $0
       ${Break}
     ${EndIf}
-    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "${APP_NAME} sedang terbuka.$\r$\n$\r$\nTutup aplikasinya dulu (pastikan tidak ada transaksi yang sedang berjalan), lalu tekan Retry." /SD IDCANCEL IDRETRY +2
+    MessageBox MB_YESNOCANCEL|MB_ICONQUESTION "${APP_NAME} sedang berjalan.$\r$\n$\r$\nApakah Anda ingin menutup aplikasi secara otomatis dan melanjutkan pembaruan?" /SD IDYES IDYES closeApp IDNO waitManual
     Abort
+
+    closeApp:
+      nsExec::Exec 'taskkill /IM "${APP_EXE}" /T /F'
+      Sleep 1000
+      ${Continue}
+
+    waitManual:
+      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Silakan tutup ${APP_NAME}, lalu tekan Retry." /SD IDCANCEL IDRETRY retryAgain
+      Abort
+      retryAgain:
+      ${Continue}
   ${Loop}
 !macroend
 

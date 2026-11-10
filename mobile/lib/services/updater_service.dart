@@ -147,6 +147,10 @@ class UpdaterService {
           await Process.start('explorer.exe', ['/select,', saveFile.path]);
         } else {
           await Process.start(saveFile.path, [], mode: ProcessStartMode.detached);
+          // Beri jeda singkat agar installer Windows mulai berjalan, lalu tutup aplikasi
+          // agar proses point_of_sales.exe tidak mengunci file yang akan ditimpa.
+          await Future.delayed(const Duration(milliseconds: 800));
+          exit(0);
         }
       }
     } finally {
@@ -342,7 +346,9 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
               LinearProgressIndicator(value: _progress),
               const SizedBox(height: 6),
               Text(
-                'Mengunduh… ${((_progress ?? 0) * 100).toInt()}%',
+                (_progress ?? 0) >= 1.0 && Platform.isWindows
+                    ? 'Unduhan selesai. Menutup aplikasi untuk memasang pembaruan…'
+                    : 'Mengunduh… ${((_progress ?? 0) * 100).toInt()}%',
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],
