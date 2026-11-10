@@ -42,7 +42,9 @@ VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 ${APP_NAME}"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
 !define MUI_FINISHPAGE_RUN_TEXT "Buka ${APP_NAME} sekarang"
 
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpgrade
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpgrade
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -50,9 +52,21 @@ VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 ${APP_NAME}"
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "Indonesian"
 
+Function SkipIfUpgrade
+  ReadRegStr $0 HKCU "${UNINSTALL_KEY}" "DisplayVersion"
+  ${If} $0 != ""
+    Abort
+  ${EndIf}
+FunctionEnd
+
 ; A running copy holds its files (and the database) open: ask to close it automatically
 ; or manually, so the cashier can finish any sale before replacing files.
 !macro RequireAppClosed
+  ReadRegStr $R0 HKCU "${UNINSTALL_KEY}" "InstallLocation"
+  ${If} $R0 != ""
+    StrCpy $INSTDIR $R0
+  ${EndIf}
+
   ${Do}
     ${IfNot} ${FileExists} "$INSTDIR\${APP_EXE}"
       ${Break}
@@ -67,8 +81,8 @@ VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 ${APP_NAME}"
     Abort
 
     closeApp:
-      nsExec::Exec 'taskkill /IM "${APP_EXE}" /T /F'
-      Sleep 1000
+      nsExec::Exec 'taskkill /F /IM "${APP_EXE}"'
+      Sleep 1500
       ${Continue}
 
     waitManual:

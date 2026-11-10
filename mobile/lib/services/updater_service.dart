@@ -146,10 +146,9 @@ class UpdaterService {
         if (saveFile.path.toLowerCase().endsWith('.zip')) {
           await Process.start('explorer.exe', ['/select,', saveFile.path]);
         } else {
-          await Process.start(saveFile.path, [], mode: ProcessStartMode.detached);
-          // Beri jeda singkat agar installer Windows mulai berjalan, lalu tutup aplikasi
-          // agar proses point_of_sales.exe tidak mengunci file yang akan ditimpa.
-          await Future.delayed(const Duration(milliseconds: 800));
+          // Jalankan installer melalui cmd start agar terlepas sepenuhnya dari pohon proses aplikasi
+          await Process.start('cmd.exe', ['/c', 'start', '""', saveFile.path]);
+          // Segera tutup aplikasi agar tidak mengunci berkas dan installer bisa langsung memperbarui
           exit(0);
         }
       }
