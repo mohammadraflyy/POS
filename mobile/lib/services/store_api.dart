@@ -40,6 +40,11 @@ class StoreApi extends BusinessApi {
   Future<Map<String, dynamic>> products(String search, int page, {int pageSize = 25}) =>
       getObject('/v1/products', _q({'search': search, 'page': page, 'pageSize': pageSize}));
   Future<Map<String, dynamic>> product(int id) => getObject('/v1/products/$id');
+  Future<Map<String, dynamic>> productByBarcode(String code) => getObject('/v1/products/barcode/${Uri.encodeComponent(code)}');
+  Future<Map<String, dynamic>> previewEfisiensiHarga(Map<String, dynamic> body) async =>
+      jsonObject(await post('/v1/products/efisiensi-harga/preview', body));
+  Future<Map<String, dynamic>> applyEfisiensiHarga(Map<String, dynamic> body) async =>
+      jsonObject(await post('/v1/products/efisiensi-harga/apply', body));
   Future<Object?> updateProduct(int id, Map<String, dynamic> body) => put('/v1/products/$id', body);
   Future<Object?> deleteProduct(int id) => delete('/v1/products/$id');
   Future<Map<String, dynamic>> bulkDeleteProducts(List<int> ids) async => jsonObject(await post('/v1/products/bulk-delete', {'ids': ids}));

@@ -186,8 +186,9 @@ class StatTile extends StatelessWidget {
 
 /// A search box that waits for the user to stop typing.
 class SearchBox extends StatefulWidget {
-  const SearchBox({super.key, required this.onChanged, this.hint = 'Cari', this.autofocus = false, this.focusNode});
+  const SearchBox({super.key, required this.onChanged, this.onSubmitted, this.hint = 'Cari', this.autofocus = false, this.focusNode});
   final ValueChanged<String> onChanged;
+  final ValueChanged<String>? onSubmitted;
   final String hint;
   final bool autofocus;
   final FocusNode? focusNode;
@@ -198,7 +199,12 @@ class _SearchBoxState extends State<SearchBox> {
   @override void dispose() { _timer?.cancel(); super.dispose(); }
   @override Widget build(BuildContext context) => TextField(autofocus: widget.autofocus, focusNode: widget.focusNode,
     onChanged: (value) { _timer?.cancel(); _timer = Timer(const Duration(milliseconds: 350), () => widget.onChanged(value.trim())); },
-    onSubmitted: (value) { _timer?.cancel(); widget.onChanged(value.trim()); },
+    onSubmitted: (value) {
+      _timer?.cancel();
+      final trimmed = value.trim();
+      widget.onChanged(trimmed);
+      widget.onSubmitted?.call(trimmed);
+    },
     decoration: InputDecoration(hintText: widget.hint, prefixIcon: const Icon(Icons.search, size: 20)));
 }
 

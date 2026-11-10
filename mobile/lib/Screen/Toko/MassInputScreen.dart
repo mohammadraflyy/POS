@@ -46,9 +46,10 @@ class _Row {
 /// Opname there, so its column is locked for existing rows). Either every row is valid and
 /// all are saved, or nothing is, and the server's reasons sit under the rows they belong to.
 class MassInputScreen extends StatefulWidget {
-  const MassInputScreen({super.key, required this.api, this.ids = const [], this.drafts});
+  const MassInputScreen({super.key, required this.api, this.ids = const [], this.drafts, this.initialBarcode});
   final StoreApi api;
   final List<int> ids;
+  final String? initialBarcode;
 
   /// Keeps the new-product grid between visits, as the desktop did; editing ticked
   /// products is never drafted (that data lives in the database already).
@@ -73,7 +74,16 @@ class _MassInputScreenState extends State<MassInputScreen> {
 
   @override void initState() {
     super.initState();
-    if (widget.ids.isEmpty) { rows.addAll([_newRow(), _newRow(), _newRow()]); _restoreDraft(); } else { load(); }
+    if (widget.ids.isEmpty) {
+      final first = _newRow();
+      if (widget.initialBarcode != null && widget.initialBarcode!.isNotEmpty) {
+        first.barcode.text = widget.initialBarcode!;
+      }
+      rows.addAll([first, _newRow(), _newRow()]);
+      if (widget.initialBarcode == null) _restoreDraft();
+    } else {
+      load();
+    }
   }
   @override void dispose() {
     if (_draftTimer?.isActive ?? false) { _draftTimer!.cancel(); _writeDraft(); }
