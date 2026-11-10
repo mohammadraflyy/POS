@@ -322,6 +322,7 @@ Map<String, Object?> previewCart(Db db, List<CartItemInput> items, {int? diskonN
 
   final lines = _resolveItems(db, items, allowStockShortage: true);
   final subtotal = lines.fold<int>(0, (sum, line) => sum + line.subtotal);
+  final modal = lines.fold<int>(0, (sum, line) => sum + (line.qty * line.hargaPokok).round());
   final diskon = diskonNota ?? 0;
 
   _assertDiskonNota(diskon, subtotal);
@@ -335,6 +336,7 @@ Map<String, Object?> previewCart(Db db, List<CartItemInput> items, {int? diskonN
           'satuan': line.satuan,
           'qty': line.qty,
           'hargaJual': rupiahJson(line.hargaJual),
+          'hargaPokok': rupiahJson(line.hargaPokok),
           'diskon': rupiahJson(line.diskon),
           'subtotal': rupiahJson(line.subtotal),
           'priceSource': line.priceSource,
@@ -344,6 +346,7 @@ Map<String, Object?> previewCart(Db db, List<CartItemInput> items, {int? diskonN
     'subtotal': rupiahJson(subtotal),
     'diskon': rupiahJson(diskon),
     'total': rupiahJson(subtotal - diskon),
+    'modal': rupiahJson(modal),
   };
 }
 

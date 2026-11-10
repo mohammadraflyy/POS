@@ -19,7 +19,10 @@ class LiveCartPanel extends StatelessWidget {
   const LiveCartPanel({super.key, required this.store});
   final LiveStore store;
   Future<void> discount(BuildContext context) async {
-    final value = await showDialog<num>(context: context, builder: (_) => _DiscountDialog(initial: store.discount));
+    final value = await showDialog<num>(
+      context: context,
+      builder: (_) => _DiscountDialog(initial: store.discount, subtotal: store.price?.subtotal ?? 0),
+    );
     if (value != null) store.setDiscount(value);
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([store, store.guard]), builder: (context, _) => CartLayout(
@@ -65,11 +68,13 @@ class _CartLine extends StatelessWidget {
     final line = store.price != null && index < store.price!.lines.length ? store.price!.lines[index] : null;
     final price = line?['hargaJual'];
     final discount = number(line?['diskon']) ?? 0;
+    final priceSource = line?['priceSource']?.toString();
+    final tierBadge = priceSource == 'price_tier' ? ' · grosir' : priceSource == 'manual' ? ' · manual' : '';
     final short = line?['stokCukup'] == false;
     return InkWell(
       onTap: !store.editable ? null : () async {
         final result = await editLiveItem(context, item.product, existing: item);
-        if (result != null && context.mounted) { try { store.put(result); } catch (e) { showError(context, e); } }
+        if (result != null && context.mounted) { try { store.replace(item, result); } catch (e) { showError(context, e); } }
       },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -78,7 +83,7 @@ class _CartLine extends StatelessWidget {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
             const SizedBox(height: 2),
-            Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
+            Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}$tierBadge${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
               style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
             if (short) Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12)),
           ])),
@@ -94,16 +99,16 @@ class _CartLine extends StatelessWidget {
 }
 
 class _DiscountDialog extends StatefulWidget {
-  const _DiscountDialog({required this.initial});
-  final num initial;
+  const _DiscountDialog({required this.initial, required this.subtotal});
+  final num initial, subtotal;
   @override State<_DiscountDialog> createState() => _DiscountDialogState();
 }
 class _DiscountDialogState extends State<_DiscountDialog> {
   late final controller = TextEditingController(text: widget.initial.toString());
   String? error;
   @override void dispose() { controller.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) => AlertDialog(title: const Text('Diskon nota'), content: TextField(controller: controller, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Rupiah', errorText: error)),
+  @override Widget build(BuildContext context) => AlertDialog(title: const Text('Diskon nota'), content: TextField(controller: controller, keyboardType: TextInputType.text, decoration: InputDecoration(labelText: 'Rupiah atau %', helperText: 'Contoh: 5000 atau 10%', errorText: error)),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')), FilledButton(onPressed: () {
-      try { Navigator.pop(context, inputRupiah(controller.text)); } catch (_) { setState(() => error = 'Masukkan nominal rupiah yang valid.'); showError(context, error!); }
+      try { Navigator.pop(context, inputDiscount(controller.text, baseAmount: widget.subtotal)); } catch (_) { setState(() => error = 'Masukkan nominal rupiah atau persen (0-100%) yang valid.'); showError(context, error!); }
     }, child: const Text('Terapkan'))]);
 }

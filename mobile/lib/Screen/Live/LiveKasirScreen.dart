@@ -77,7 +77,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     final top = widget.store.items.first;
     final result = await editLiveItem(context, top.product, existing: top);
     if (result == null || !mounted) return;
-    try { widget.store.put(result); } catch (e) { showError(context, e); }
+    try { widget.store.replace(top, result); } catch (e) { showError(context, e); }
   }
 
   /// The desktop till's keys, so a cashier moving to this app keeps their habits. Like the
@@ -139,10 +139,15 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       load: (q) async {
         final rows = jsonRows(await widget.store.api.catalog(q, 1)).map(LiveProduct.fromJson);
         return [
-          for (final p in rows) for (final u in p.units) PickerOption((p, u),
-            title: '${p.name} · ${u.name}', subtitle: p.code,
-            trailing: (p.stock ?? 1) <= 0 ? 'Habis' : '${rupiah(u.price)} · stok ${quantityText(p.stock)}',
-            enabled: (p.stock ?? 1) > 0),
+          for (final p in rows)
+            for (final u in p.units)
+              () {
+                final unitStock = p.stock == null ? null : (u.conversionFactor > 1 ? (p.stock! / u.conversionFactor).floor() : p.stock!);
+                return PickerOption((p, u),
+                  title: '${p.name} · ${u.name}', subtitle: p.code,
+                  trailing: (unitStock ?? 1) <= 0 ? 'Habis' : '${rupiah(u.price)} · stok ${quantityText(unitStock)}',
+                  enabled: (unitStock ?? 1) > 0);
+              }(),
         ];
       });
     if (picked == null || !mounted) return;

@@ -1,4 +1,6 @@
 import 'package:pos_server/src/db/db.dart';
+import 'package:pos_server/src/db/demo_seed.dart';
+import 'package:pos_server/src/domain/kasir.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -29,5 +31,17 @@ void main() {
 
     expect(db.select('select nama from categories').map((r) => r['nama']), ['A']);
     expect(db.execute("update categories set nama = 'C'"), 1);
+  });
+
+  test('previewCart includes line hargaPokok and total modal for profit estimation', () {
+    final db = Db.open(':memory:');
+    seedDemoData(db);
+    final firstProduct = db.first('SELECT id, harga_pokok FROM products WHERE is_active = 1 LIMIT 1')!;
+    final res = previewCart(db, [CartItemInput(productId: firstProduct['id'] as int, qty: 2)]);
+    final lines = res['lines'] as List;
+    expect(lines, hasLength(1));
+    expect((lines.first as Map)['hargaPokok'], isNotNull);
+    expect(res['modal'], ((firstProduct['harga_pokok'] as int) * 2) / 100);
+    db.close();
   });
 }

@@ -65,7 +65,7 @@ class LiveStore extends ChangeNotifier {
   Map<String, dynamic> _draftJson() => {
     'items': [for (final i in items) {
       'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
-        'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price}]},
+        'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor}]},
       'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
     }],
     'discount': discount, 'otherCharge': otherCharge, 'note': note, 'customer': customerName,
@@ -107,7 +107,16 @@ class LiveStore extends ChangeNotifier {
       final lines = <LiveCartItem>[];
       for (final entry in (data['items'] as List? ?? const []).whereType<Map>()) {
         final p = Map<String, dynamic>.from(entry['product'] as Map);
-        final units = [for (final u in (p['units'] as List).whereType<Map>()) LiveUnit(u['id'] as int?, u['name'] as String, u['price'] as num?)];
+        final units = [
+          for (final u in (p['units'] as List).whereType<Map>())
+            LiveUnit(
+              u['id'] as int?,
+              u['name'] as String,
+              u['price'] as num?,
+              cost: u['cost'] as num?,
+              conversionFactor: (u['conversionFactor'] as int?) ?? 1,
+            ),
+        ];
         final product = LiveProduct(p['id'] as int, p['name'] as String, p['code'] as String? ?? '', null, units, barcode: p['barcode'] as String?);
         final unit = units.firstWhere((u) => u.id == entry['unitId'], orElse: () => units.first);
         lines.add(LiveCartItem(product: product, unit: unit, quantity: entry['qty'] as num, manualPrice: entry['manualPrice'] as num?, discount: entry['discount'] as num?));
@@ -157,7 +166,33 @@ class LiveStore extends ChangeNotifier {
     if (!editable) throw const ApiFailure('Selesaikan pemeriksaan transaksi sebelumnya terlebih dahulu.');
     if (item.quantity <= 0 || !item.quantity.isFinite) throw const ApiFailure('Jumlah harus lebih dari 0.');
     final index = items.indexWhere((i) => i.key == item.key);
-    if (index < 0) { items.add(item); } else { items[index] = item; }
+    // New items land at index 0 so F3 (editTopLine) always edits the most recently added item, matching desktop-node.
+    if (index < 0) { items.insert(0, item); } else { items[index] = item; }
+    reprice();
+  }
+  void replace(LiveCartItem oldItem, LiveCartItem newItem) {
+    if (!editable) throw const ApiFailure('Selesaikan pemeriksaan transaksi sebelumnya terlebih dahulu.');
+    if (newItem.quantity <= 0 || !newItem.quantity.isFinite) throw const ApiFailure('Jumlah harus lebih dari 0.');
+    if (oldItem.key == newItem.key) { put(newItem); return; }
+    final oldIdx = items.indexWhere((i) => i.key == oldItem.key);
+    final dupIdx = items.indexWhere((i) => i.key == newItem.key);
+    if (dupIdx >= 0) {
+      final existing = items[dupIdx];
+      items[dupIdx] = LiveCartItem(
+        product: existing.product,
+        unit: existing.unit,
+        quantity: existing.quantity + newItem.quantity,
+        manualPrice: newItem.manualPrice ?? existing.manualPrice,
+        discount: (existing.discount ?? 0) + (newItem.discount ?? 0) > 0
+            ? (existing.discount ?? 0) + (newItem.discount ?? 0)
+            : null,
+      );
+      if (oldIdx >= 0) items.removeAt(oldIdx > dupIdx ? oldIdx : oldIdx);
+    } else if (oldIdx >= 0) {
+      items[oldIdx] = newItem;
+    } else {
+      items.insert(0, newItem);
+    }
     reprice();
   }
   void remove(LiveCartItem item) { if (!editable) return; items.remove(item); reprice(); }

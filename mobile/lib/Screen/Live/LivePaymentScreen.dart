@@ -127,7 +127,10 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       final total = _total;
       if (total == null) throw const FormatException('Harga keranjang belum tersedia.');
       final amount = method == 'qris' || method == 'transfer' ? total : inputRupiah(paid.text.isEmpty && method == 'bon' ? '0' : paid.text);
-      if (method == 'bon' && customer.text.trim().isEmpty) throw const FormatException('Nama pelanggan wajib untuk bon.');
+      final trimmedCustomer = customer.text.trim();
+      if (method == 'bon' && (trimmedCustomer.isEmpty || trimmedCustomer.toLowerCase() == 'umum')) {
+        throw const FormatException('Transaksi bon harus atas nama pelanggan, bukan UMUM. Pilih pelanggan dulu.');
+      }
       // saved first, without a receipt; openPayment asks about printing, as the desktop did
       final result = await widget.store.checkout(method, amount, customer.text, print: false);
       if (!mounted) return;
@@ -186,14 +189,30 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
         decoration: InputDecoration(labelText: editing == null ? 'Keterangan' : 'Keterangan / alasan perubahan', hintText: editing == null ? 'Opsional' : 'Contoh: salah input jumlah')),
     ]);
 
+    final lineDisc = store.price?.lineDiscountTotal ?? 0;
+    final modal = store.price?.estimatedModal;
+    final laba = modal != null && total != null ? total - modal : null;
+
     final summary = WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Text(editing == null ? 'Tagihan' : 'Tagihan nota #$editing', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
       const SizedBox(height: Space.sm),
       SummaryRow('Subtotal · ${store.items.length} barang', rupiah(store.price?.subtotal)),
+      if (lineDisc > 0) SummaryRow('Diskon barang', '-${rupiah(lineDisc)}'),
       if ((store.price?.discount ?? 0) > 0) SummaryRow('Diskon nota', '-${rupiah(store.price?.discount)}'),
       if (_charge > 0) SummaryRow('Biaya lain', rupiah(_charge)),
       const Divider(height: Space.lg),
       SummaryRow('Total', rupiah(total), strong: true, color: dataHue),
+      if (modal != null) SummaryRow('Modal barang', rupiah(modal)),
+      if (laba != null) SummaryRow('Perkiraan laba', rupiah(laba), color: laba < 0 ? errorColor : null),
+      if (laba != null && laba < 0) Padding(
+        padding: const EdgeInsets.only(top: Space.sm),
+        child: Container(
+          padding: const EdgeInsets.all(Space.sm),
+          decoration: BoxDecoration(color: pillWarningBg, border: Border.all(color: noticeBorder), borderRadius: BorderRadius.circular(Corners.control)),
+          child: Text('Harga setelah diskon di bawah modal — transaksi ini rugi ${rupiah(laba.abs())}. Tetap bisa disimpan kalau memang disengaja.',
+            style: TextStyle(color: pillWarningInk, fontSize: 12)),
+        ),
+      ),
       if (change != null) SummaryRow(change < 0 ? 'Kurang' : 'Kembalian', rupiah(change.abs()), color: change < 0 ? errorColor : ink),
       if (method == 'bon' && total != null) SummaryRow('Sisa bon', rupiah((total - (paidNow ?? 0)).clamp(0, double.infinity))),
       if (error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(error!, style: TextStyle(color: errorColor))),
