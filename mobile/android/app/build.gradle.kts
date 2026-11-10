@@ -29,6 +29,14 @@ android {
         versionName = flutter.versionName
     }
 
+    // posnet (libposnet.so) is a program the app starts, not a library it loads: it must
+    // land on disk, in the one folder Android lets an app execute from
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

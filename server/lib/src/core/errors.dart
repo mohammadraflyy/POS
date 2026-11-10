@@ -39,3 +39,13 @@ class NotFoundException implements Exception {
   @override
   String toString() => message;
 }
+
+/// Too many wrong guesses in a row; the caller has to wait before trying again (HTTP 429).
+class TooManyAttemptsException implements Exception {
+  TooManyAttemptsException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}

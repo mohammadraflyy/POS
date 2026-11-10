@@ -49,3 +49,6 @@ app.*.map.json
 
 # taste-skill working files (dealt style sheet, inspections)
 /.taste-skill/
+
+# posnet, built by ../server/tailnet/build.ps1
+/android/app/src/main/jniLibs/*/libposnet.so

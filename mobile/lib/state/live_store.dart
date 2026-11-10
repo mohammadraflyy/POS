@@ -7,9 +7,14 @@ import '../services/business_api.dart';
 import '../services/mobile_api.dart';
 import '../services/mutation_guard.dart';
 class LiveStore extends ChangeNotifier {
-  LiveStore(this.api, this.guard, {this.drafts});
+  LiveStore(this.api, this.guard, {this.drafts, bool Function()? viaInternet}) : _viaInternet = viaInternet;
   final BusinessApi api;
   final MutationGuard guard;
+  final bool Function()? _viaInternet;
+
+  /// The till is outside the shop right now, so a receipt would come out of the shop's
+  /// printer, far from the customer.
+  bool get viaInternet => _viaInternet?.call() ?? false;
 
   /// Where the sale in progress is kept between runs; null keeps nothing (tests, demo).
   final DraftStore? drafts;

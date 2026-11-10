@@ -22,15 +22,24 @@ class PaidSale {
 /// desktop till did: the sale is committed first without a receipt, the question shows
 /// the change, and printing runs in the background so a stuck printer never holds the
 /// till. A failed print names the sale so it can be reprinted from Riwayat.
+///
+/// Outside the shop the printer is still the shop's, so there Lewati is the default and
+/// the question says where the receipt would come out.
 Future<void> openPayment(BuildContext context, LiveStore store) async {
   final sale = await Navigator.of(context).push<PaidSale>(MaterialPageRoute(builder: (_) => LivePaymentScreen(store: store)));
   if (sale == null || !context.mounted) return;
+  final away = store.viaInternet;
+  final amount = sale.method == 'tunai' ? 'Kembalian ${rupiah(sale.change)}.' : 'Total ${rupiah(sale.total)}.';
   final print = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
     title: Text('Cetak struk #${sale.saleId}?'),
-    content: Text(sale.method == 'tunai' ? 'Kembalian ${rupiah(sale.change)}.' : 'Total ${rupiah(sale.total)}.'),
+    content: Text(away ? '$amount\n\nAnda terhubung lewat internet: struk akan tercetak di printer toko.' : amount),
     actions: [
-      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Lewati')),
-      FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, true), child: const Text('Cetak')),
+      away
+        ? FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: const Text('Lewati'))
+        : TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Lewati')),
+      away
+        ? TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Cetak di toko'))
+        : FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, true), child: const Text('Cetak')),
     ],
   ));
   if (print != true || !context.mounted) {

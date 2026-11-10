@@ -5,19 +5,35 @@ import 'package:shelf_router/shelf_router.dart';
 
 import '../core/errors.dart';
 import '../db/db.dart';
+import '../domain/attempt_limiter.dart';
 import '../domain/auth.dart';
 import '../domain/device_tokens.dart';
 import '../domain/pairing.dart';
 import '../printing/receipts.dart';
+import '../remote/remote_access.dart';
 import '../version.dart';
 
 /// Everything a route needs, built once at startup.
 class ApiContext {
-  ApiContext({required this.db, required this.pairing, required this.receipts, required this.serverAddress, required this.port});
+  ApiContext({
+    required this.db,
+    required this.pairing,
+    required this.receipts,
+    required this.serverAddress,
+    required this.port,
+    this.remote,
+    AttemptLimiter? logins,
+  }) : logins = logins ?? AttemptLimiter();
 
   final Db db;
   final PairingCodes pairing;
   final ReceiptService receipts;
+
+  /// Access from outside the shop; null on a server that never offers it.
+  final RemoteAccess? remote;
+
+  /// Wrong passwords per username, so nobody can keep guessing from the internet.
+  final AttemptLimiter logins;
 
   /// The LAN address phones should reach, or null when the PC is on no network.
   final String? Function() serverAddress;
@@ -50,6 +66,8 @@ Middleware errorMapper({void Function(Object error, StackTrace stack)? onUnexpec
           return json({'error': error.message}, status: 403);
         } on NotFoundException catch (error) {
           return json({'error': error.message}, status: 404);
+        } on TooManyAttemptsException catch (error) {
+          return json({'error': error.message}, status: 429);
         } on BadRequest catch (error) {
           return json({'error': error.message}, status: 400);
         } on Object catch (error, stack) {

@@ -1,0 +1,2 @@
+# build output: copied into the Windows installer and the APK by build.ps1
+/dist/

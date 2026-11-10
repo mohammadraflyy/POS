@@ -91,6 +91,14 @@ Future<bool> isPortTaken(int port) async {
   }
 }
 
+/// `posnet.exe`, installed next to the app's own executable. Null when this build
+/// shipped without it - remote access is then simply unavailable.
+TailnetLauncher? bundledTailnetLauncher() {
+  final executable = File('${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}posnet.exe');
+
+  return executable.existsSync() ? processTailnetLauncher(executable.path) : null;
+}
+
 /// Starts the server for the shop PC. Throws [PortInUseException] before touching any
 /// file when the port is taken - the old desktop app still running must not race an
 /// import of its own database.
@@ -101,6 +109,7 @@ Future<RunningServer> startEmbeddedServer({
   RawPrinter? printer,
   void Function(Object, StackTrace)? onUnexpected,
   void Function(Map<String, int> counts)? onImported,
+  TailnetLauncher? tailnet,
 }) async {
   final path = dbPath ?? defaultShopDbPath();
 
@@ -116,5 +125,5 @@ Future<RunningServer> startEmbeddedServer({
     onImported?.call(counts);
   }
 
-  return startServer(dbPath: path, port: port, printer: printer, onUnexpected: onUnexpected);
+  return startServer(dbPath: path, port: port, printer: printer, onUnexpected: onUnexpected, tailnet: tailnet ?? bundledTailnetLauncher());
 }

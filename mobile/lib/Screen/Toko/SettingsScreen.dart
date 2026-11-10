@@ -6,6 +6,7 @@ import '../../models/live_models.dart';
 import '../../services/store_api.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/ui.dart';
+import 'RemoteAccessSection.dart';
 
 /// Store details, receipt printer, and the phones paired to this server.
 class SettingsScreen extends StatefulWidget {
@@ -136,6 +137,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             DataCol('Terakhir aktif', (d) => d['lastUsedAt'] == null ? '—' : dateTimeLabel(d['lastUsedAt']), flex: 2),
             DataCol('Status', (d) => d['revokedAt'] == null ? 'Aktif' : 'Dicabut'),
           ]),
+        const SizedBox(height: Space.xl),
+        RemoteAccessSection(api: widget.api),
         const SizedBox(height: Space.xl),
         const ScreenHeader('Zona berbahaya', 'Tindakan permanen yang tidak bisa dibatalkan.', section: true),
         Container(

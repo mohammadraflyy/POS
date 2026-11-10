@@ -38,7 +38,7 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
   @override void initState() {
     super.initState(); api = StoreApi(widget.app.businessRequest, widget.app.businessFile);
     guard = MutationGuard(SecurePendingStore('${widget.app.address}|${widget.app.userId}'));
-    store = LiveStore(api, guard, drafts: DraftStore.forDevice('${widget.app.address?.authority}|${widget.app.userId}'));
+    store = LiveStore(api, guard, drafts: DraftStore.forDevice('${widget.app.address?.authority}|${widget.app.userId}'), viaInternet: () => widget.app.viaInternet);
     guard.load(); _opened.add(widget.menu);
     store.restoreDraft().then((count) {
       if (count > 0 && mounted) showNotice(context, 'Keranjang terakhir dipulihkan: $count barang.', kind: NoticeKind.info);

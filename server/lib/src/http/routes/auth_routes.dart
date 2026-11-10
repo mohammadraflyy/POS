@@ -1,10 +1,16 @@
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
+import '../../core/errors.dart';
 import '../../domain/auth.dart';
 import '../../domain/device_tokens.dart';
 import '../../domain/users.dart';
+import '../../remote/remote_access.dart';
 import '../api.dart';
+
+String _loginKey(String username) => 'login:${username.trim().toLowerCase()}';
+
+RemoteAccess _remote(ApiContext ctx) => ctx.remote ?? (throw BusinessException('Server ini tidak menyediakan akses dari luar toko.'));
 
 /// Health, pairing, sign-in, users, and paired devices.
 void addAuthRoutes(Router router, ApiContext ctx) {
@@ -25,7 +31,7 @@ void addAuthRoutes(Router router, ApiContext ctx) {
 
     // a wrong code and a wrong password both answer 401 - the phone handles them alike
     ctx.pairing.consume(code);
-    final user = verifyLogin(db, username, password);
+    final user = ctx.logins.guard(_loginKey(username), () => verifyLogin(db, username, password));
     final issued = issueDeviceToken(db, userId: user.id, namaPerangkat: body.stringOr('deviceName'));
 
     return json(withVersion({'token': issued.token, 'user': user.toJson()}));
@@ -35,7 +41,8 @@ void addAuthRoutes(Router router, ApiContext ctx) {
   // device. The token is a device token like any other, revocable from the device list.
   router.post('/v1/auth/login', (Request request) async {
     final body = await readJson(request);
-    final user = verifyLogin(db, body.string('username'), body.string('password'));
+    final username = body.string('username');
+    final user = ctx.logins.guard(_loginKey(username), () => verifyLogin(db, username, body.string('password')));
     final issued = issueDeviceToken(db, userId: user.id, namaPerangkat: body.stringOr('deviceName'));
 
     return json(withVersion({'token': issued.token, 'user': user.toJson()}));
@@ -88,7 +95,54 @@ void addAuthRoutes(Router router, ApiContext ctx) {
   router.get('/v1/server/status', (Request request) {
     requireUser(ctx, request);
 
-    return json({'running': true, 'address': ctx.serverAddress(), 'port': ctx.port});
+    final remote = ctx.remote;
+
+    return json({
+      'running': true,
+      'address': ctx.serverAddress(),
+      'port': ctx.port,
+      // what a phone needs to decide whether to ask for access from outside the shop
+      'remote': {
+        'enabled': remote != null && remote.isConfigured,
+        'online': remote?.state == RemoteState.online,
+        'address': remote?.status()['address'],
+      },
+    });
+  });
+
+  // --- access from outside the shop (Tailscale) ---
+
+  router.get('/v1/remote-access', (Request request) {
+    requireAdmin(ctx, request);
+
+    return json(ctx.remote?.status() ?? {'available': false, 'configured': false, 'state': 'off', 'address': null, 'message': null});
+  });
+
+  router.put('/v1/remote-access', (Request request) async {
+    requireAdmin(ctx, request);
+    final body = await readJson(request);
+    final remote = _remote(ctx);
+
+    await remote.enable(clientId: body.string('clientId'), clientSecret: body.string('clientSecret'));
+
+    return json(remote.status());
+  });
+
+  router.delete('/v1/remote-access', (Request request) async {
+    requireAdmin(ctx, request);
+    final remote = _remote(ctx);
+
+    await remote.disable();
+
+    return json(remote.status());
+  });
+
+  // A paired phone, on the shop's Wi-Fi, asks for its own way in from outside.
+  router.post('/v1/remote-access/grant', (Request request) async {
+    final user = requireUser(ctx, request);
+    final body = await readJson(request);
+
+    return json(await _remote(ctx).grant(deviceName: body.stringOr('deviceName') ?? user.name));
   });
 
   // The QR payload is `{"address": "<ip>:<port>", "code": "<6 digits>"}`.

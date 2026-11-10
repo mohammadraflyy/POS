@@ -3,10 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 
 class ApiFailure implements Exception {
-  const ApiFailure(this.message, {this.unauthorized = false, this.statusCode});
+  const ApiFailure(this.message, {this.unauthorized = false, this.statusCode, this.unreachable = false});
   final String message;
   final bool unauthorized;
   final int? statusCode;
+  /// The PC was never reached - no connection was made, so nothing was sent and the
+  /// request is safe to repeat by another way (the internet instead of the Wi-Fi).
+  final bool unreachable;
   @override
   String toString() => message;
 }
@@ -22,9 +25,11 @@ class IoJsonTransport implements JsonTransport {
   @override
   Future<ApiResponse> send(String method, Uri uri, Map<String, String> headers, Map<String, dynamic>? body) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    var connected = false;
     try {
       return await (() async {
         final request = await client.openUrl(method, uri);
+        connected = true;
         request.followRedirects = false;
         headers.forEach(request.headers.set);
         request.headers.contentType = ContentType.json;
@@ -39,9 +44,9 @@ class IoJsonTransport implements JsonTransport {
         return ApiResponse(response.statusCode, parsed);
       })().timeout(const Duration(seconds: 15));
     } on TimeoutException {
-      throw const ApiFailure('PC belum merespons. Pastikan PC aktif dan berada di jaringan yang sama.');
+      throw ApiFailure('PC belum merespons. Pastikan PC aktif dan berada di jaringan yang sama.', unreachable: !connected);
     } on SocketException {
-      throw const ApiFailure('Tidak dapat terhubung ke PC. Periksa alamat, Wi-Fi, dan firewall port 48950.');
+      throw ApiFailure('Tidak dapat terhubung ke PC. Periksa alamat, Wi-Fi, dan firewall port 48950.', unreachable: !connected);
     } on HttpException {
       throw const ApiFailure('Koneksi ke PC terputus. Silakan periksa jaringan.');
     } on FormatException {
@@ -148,9 +153,11 @@ class IoFileTransport implements FileTransport {
   @override
   Future<FileResponse> send(String method, Uri uri, Map<String, String> headers, List<int>? body) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    var connected = false;
     try {
       return await (() async {
         final request = await client.openUrl(method, uri);
+        connected = true;
         headers.forEach(request.headers.set);
         if (body != null) { request.headers.contentType = ContentType.binary; request.add(body); }
         final response = await request.close();
@@ -159,9 +166,9 @@ class IoFileTransport implements FileTransport {
         return FileResponse(response.statusCode, bytes, response.headers.contentType?.mimeType);
       })().timeout(const Duration(seconds: 60));
     } on TimeoutException {
-      throw const ApiFailure('PC belum merespons. Pastikan PC aktif dan berada di jaringan yang sama.');
+      throw ApiFailure('PC belum merespons. Pastikan PC aktif dan berada di jaringan yang sama.', unreachable: !connected);
     } on SocketException {
-      throw const ApiFailure('Tidak dapat terhubung ke PC. Periksa alamat, Wi-Fi, dan firewall.');
+      throw ApiFailure('Tidak dapat terhubung ke PC. Periksa alamat, Wi-Fi, dan firewall.', unreachable: !connected);
     } finally { client.close(force: true); }
   }
 }

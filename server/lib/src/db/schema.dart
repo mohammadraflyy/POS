@@ -7,6 +7,7 @@ import 'db.dart';
 /// in. Add new migrations to the end of the list; never edit one that has shipped.
 const List<String> migrations = [
   _v1,
+  _v2,
 ];
 
 void migrate(Db db) {
@@ -295,6 +296,18 @@ CREATE TABLE store_settings (
   printer_name text,
   receipt_width text DEFAULT '58mm' NOT NULL,
   margin_minimal_persen integer DEFAULT 10 NOT NULL,
+  created_at integer NOT NULL,
+  updated_at integer NOT NULL
+);
+''';
+
+/// Access from outside the shop over Tailscale: the shop's OAuth client, which mints a
+/// key for the PC and for every phone that pairs. One row at most.
+const _v2 = '''
+CREATE TABLE remote_access (
+  id integer PRIMARY KEY CHECK (id = 1),
+  oauth_client_id text NOT NULL,
+  oauth_client_secret text NOT NULL,
   created_at integer NOT NULL,
   updated_at integer NOT NULL
 );

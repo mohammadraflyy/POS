@@ -99,6 +99,11 @@ class StoreApi extends BusinessApi {
   Future<Map<String, dynamic>> pairingCode() async => jsonObject(await post('/v1/devices/pairing-code'));
   Future<List<Map<String, dynamic>>> devices() => getRows('/v1/devices');
   Future<Object?> revokeDevice(int id) => delete('/v1/devices/$id');
+
+  // --- access from outside the shop (Tailscale) ---
+  Future<Map<String, dynamic>> remoteAccess() => getObject('/v1/remote-access');
+  Future<Object?> enableRemote(String clientId, String clientSecret) => put('/v1/remote-access', {'clientId': clientId, 'clientSecret': clientSecret});
+  Future<Object?> disableRemote() => delete('/v1/remote-access');
   Future<Map<String, dynamic>> settings() => getObject('/v1/settings');
   Future<Object?> saveSettings(Map<String, dynamic> body) => put('/v1/settings', body);
   Future<List<Map<String, dynamic>>> printers() => getRows('/v1/printers');

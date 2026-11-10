@@ -12,12 +12,14 @@ import 'src/http/api.dart';
 import 'src/http/app.dart';
 import 'src/printing/printer.dart';
 import 'src/printing/receipts.dart';
+import 'src/remote/remote_access.dart';
 
 export 'src/db/db.dart' show Db;
 export 'src/embedded.dart' show PortInUseException, defaultLegacyDbPath, defaultShopDbPath, importLegacyOnFirstRun, startEmbeddedServer;
 export 'src/domain/pairing.dart' show PairingCodes;
 export 'src/http/api.dart' show ApiContext;
 export 'src/http/app.dart' show buildHandler;
+export 'src/remote/remote_access.dart' show RemoteAccess, RemoteState, TailnetLauncher, TailnetProcess, processTailnetLauncher;
 export 'src/version.dart' show appVersion;
 
 class RunningServer {
@@ -28,6 +30,7 @@ class RunningServer {
 
   Future<void> close() async {
     await server.close(force: true);
+    await ctx.remote?.close();
     ctx.db.close();
   }
 }
@@ -53,24 +56,45 @@ Future<String?> lanAddress() async {
 }
 
 /// Opens the database, makes sure an admin exists, and listens on every interface.
-Future<RunningServer> startServer({required String dbPath, int port = 48950, RawPrinter? printer, void Function(Object, StackTrace)? onUnexpected}) async {
+///
+/// With [tailnet] the server can also be reached from outside the shop: it rejoins the
+/// shop's Tailscale network by itself when the owner switched that on before. Its
+/// identity lives in [tailnetStateDir], by default a `tailnet` folder beside the database.
+Future<RunningServer> startServer({
+  required String dbPath,
+  int port = 48950,
+  RawPrinter? printer,
+  void Function(Object, StackTrace)? onUnexpected,
+  TailnetLauncher? tailnet,
+  String? tailnetStateDir,
+}) async {
   final db = Db.open(dbPath);
 
   seedDefaultAdmin(db);
 
   var address = await lanAddress();
+  final remote = RemoteAccess(
+    db: db,
+    launcher: tailnet,
+    stateDir: tailnetStateDir ?? '${File(dbPath).absolute.parent.path}${Platform.pathSeparator}tailnet',
+    port: port,
+  );
   final ctx = ApiContext(
     db: db,
     pairing: PairingCodes(),
     receipts: ReceiptService(db, printer ?? defaultRawPrinter()),
     serverAddress: () => address,
     port: port,
+    remote: remote,
   );
 
   // the router hands out a fresh address after a DHCP renewal, so look again now and then
   Stream<void>.periodic(const Duration(minutes: 1)).listen((_) async => address = await lanAddress() ?? address);
 
   final server = await shelf_io.serve(buildHandler(ctx, onUnexpected: onUnexpected), InternetAddress.anyIPv4, port);
+
+  // in the background: the shop's Wi-Fi must not wait on the internet
+  remote.resume().ignore();
 
   return RunningServer(server, ctx);
 }

@@ -77,6 +77,14 @@ Function un.onInit
 FunctionEnd
 
 Section "Install"
+  ; a first install opens the app when Windows starts - the shop PC is the server, so it
+  ; should be up before the first phone looks for it. An upgrade keeps the owner's choice
+  ; (Pengaturan > Buka otomatis saat PC menyala).
+  ReadRegStr $1 HKCU "${UNINSTALL_KEY}" "DisplayVersion"
+  ${If} $1 == ""
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_NAME}" '"$INSTDIR\${APP_EXE}"'
+  ${EndIf}
+
   SetOutPath "$INSTDIR"
   ; replace the program wholesale so no file from an older version lingers
   RMDir /r "$INSTDIR\data"
@@ -104,5 +112,6 @@ Section "Uninstall"
   ; the program folder only - the shop's data in %APPDATA%\point_of_sales stays
   RMDir /r "$INSTDIR"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_NAME}"
   MessageBox MB_ICONINFORMATION "${APP_NAME} sudah dihapus.$\r$\n$\r$\nData toko tetap tersimpan di:$\r$\n$APPDATA\point_of_sales" /SD IDOK
 SectionEnd

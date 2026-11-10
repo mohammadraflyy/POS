@@ -30,6 +30,8 @@ if (-not $makensis) { throw 'makensis tidak ditemukan. Pasang NSIS (https://nsis
 Push-Location $app
 try {
   if (-not $SkipFlutterBuild) {
+    # posnet (access from outside the shop) must exist before Flutter copies it in
+    & (Join-Path $app '..\server\tailnet\build.ps1')
     & $flutter build windows --release
     if ($LASTEXITCODE -ne 0) { throw 'flutter build windows gagal.' }
   }

@@ -38,7 +38,7 @@ void main() {
     late LiveStore store;
     final calls = <(String, Map<String, dynamic>?)>[];
 
-    Future<void> openTill(WidgetTester tester) async {
+    Future<void> openTill(WidgetTester tester, {bool away = false}) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.windows;
       tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
@@ -59,7 +59,7 @@ void main() {
         if (path == '/v1/sales') return {'saleId': 41, 'total': 1500, 'printed': false, 'printSkipped': true};
         if (path == '/v1/sales/41/print') return {'printed': true};
         throw StateError('Unexpected request: $path');
-      }), guard);
+      }), guard, viaInternet: () => away);
       await tester.pumpWidget(MaterialApp(theme: buildTheme(), home: Scaffold(body: LiveKasirScreen(store: store))));
       await tester.pumpAndSettle();
       FocusManager.instance.primaryFocus?.unfocus();
@@ -126,6 +126,28 @@ void main() {
       expect(find.text('Kembalian Rp500.'), findsOneWidget);
       await tester.tap(find.text('Lewati'));
       await tester.pumpAndSettle();
+      expect(calls.any((c) => c.$1 == '/v1/sales/41/print'), isFalse);
+      await finish(tester);
+    });
+
+    testWidgets('outside the shop Enter skips the receipt, which would print at the shop', (tester) async {
+      await openTill(tester, away: true);
+      await scan(tester, '8991001000110');
+      await tester.sendKeyEvent(LogicalKeyboardKey.end);
+      await tester.pumpAndSettle();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyQ);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('struk akan tercetak di printer toko'), findsOneWidget);
+      expect(find.text('Cetak di toko'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cetak struk #41?'), findsNothing);
       expect(calls.any((c) => c.$1 == '/v1/sales/41/print'), isFalse);
       await finish(tester);
     });

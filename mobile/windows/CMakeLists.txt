@@ -102,6 +102,11 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
+# posnet joins the shop's Tailscale network so phones reach this PC from outside the
+# shop. Built by server/tailnet/build.ps1; without it the app runs, minus that feature.
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../server/tailnet/dist/posnet.exe"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}" COMPONENT Runtime OPTIONAL)
+
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release

@@ -38,6 +38,8 @@ class _AccountPanelState extends State<_AccountPanel> {
   DateTime? checkedAt;
   String? serverVersion, lanAddress;
   int? port;
+  /// Access from outside the shop as the server sees it: enabled, online, address.
+  Map<String, dynamic>? remote;
 
   @override void initState() { super.initState(); if (!widget.app.isDemo) check(); }
 
@@ -48,7 +50,12 @@ class _AccountPanelState extends State<_AccountPanel> {
     try {
       final status = jsonObject(await widget.app.businessRequest('/v1/server/status', method: 'GET'));
       final health = jsonObject(await widget.app.businessRequest('/v1/health', method: 'GET'));
-      if (mounted) setState(() { lanAddress = status['address']?.toString(); port = (number(status['port']) ?? 48950).toInt(); serverVersion = health['appVersion']?.toString(); });
+      if (mounted) {
+        setState(() {
+          lanAddress = status['address']?.toString(); port = (number(status['port']) ?? 48950).toInt(); serverVersion = health['appVersion']?.toString();
+          remote = status['remote'] is Map ? jsonObject(status['remote']) : null;
+        });
+      }
     } catch (_) {
       // the status line already says the server is out of reach
     }
@@ -115,7 +122,12 @@ class _AccountPanelState extends State<_AccountPanel> {
           _row(onThisPc ? 'Server' : 'Alamat server', onThisPc ? 'Berjalan di PC ini' : (app.address?.authority ?? '—')),
           if (onThisPc) _row('Alamat untuk HP', lanAddress == null ? 'PC belum tersambung ke jaringan' : '$lanAddress:${port ?? 48950}', mono: lanAddress != null),
           if (onThisPc && lanAddress != null) Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.md),
-            child: Text('HP harus memakai Wi-Fi yang sama. Untuk menyambungkan HP baru, buka Pengaturan → Hubungkan HP baru.', style: TextStyle(color: muted, fontSize: 12))),
+            child: Text(remote?['enabled'] == true
+              ? 'HP disambungkan sekali lewat Wi-Fi toko, setelah itu bisa dipakai dari mana saja. Untuk HP baru, buka Pengaturan → Hubungkan HP baru.'
+              : 'HP harus memakai Wi-Fi yang sama. Untuk menyambungkan HP baru, buka Pengaturan → Hubungkan HP baru.', style: TextStyle(color: muted, fontSize: 12))),
+          if (onThisPc) _row('Akses dari luar toko', remote?['enabled'] != true ? 'Mati' : remote?['online'] == true ? 'Aktif' : 'Menyambung…'),
+          if (!onThisPc) _row('Jalur', app.viaInternet ? 'Internet (di luar toko)' : 'Wi-Fi toko'),
+          if (!onThisPc) _row('Akses dari luar toko', app.hasRemoteAccess ? 'Siap' : remote?['enabled'] == true ? 'Disiapkan…' : 'Belum diaktifkan di PC'),
         ]),
 
         _section('Tampilan', [

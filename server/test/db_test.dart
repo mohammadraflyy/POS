@@ -6,9 +6,9 @@ void main() {
     final db = Db.open(':memory:');
     final tables = db.select("select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name");
 
-    expect(tables.map((t) => t['name']), contains('sales'));
-    expect(tables, hasLength(22));
-    expect(db.scalar<int>('PRAGMA user_version'), 1);
+    expect(tables.map((t) => t['name']), containsAll(['sales', 'remote_access']));
+    expect(tables, hasLength(23));
+    expect(db.scalar<int>('PRAGMA user_version'), 2);
     expect(db.scalar<int>('PRAGMA foreign_keys'), 1);
   });
 
