@@ -37,6 +37,10 @@ try {
   }
 
   $source = Join-Path $app 'build\windows\x64\runner\Release'
+  $bundledPosnet = Join-Path $app '..\server\tailnet\dist\posnet.exe'
+  if ((Test-Path $bundledPosnet) -and -not (Test-Path (Join-Path $source 'posnet.exe'))) {
+    Copy-Item $bundledPosnet (Join-Path $source 'posnet.exe')
+  }
   $outDir = Join-Path $app 'build\installer'
   New-Item -ItemType Directory -Force $outDir | Out-Null
   $out = Join-Path $outDir "Point-of-Sales-Setup-$version.exe"
