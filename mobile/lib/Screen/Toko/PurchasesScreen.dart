@@ -135,8 +135,10 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
 
 /// Unpaid invoices per supplier, paying them (oldest first), and correcting the record.
 class SupplierDebtScreen extends StatefulWidget {
-  const SupplierDebtScreen({super.key, required this.api});
+  const SupplierDebtScreen({super.key, required this.api, this.guard, this.onChanged});
   final StoreApi api;
+  final MutationGuard? guard;
+  final VoidCallback? onChanged;
   @override State<SupplierDebtScreen> createState() => _SupplierDebtScreenState();
 }
 
@@ -198,6 +200,18 @@ class _SupplierDebtScreenState extends State<SupplierDebtScreen> {
     ], onSave: (v) => widget.api.setSisaHutang(idNumber(invoice['purchaseId']), v['sisa'] as num));
     if (values != null && mounted) load();
   }
+  Future<void> openInvoice(Map<String, dynamic> invoice) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => PurchaseDetailScreen(
+        api: widget.api,
+        id: idNumber(invoice['purchaseId']),
+        guard: widget.guard,
+        onChanged: widget.onChanged,
+        supplierName: supplierName,
+      ),
+    ));
+    if (mounted) load();
+  }
 
   @override Widget build(BuildContext context) {
     final grouped = groups;
@@ -222,7 +236,12 @@ class _SupplierDebtScreenState extends State<SupplierDebtScreen> {
           ]),
           Text('Faktur belum lunas', style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: Space.sm),
           DataView<Map<String, dynamic>>(rows: invoices, emptyTitle: 'Semua faktur lunas',
-            actions: (i) => [TextButton(onPressed: () => setSisa(i), child: const Text('Ubah sisa'))],
+            onTap: openInvoice,
+            actionsWidth: 200,
+            actions: (i) => [
+              TextButton(onPressed: () => openInvoice(i), child: const Text('Edit faktur')),
+              TextButton(onPressed: () => setSisa(i), child: const Text('Ubah sisa')),
+            ],
             columns: [
               DataCol('Faktur', (i) => '#${i['purchaseId']}'),
               DataCol('Tanggal', (i) => text(i['tanggal'])),

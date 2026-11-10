@@ -61,15 +61,32 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
     for (final product in products) ListTile(title: Text(product.name), subtitle: Text('${product.code} • Stok ${quantityText(product.stock)}'), trailing: const Icon(Icons.add), onTap: loading ? null : () => select(product)),
   ])));
 }
+Future<PurchaseDraftItem?> editPurchaseItem(BuildContext context, PurchaseDraftItem existing) =>
+  showModalBottomSheet<PurchaseDraftItem>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => _PurchaseFields(product: existing.product, existing: existing),
+  );
+
 class _PurchaseFields extends StatefulWidget {
-  const _PurchaseFields({required this.product});
+  const _PurchaseFields({required this.product, this.existing});
   final LiveProduct product;
+  final PurchaseDraftItem? existing;
   @override State<_PurchaseFields> createState() => _PurchaseFieldsState();
 }
 class _PurchaseFieldsState extends State<_PurchaseFields> {
-  late LiveUnit unit = widget.product.units.first;
-  final quantity = TextEditingController(text: '1'), price = TextEditingController(), sell = TextEditingController();
+  late LiveUnit unit = widget.existing?.unit ?? widget.product.units.first;
+  late final quantity = TextEditingController(text: widget.existing?.quantity.toString() ?? '1');
+  late final price = TextEditingController(text: _plain(widget.existing?.price ?? unit.cost));
+  late final sell = TextEditingController(text: _plain(widget.existing?.sellPrice));
   String? error;
+
+  static String _plain( num? v) {
+    if (v == null || v <= 0) return '';
+    return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  }
+
   @override void dispose() { quantity.dispose(); price.dispose(); sell.dispose(); super.dispose(); }
 
   num? _read(TextEditingController c) { try { return c.text.trim().isEmpty ? null : inputRupiah(c.text); } catch (_) { return null; } }
@@ -84,7 +101,17 @@ class _PurchaseFieldsState extends State<_PurchaseFields> {
   }
   @override Widget build(BuildContext context) => SafeArea(child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(24, 0, 24, MediaQuery.viewInsetsOf(context).bottom + 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
     Text(widget.product.name, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: Space.lg),
-    DropdownButtonFormField<LiveUnit>(value: unit, isExpanded: true, decoration: const InputDecoration(labelText: 'Satuan pembelian'), items: widget.product.units.map((u) => DropdownMenuItem(value: u, child: Text(u.name))).toList(), onChanged: (u) => setState(() => unit = u!)),
+    DropdownButtonFormField<LiveUnit>(
+      value: unit,
+      isExpanded: true,
+      decoration: const InputDecoration(labelText: 'Satuan pembelian'),
+      items: widget.product.units.map((u) => DropdownMenuItem(value: u, child: Text(u.name))).toList(),
+      onChanged: (u) => setState(() {
+        unit = u!;
+        if (u.cost != null && u.cost! > 0) price.text = _plain(u.cost);
+        sell.clear();
+      }),
+    ),
     const SizedBox(height: Space.lg), TextField(controller: quantity, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Jumlah masuk')),
     const SizedBox(height: Space.lg), TextField(controller: price, textInputAction: TextInputAction.next, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Harga beli per satuan (Rp)')),
     const SizedBox(height: Space.lg), TextField(controller: sell, textInputAction: TextInputAction.done, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -92,6 +119,6 @@ class _PurchaseFieldsState extends State<_PurchaseFields> {
         helperText: 'Sekarang ${rupiah(unit.price)}. Kosongkan bila harga jual tidak berubah.')),
     if (_margin != null) Padding(padding: const EdgeInsets.only(top: Space.sm), child: Text(_margin!, style: TextStyle(color: _margin!.startsWith('Rugi') ? errorColor : muted, fontSize: 13))),
     if (error != null) Text(error!, style: TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
-    SizedBox(width: double.infinity, child: FilledButton(onPressed: () { try { Navigator.pop(context, PurchaseDraftItem(widget.product, unit, inputQty(quantity.text), inputRupiah(price.text), sellPrice: _read(sell))); } catch (_) { setState(() => error = 'Isi jumlah positif dan harga beli yang valid.'); showError(context, error!); } }, child: const Text('Tambah ke pembelian'))),
+    SizedBox(width: double.infinity, child: FilledButton(onPressed: () { try { Navigator.pop(context, PurchaseDraftItem(widget.product, unit, inputQty(quantity.text), inputRupiah(price.text), sellPrice: _read(sell))); } catch (_) { setState(() => error = 'Isi jumlah positif dan harga beli yang valid.'); showError(context, error!); } }, child: Text(widget.existing == null ? 'Tambah ke pembelian' : 'Simpan perubahan'))),
   ])));
 }

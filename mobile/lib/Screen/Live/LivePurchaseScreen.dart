@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/barcode_burst.dart';
 import '../../services/business_api.dart';
+import '../../services/draft_store.dart';
 import '../../services/mutation_guard.dart';
 import '../../models/live_models.dart';
 import '../../core/theme.dart';
@@ -9,13 +12,14 @@ import '../../Widgets/ui.dart';
 import 'LiveSupplierScreen.dart';
 import 'LivePurchaseItemScreen.dart';
 class LivePurchaseScreen extends StatefulWidget {
-  const LivePurchaseScreen({super.key, required this.api, required this.guard, this.onSaved, this.active = true, this.editing});
+  const LivePurchaseScreen({super.key, required this.api, required this.guard, this.onSaved, this.active = true, this.editing, this.drafts});
 
   /// A saved purchase to change: its id, supplier, date, note, lines and down payment.
   final PurchaseEdit? editing;
   final BusinessApi api;
   final MutationGuard guard;
   final VoidCallback? onSaved;
+  final DraftStore? drafts;
 
   /// False while another menu is showing, so a scan there does not land in this purchase.
   final bool active;
@@ -55,16 +59,99 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
   bool saving = false;
   String? error, success;
   final scanner = BarcodeBurst();
+  late final DraftStore? _drafts = widget.editing == null ? (widget.drafts ?? DraftStore.forDevice('pembelian')) : null;
+  Timer? _draftTimer;
+
   @override void initState() {
     super.initState();
     final e = widget.editing;
     if (e != null) {
       supplier = e.supplier; date = e.date; note.text = e.note; items.addAll(e.items);
       paid.text = e.downPayment == e.downPayment.roundToDouble() ? e.downPayment.toInt().toString() : e.downPayment.toString();
+    } else {
+      note.addListener(_saveDraft);
+      paid.addListener(_saveDraft);
+      _restoreDraft();
     }
     HardwareKeyboard.instance.addHandler(handleKey);
   }
-  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); note.dispose(); paid.dispose(); super.dispose(); }
+  @override void dispose() {
+    if (_draftTimer?.isActive ?? false) { _draftTimer!.cancel(); _writeDraft(); }
+    HardwareKeyboard.instance.removeHandler(handleKey);
+    note.dispose();
+    paid.dispose();
+    super.dispose();
+  }
+
+  void _saveDraft() {
+    if (_drafts == null) return;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 350), _writeDraft);
+  }
+
+  Future<void> _writeDraft() async {
+    final store = _drafts;
+    if (store == null) return;
+    try {
+      if (items.isEmpty && supplier == null && note.text.trim().isEmpty && paid.text.trim().isEmpty) {
+        await store.clear();
+        return;
+      }
+      await store.write(jsonEncode({
+        'supplier': supplier,
+        'date': isoDate(date),
+        'note': note.text,
+        'paid': paid.text,
+        'items': [
+          for (final i in items)
+            {
+              'product': {
+                'id': i.product.id,
+                'name': i.product.name,
+                'code': i.product.code,
+                'units': [
+                  for (final u in i.product.units)
+                    {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor},
+                ],
+              },
+              'unitId': i.unit.id,
+              'qty': i.quantity,
+              'price': i.price,
+              'sellPrice': i.sellPrice,
+            },
+        ],
+      }));
+    } catch (_) {}
+  }
+
+  Future<void> _restoreDraft() async {
+    try {
+      final raw = await _drafts?.read();
+      if (raw == null || raw.isEmpty || !mounted) return;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final restoredItems = <PurchaseDraftItem>[];
+      for (final entry in (data['items'] as List? ?? const []).whereType<Map>()) {
+        final p = Map<String, dynamic>.from(entry['product'] as Map);
+        final units = [
+          for (final u in (p['units'] as List? ?? const []).whereType<Map>())
+            LiveUnit(u['id'] as int?, u['name'] as String, u['price'] as num?, cost: u['cost'] as num?, conversionFactor: (u['conversionFactor'] as int?) ?? 1),
+        ];
+        final prod = LiveProduct(p['id'] as int, p['name'] as String, p['code'] as String? ?? '', null, units);
+        final unit = units.firstWhere((u) => u.id == entry['unitId'], orElse: () => units.first);
+        restoredItems.add(PurchaseDraftItem(prod, unit, entry['qty'] as num, entry['price'] as num, sellPrice: entry['sellPrice'] as num?));
+      }
+      if (!mounted) return;
+      setState(() {
+        if (data['supplier'] is Map) supplier = Map<String, dynamic>.from(data['supplier'] as Map);
+        if (data['date'] is String) date = DateTime.tryParse(data['date'] as String) ?? date;
+        note.text = data['note']?.toString() ?? '';
+        paid.text = data['paid']?.toString() ?? '';
+        items..clear()..addAll(restoredItems);
+      });
+    } catch (_) {
+      await _drafts?.clear();
+    }
+  }
 
   /// A scanner fired while no text field had focus, as on the desktop's purchase page.
   bool handleKey(KeyEvent event) {
@@ -86,7 +173,11 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
 
   Future<void> addItem({LiveProduct? initialProduct}) async {
     final item = await Navigator.of(context).push<PurchaseDraftItem>(MaterialPageRoute(builder: (_) => LivePurchaseItemScreen(api: widget.api, initialProduct: initialProduct)));
-    if (mounted && item != null) setState(() { items.add(item); success = null; });
+    if (mounted && item != null) { setState(() { items.add(item); success = null; }); _saveDraft(); }
+  }
+  Future<void> editItem(int index) async {
+    final updated = await editPurchaseItem(context, items[index]);
+    if (mounted && updated != null) { setState(() { items[index] = updated; success = null; }); _saveDraft(); }
   }
   Future<void> save() async {
     if (saving) return; setState(() { saving = true; error = null; success = null; });
@@ -108,7 +199,9 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
         () => editing == null ? widget.api.purchase(body) : widget.api.request('/v1/purchases/${editing.id}', method: 'PUT', body: body));
       if (editing != null) { if (mounted) { widget.onSaved?.call(); Navigator.of(context).pop(true); } return; }
       if (mounted) widget.onSaved?.call();
-      if (mounted) setState(() { items.clear(); paid.clear(); note.clear(); success = 'Pembelian berhasil disimpan di PC${result is Map && result['purchaseId'] != null ? ' (#${result['purchaseId']})' : ''}.'; });
+      _draftTimer?.cancel();
+      await _drafts?.clear();
+      if (mounted) setState(() { items.clear(); paid.clear(); note.clear(); supplier = null; success = 'Pembelian berhasil disimpan di PC${result is Map && result['purchaseId'] != null ? ' (#${result['purchaseId']})' : ''}.'; });
       if (mounted && success != null) showNotice(context, success!, kind: NoticeKind.success);
     } catch (e) { if (mounted) { setState(() => error = e.toString()); showError(context, e); } }
     finally { if (mounted) setState(() => saving = false); }
@@ -120,14 +213,19 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
         widget.editing == null ? 'Barang yang disimpan akan menambah stok toko.' : 'Ubah supplier, tanggal, barang, atau uang muka, lalu simpan.'),
       WhitePanel(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs), child: Column(children: [ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.local_shipping_outlined, color: muted), title: Text(supplier == null ? 'Pilih supplier (opsional)' : (supplier!['nama'] ?? supplier!['name']).toString()), trailing: const Icon(Icons.chevron_right), onTap: !enabled ? null : () async {
         final result = await Navigator.of(context).push<Map<String, dynamic>>(MaterialPageRoute(builder: (_) => LiveSupplierScreen(api: widget.api, guard: widget.guard)));
-        if (mounted && result != null) setState(() => supplier = result);
-      }), if (supplier != null) Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: enabled ? () => setState(() => supplier = null) : null, child: const Text('Tanpa supplier'))),
+        if (mounted && result != null) { setState(() => supplier = result); _saveDraft(); }
+      }), if (supplier != null) Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: enabled ? () { setState(() => supplier = null); _saveDraft(); } : null, child: const Text('Tanpa supplier'))),
         const Divider(),
         ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.calendar_today_outlined, color: muted), title: const Text('Tanggal faktur'),
           trailing: Text(isoDate(date), style: amountStyle.copyWith(fontSize: 14)),
-          onTap: !enabled ? null : () async { final selected = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now()); if (selected != null && mounted) setState(() => date = selected); }),
+          onTap: !enabled ? null : () async { final selected = await showDatePicker(context: context, initialDate: date, firstDate: DateTime(2000), lastDate: DateTime.now()); if (selected != null && mounted) { setState(() => date = selected); _saveDraft(); } }),
       ])), const SizedBox(height: Space.lg),
-      for (var i = 0; i < items.length; i++) Padding(padding: const EdgeInsets.only(bottom: 10), child: WhitePanel(padding: EdgeInsets.zero, child: ListTile(title: Text(items[i].product.name), subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name} × ${rupiah(items[i].price)} = ${rupiah(items[i].quantity * items[i].price)}${items[i].sellPrice == null ? '' : ' · jual jadi ${rupiah(items[i].sellPrice)}'}'), trailing: IconButton(tooltip: 'Hapus barang pembelian', onPressed: enabled ? () => setState(() => items.removeAt(i)) : null, icon: const Icon(Icons.close))))),
+      for (var i = 0; i < items.length; i++) Padding(padding: const EdgeInsets.only(bottom: 10), child: WhitePanel(padding: EdgeInsets.zero, child: ListTile(
+        onTap: enabled ? () => editItem(i) : null,
+        title: Text(items[i].product.name),
+        subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name} × ${rupiah(items[i].price)} = ${rupiah(items[i].quantity * items[i].price)}${items[i].sellPrice == null ? '' : ' · jual jadi ${rupiah(items[i].sellPrice)}'}'),
+        trailing: IconButton(tooltip: 'Hapus barang pembelian', onPressed: enabled ? () { setState(() => items.removeAt(i)); _saveDraft(); } : null, icon: const Icon(Icons.close)),
+      ))),
       OutlinedButton.icon(onPressed: !enabled ? null : () => addItem(), icon: const Icon(Icons.add), label: const Text('Tambah barang  ·  atau scan barcode')),
       const SizedBox(height: Space.lg), TextField(controller: paid, enabled: enabled, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Uang muka (opsional, Rp)', helperText: 'Kosong = lunas. Isi 0 untuk utang penuh.')),
       const SizedBox(height: Space.lg), TextField(controller: note, enabled: enabled, decoration: const InputDecoration(labelText: 'Catatan (opsional)')),
