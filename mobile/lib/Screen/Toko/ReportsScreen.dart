@@ -4,7 +4,12 @@ import '../../models/live_models.dart';
 import '../../services/store_api.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/ui.dart';
+import '../Live/LiveSaleScreen.dart';
+import '../menus.dart';
 import 'CostCorrectionDialog.dart';
+import 'MassInputScreen.dart';
+import 'ProductDetailScreen.dart';
+import 'ProductsScreen.dart' show showEfisiensiHargaDialog;
 import '../../Widgets/charts.dart';
 
 /// "-Rp14.000" for a deduction; a real zero stays "Rp0", with no sign to make it look like one.
@@ -131,8 +136,11 @@ class _StockLedgerScreenState extends State<StockLedgerScreen> {
 
 /// The owner's report for a period, on a cash basis.
 class RekapScreen extends StatefulWidget {
-  const RekapScreen({super.key, required this.api});
+  const RekapScreen({super.key, required this.api, this.onEditSale, this.onOpenMenu, this.isAdmin = true});
   final StoreApi api;
+  final Future<void> Function(int saleId)? onEditSale;
+  final void Function(Menu menu)? onOpenMenu;
+  final bool isAdmin;
   @override State<RekapScreen> createState() => _RekapScreenState();
 }
 
@@ -160,16 +168,39 @@ class _RekapScreenState extends State<RekapScreen> {
     showNotice(context, '$count baris dikoreksi. Rekap dihitung ulang.', kind: NoticeKind.success);
     load();
   }
+  Future<void> editProduct(int productId) async {
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => MassInputScreen(api: widget.api, ids: [productId]),
+    ));
+    if (changed == true && mounted) load();
+  }
+  Future<void> openProductDetail(int productId) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ProductDetailScreen(api: widget.api, productId: productId, isAdmin: widget.isAdmin),
+    ));
+    if (mounted) load();
+  }
+  Future<void> openEfisiensi({String initialCakupan = 'margin'}) async {
+    final changed = await showEfisiensiHargaDialog(context, widget.api, initialCakupan: initialCakupan);
+    if (changed == true && mounted) load();
+  }
   List<Map<String, dynamic>> rowsOf(String key) => data == null ? const [] : jsonRows(data![key]);
   Widget section(String title, Widget child) => Padding(padding: const EdgeInsets.only(top: Space.xl), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
     Text(title, style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: Space.sm), child]));
 
-  static const _saranText = {
-    'harga_di_bawah_modal': 'Ada barang yang terjual di bawah harga modal. Naikkan harga jualnya.',
-    'diskon_memakan_margin': 'Diskon memakan lebih dari separuh laba periode ini.',
-    'satuan_margin_tipis': 'Ada satuan dengan margin sangat tipis.',
-    'katalog_di_bawah_margin': 'Ada harga di katalog yang di bawah margin minimal toko.',
-  };
+  static String _formatSaran(Map<String, dynamic> s) {
+    final kode = s['kode']?.toString();
+    final jumlah = number(s['jumlah']) ?? 0;
+    final nilai = s['nilai'];
+    final persen = number(s['persen']) ?? 0;
+    return switch (kode) {
+      'harga_di_bawah_modal' => '$jumlah baris terjual di bawah modal (rugi ${rupiah(nilai)}). Periksa HPP atau naikkan harga jualnya.',
+      'diskon_memakan_margin' => 'Diskon (${rupiah(nilai)}) memakan ${persen.toStringAsFixed(0)}% dari laba kotor sebelum diskon.',
+      'satuan_margin_tipis' => '$jumlah satuan memiliki margin tipis (${persen.toStringAsFixed(1)}%). Cek harga jual atau harga beli satuan.',
+      'katalog_di_bawah_margin' => '$jumlah harga di katalog berada di bawah margin minimal toko (${persen.toStringAsFixed(0)}%).',
+      _ => text(kode),
+    };
+  }
 
   @override Widget build(BuildContext context) {
     final summary = data?['summary'] is Map ? jsonObject(data!['summary']) : const <String, dynamic>{};
@@ -177,11 +208,13 @@ class _RekapScreenState extends State<RekapScreen> {
     final stock = data?['stockValue'] is Map ? jsonObject(data!['stockValue']) : const <String, dynamic>{};
     final saran = penjelasan.isEmpty ? const <Map<String, dynamic>>[] : jsonRows(penjelasan['saran']);
     final rugi = penjelasan['barisRugi'] is List ? jsonRows(penjelasan['barisRugi']) : const <Map<String, dynamic>>[];
+    final salesHistory = data?['salesHistory'] is List ? jsonRows(data!['salesHistory']) : const <Map<String, dynamic>>[];
     return ScreenBody(onRefresh: load, children: [
       ScreenHeader('Rekap', 'Omzet dihitung saat uang diterima: bon masuk saat lunas.', actions: [
         OutlinedButton.icon(onPressed: () async { final picked = await pickRange(context, range); if (picked != null) { range = picked; load(); } },
           icon: const Icon(Icons.date_range), label: Text(rangeLabel(range))),
         if (isDesktop) OutlinedButton.icon(onPressed: export, icon: const Icon(Icons.download), label: const Text('Ekspor Excel')),
+        if (widget.isAdmin) OutlinedButton.icon(onPressed: () => openEfisiensi(), icon: const Icon(Icons.trending_up), label: const Text('Efisiensi harga')),
         OutlinedButton.icon(onPressed: () => showCostCorrectionHistory(context, widget.api), icon: const Icon(Icons.history), label: const Text('Riwayat koreksi HPP')),
       ]),
       LoadSwitch(loading: loading && data == null, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -214,8 +247,12 @@ class _RekapScreenState extends State<RekapScreen> {
             SummaryRow('${penjelasan['jumlahBarisRugi']} baris terjual rugi', rupiah(penjelasan['totalRugi']), color: errorColor),
         ]))),
         if (rugi.isNotEmpty) section(rugi.length < (number(penjelasan['jumlahBarisRugi']) ?? 0) ? 'Terjual di bawah modal (${rugi.length} terbesar)' : 'Terjual di bawah modal',
-          DataView<Map<String, dynamic>>(rows: rugi, actionsWidth: 190,
-            actions: (r) => [TextButton(onPressed: loading ? null : () => correct(r), child: const Text('Koreksi HPP'))],
+          DataView<Map<String, dynamic>>(rows: rugi, actionsWidth: 320,
+            actions: (r) => [
+              TextButton(onPressed: loading ? null : () => correct(r), child: const Text('Koreksi HPP')),
+              if (r['productId'] != null) TextButton(onPressed: loading ? null : () => editProduct(idNumber(r['productId'])), child: const Text('Ubah produk')),
+              if (widget.onEditSale != null && r['saleId'] != null) TextButton(onPressed: loading ? null : () => widget.onEditSale!(idNumber(r['saleId'])), child: const Text('Ubah nota')),
+            ],
             columns: [
               DataCol('Barang', (r) => '${r['namaItem']} (${r['satuan']}) · nota #${r['saleId']}', flex: 3),
               DataCol('Perhitungan', (r) => '${quantityText(r['qty'])} × (${rupiah(r['hargaJual'])} jual − ${rupiah(r['hargaPokok'])} modal)'
@@ -223,13 +260,48 @@ class _RekapScreenState extends State<RekapScreen> {
               DataCol('Laba', (r) => rupiah(r['laba']), numeric: true),
             ])),
         if (saran.isNotEmpty) section('Saran', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final s in saran) Padding(padding: const EdgeInsets.only(bottom: Space.sm), child: WhitePanel(child: Row(children: [
+          for (final s in saran) Padding(padding: const EdgeInsets.only(bottom: Space.sm), child: WhitePanel(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Icon(s['status'] == 'diperbaiki' ? Icons.check_circle_outline : Icons.lightbulb_outline, color: s['status'] == 'diperbaiki' ? successColor : warningColor),
             const SizedBox(width: Space.md),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_saranText[s['kode']] ?? text(s['kode'])),
+              Text(_formatSaran(s)),
               if ((s['contoh'] as List?)?.isNotEmpty ?? false) Text('Contoh: ${(s['contoh'] as List).join(', ')}', style: TextStyle(color: muted, fontSize: 13)),
               if (s['status'] == 'diperbaiki') Text('Harganya sudah diperbaiki.', style: TextStyle(color: successColor, fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(spacing: Space.xs, runSpacing: Space.xs, children: [
+                if (widget.isAdmin && (s['kode'] == 'harga_di_bawah_modal' || s['kode'] == 'katalog_di_bawah_margin' || s['kode'] == 'satuan_margin_tipis'))
+                  OutlinedButton(
+                    onPressed: () => openEfisiensi(initialCakupan: s['kode'] == 'harga_di_bawah_modal' ? 'rugi' : 'margin'),
+                    child: const Text('Efisiensi harga'),
+                  ),
+                for (final p in (s['produk'] as List? ?? const []).whereType<Map>().take(5)) ...[
+                  if (p['id'] != null) TextButton(
+                    onPressed: () => editProduct(idNumber(p['id'])),
+                    child: Text('Ubah produk ${p['namaItem'] ?? ''}'),
+                  ),
+                  if (p['id'] != null) TextButton(
+                    onPressed: () => openProductDetail(idNumber(p['id'])),
+                    child: Text('Harga satuan ${p['namaItem'] ?? ''}'),
+                  ),
+                ],
+                if (widget.onEditSale != null)
+                  for (final sid in (s['saleIds'] as List? ?? const []).take(5))
+                    if (number(sid) != null)
+                      TextButton(
+                        onPressed: () => widget.onEditSale!(idNumber(sid)),
+                        child: Text('Ubah nota #$sid'),
+                      ),
+                if (s['kode'] == 'satuan_margin_tipis' && widget.onOpenMenu != null)
+                  TextButton(
+                    onPressed: () => widget.onOpenMenu!(Menu.pembelian),
+                    child: const Text('Buka pembelian'),
+                  ),
+                if (s['kode'] == 'katalog_di_bawah_margin' && widget.onOpenMenu != null)
+                  TextButton(
+                    onPressed: () => widget.onOpenMenu!(Menu.pengaturan),
+                    child: const Text('Atur margin minimal'),
+                  ),
+              ]),
             ])),
           ]))),
         ])),
@@ -265,7 +337,26 @@ class _RekapScreenState extends State<RekapScreen> {
           DataCol('Bon belum lunas', (r) => text(r['jumlahBon']), numeric: true),
           DataCol('Total piutang', (r) => rupiah(r['totalPiutang']), numeric: true),
         ])),
+        if (salesHistory.isNotEmpty) section('Riwayat transaksi periode ini', DataView<Map<String, dynamic>>(
+          rows: salesHistory,
+          onTap: (r) async {
+            await Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => LiveSaleScreen(api: widget.api, id: idNumber(r['id']), isAdmin: widget.isAdmin, onEdit: widget.onEditSale),
+            ));
+            if (mounted) load();
+          },
+          columns: [
+            DataCol('Nota', (r) => '#${r['id']}'),
+            DataCol('Waktu', (r) => dateTimeLabel(r['createdAt']), flex: 2),
+            DataCol('Pelanggan', (r) => text(r['namaPelanggan'], 'Umum'), flex: 2),
+            DataCol('Metode', (r) => metodeLabel[r['metodePembayaran']] ?? text(r['metodePembayaran'])),
+            DataCol('Status', (r) => r['status'] == 'dibatalkan' ? 'Dibatalkan' : 'Selesai'),
+            DataCol('Total', (r) => rupiah(r['total']), numeric: true),
+            DataCol('Dibayar', (r) => rupiah(r['dibayar']), numeric: true),
+          ],
+        )),
         section('Nilai stok · ${rupiah(stock['totalNilai'])}', DataView<Map<String, dynamic>>(rows: stock.isEmpty ? const [] : jsonRows(stock['produk']), columns: [
+          DataCol('Kode', (r) => text(r['kodeItem'])),
           DataCol('Produk', (r) => text(r['namaItem']), flex: 3),
           DataCol('Stok', (r) => '${quantityText(r['stok'])} ${text(r['satuan'], '')}', numeric: true),
           DataCol('Harga pokok', (r) => rupiah(r['hargaPokok']), numeric: true),
