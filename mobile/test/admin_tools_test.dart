@@ -28,7 +28,7 @@ class FakeStore {
 const page = {'currentPage': 1, 'lastPage': 1, 'total': 2};
 
 Future<void> show(WidgetTester tester, Widget screen) async {
-  tester.view.physicalSize = const Size(1400, 1000);
+  tester.view.physicalSize = const Size(1400, 2400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -37,8 +37,14 @@ Future<void> show(WidgetTester tester, Widget screen) async {
 }
 
 Future<void> tapText(WidgetTester tester, String label) async {
-  await tester.ensureVisible(find.text(label).last);
-  await tester.tap(find.text(label).last);
+  final target = find.text(label).last;
+  if (find.byType(Scrollable).evaluate().isNotEmpty) {
+    try {
+      await tester.scrollUntilVisible(target, 200, scrollable: find.byType(Scrollable).first);
+    } catch (_) {}
+  }
+  await tester.ensureVisible(target);
+  await tester.tap(target);
   await tester.pumpAndSettle();
 }
 

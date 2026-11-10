@@ -247,7 +247,7 @@ class _RekapScreenState extends State<RekapScreen> {
             SummaryRow('${penjelasan['jumlahBarisRugi']} baris terjual rugi', rupiah(penjelasan['totalRugi']), color: errorColor),
         ]))),
         if (rugi.isNotEmpty) section(rugi.length < (number(penjelasan['jumlahBarisRugi']) ?? 0) ? 'Terjual di bawah modal (${rugi.length} terbesar)' : 'Terjual di bawah modal',
-          DataView<Map<String, dynamic>>(rows: rugi, actionsWidth: 320,
+          DataView<Map<String, dynamic>>(rows: rugi, actionsWidth: 360,
             actions: (r) => [
               TextButton(onPressed: loading ? null : () => correct(r), child: const Text('Koreksi HPP')),
               if (r['productId'] != null) TextButton(onPressed: loading ? null : () => editProduct(idNumber(r['productId'])), child: const Text('Ubah produk')),

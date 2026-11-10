@@ -443,7 +443,11 @@ class _CompactActions extends StatelessWidget {
   @override Widget build(BuildContext context) => IconButtonTheme(
     data: IconButtonThemeData(style: IconButton.styleFrom(foregroundColor: muted, minimumSize: const Size(32, 32), padding: const EdgeInsets.all(6),
       iconSize: 18, tapTargetSize: MaterialTapTargetSize.shrinkWrap)),
-    child: Row(mainAxisAlignment: MainAxisAlignment.end, children: children));
+    child: FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerRight,
+      child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: children),
+    ));
 }
 
 /// Underline tabs that switch between views of one area: on the ground, starting on the
