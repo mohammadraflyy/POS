@@ -284,13 +284,13 @@ class _MoneyFigures extends StatelessWidget {
   final int notes;
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
     Widget cell(String label, String value, {String? caption, bool lead = false, Color? color}) => Padding(
-      padding: const EdgeInsets.fromLTRB(Space.lg, 14, Space.lg, 14),
+      padding: const EdgeInsets.fromLTRB(Space.lg, 18, Space.lg, 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(color: muted, fontSize: 13)),
-        const SizedBox(height: 4),
+        Text(label, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 6),
         FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
           child: Text(value, style: (lead ? moneyStyle : amountStyle).copyWith(fontSize: lead ? 32 : 22, color: color ?? ink, height: 1.15))),
-        if (caption != null) ...[const SizedBox(height: 2), Text(caption, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
+        if (caption != null) ...[const SizedBox(height: 4), Text(caption, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
       ]));
     final lead = cell('Uang masuk', rupiah(masuk), caption: 'tunai + QRIS + transfer', lead: true);
     final rest = [

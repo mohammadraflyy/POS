@@ -125,15 +125,15 @@ const fontFamily = 'Geist';
 const monoFamily = 'GeistMono';
 
 abstract final class Space {
-  static const xs = 4.0, sm = 8.0, md = 12.0, lg = 16.0, xl = 24.0, xxl = 32.0;
+  static const xs = 4.0, sm = 8.0, md = 14.0, lg = 18.0, xl = 26.0, xxl = 36.0;
 
-  /// The one gap between cards, both ways.
-  static const gap = 12.0;
+  /// The gap between cards and major sections, spacious and breathable.
+  static const gap = 16.0;
 }
 
-/// The tight pair: 8 for cards, 6 for controls; dialogs float, so a little softer.
+/// Balanced and modern radii: 12 for cards, 8 for controls.
 abstract final class Corners {
-  static const chip = 4.0, control = 6.0, panel = 8.0, dialog = 12.0;
+  static const chip = 6.0, control = 8.0, panel = 12.0, dialog = 16.0;
 }
 
 abstract final class Motion {

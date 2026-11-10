@@ -68,16 +68,16 @@ class SummaryRow extends StatelessWidget {
   final bool strong;
   final Color? color;
   @override
-  Widget build(BuildContext context) => Padding(padding: EdgeInsets.symmetric(vertical: strong ? 8 : 5), child: LayoutBuilder(builder: (context, box) => Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-    Expanded(child: Text(label, style: TextStyle(color: strong ? ink : muted, fontSize: strong ? 16 : 14, fontWeight: strong ? FontWeight.w500 : FontWeight.w400))),
-    const SizedBox(width: 12),
+  Widget build(BuildContext context) => Padding(padding: EdgeInsets.symmetric(vertical: strong ? 10 : 6), child: LayoutBuilder(builder: (context, box) => Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+    Expanded(child: Text(label, style: TextStyle(color: strong ? ink : muted, fontSize: strong ? 16 : 14, fontWeight: strong ? FontWeight.w600 : FontWeight.w400))),
+    const SizedBox(width: 14),
     // the figure sits on the row's right edge and shrinks rather than wrap
     ConstrainedBox(constraints: BoxConstraints(maxWidth: box.maxWidth * 0.6), child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerRight,
       child: Text(value, textAlign: TextAlign.end, style: (strong ? moneyStyle : amountStyle).copyWith(color: color ?? ink, fontSize: strong ? 24 : 14)))),
   ])));
 }
 
-/// A white card on the stone ground: 1px edge, 8px corners, no shadow.
+/// A white card on the stone ground: 1px edge, rounded corners, no shadow.
 class WhitePanel extends StatelessWidget {
   const WhitePanel({super.key, required this.child, this.padding = const EdgeInsets.all(Space.lg)});
   final Widget child;
@@ -110,7 +110,7 @@ class KpiStrip extends StatelessWidget {
   final List<Kpi> items;
 
   Widget _cell(BuildContext context, Kpi kpi) => Padding(
-    padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.lg, Space.md),
+    padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.lg),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
       Text(kpi.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 13)),
       const SizedBox(height: 6),
@@ -259,7 +259,7 @@ class CartLayout extends StatelessWidget {
     return Material(color: surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.panel), side: BorderSide(color: lineColor)),
       clipBehavior: Clip.antiAlias, child: compact
       ? ListView(padding: const EdgeInsets.all(Space.lg), children: [header, const Divider(), ...contents, const Divider(), footer])
-      : Column(children: [Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: header), const Divider(),
+      : Column(children: [Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.md, Space.md), child: header), const Divider(),
           Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: Space.lg), children: contents)),
           const Divider(), Padding(padding: const EdgeInsets.all(Space.lg), child: footer),
         ]));
@@ -274,12 +274,12 @@ class RecordRow extends StatelessWidget {
   final VoidCallback? onTap;
   @override Widget build(BuildContext context) => Material(color: surface,
     child: InkWell(onTap: onTap, child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
+      padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 14),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: ruleColor))),
       child: Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 2), Text(subtitle, style: TextStyle(color: muted, fontSize: 13)),
+          const SizedBox(height: 3), Text(subtitle, style: TextStyle(color: muted, fontSize: 13)),
         ])),
         if (value != null) Text(value!, style: amountStyle.copyWith(fontSize: 14)),
         if (onTap != null) Padding(padding: EdgeInsets.only(left: Space.sm), child: Icon(Icons.chevron_right, size: 18, color: muted)),

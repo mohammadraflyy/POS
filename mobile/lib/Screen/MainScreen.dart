@@ -147,13 +147,14 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _brand({required bool compact}) => Padding(
-    padding: EdgeInsets.fromLTRB(compact ? 0 : Space.lg, Space.lg, compact ? 0 : Space.md, Space.lg),
+    padding: EdgeInsets.fromLTRB(compact ? 0 : Space.lg, Space.xl, compact ? 0 : Space.md, Space.lg),
     child: Row(mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
-      BrandMark(size: 26, logo: widget.app.shopLogo),
+      BrandMark(size: 28, logo: widget.app.shopLogo),
       if (!compact) ...[
         const SizedBox(width: Space.md),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(widget.app.shopName ?? _shopName ?? 'Point of Sales', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, height: 1.3)),
+          Text(widget.app.shopName ?? _shopName ?? 'Point of Sales', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, height: 1.25)),
+          const SizedBox(height: 2),
           Text(widget.app.isDemo ? 'Mode demo' : 'Point of Sales', style: TextStyle(fontSize: 12, color: muted)),
         ])),
       ],
@@ -169,19 +170,19 @@ class _MainScreenState extends State<MainScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(Corners.control),
         onTap: () => _open(menu),
-        child: SizedBox(height: 32, child: Row(mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
-          if (!compact) const SizedBox(width: 10),
-          Icon(info.icon, size: 17, color: selected ? ink : muted),
+        child: SizedBox(height: 38, child: Row(mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
+          if (!compact) const SizedBox(width: 12),
+          Icon(info.icon, size: 19, color: selected ? ink : muted),
           if (!compact) ...[
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(child: Text(info.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 14, color: selected ? ink : secondaryInk, fontWeight: selected ? FontWeight.w500 : FontWeight.w400))),
+              style: TextStyle(fontSize: 14, color: selected ? ink : secondaryInk, fontWeight: selected ? FontWeight.w600 : FontWeight.w400))),
           ],
         ])),
       ),
     );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : Space.sm, vertical: 1),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : Space.sm, vertical: 2),
       child: Semantics(selected: selected, button: true, label: info.title,
         child: compact ? Tooltip(message: info.title, waitDuration: const Duration(milliseconds: 300), child: row) : row),
     );
@@ -192,22 +193,22 @@ class _MainScreenState extends State<MainScreen> {
     final groups = <String, List<Menu>>{};
     for (final menu in menus) { (groups[menuInfo[menu]!.group] ??= []).add(menu); }
     final offline = widget.app.notice != null;
-    return SizedBox(width: compact ? 56 : 240, child: Column(children: [
+    return SizedBox(width: compact ? 64 : 260, child: Column(children: [
       _brand(compact: compact),
       Expanded(child: ListView(padding: const EdgeInsets.only(bottom: Space.md), children: [
         for (final (index, group) in groups.entries.indexed) ...[
           if (compact)
             Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
           else
-            Padding(padding: EdgeInsets.fromLTRB(18, index == 0 ? 0 : 20, Space.md, 6),
-              child: Text(group.key, style: TextStyle(color: muted, fontSize: 12))),
+            Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 0 : 20, Space.md, 8),
+              child: Text(group.key, style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w500))),
           for (final menu in group.value) _navRow(menu, compact: compact),
         ],
       ])),
       const Divider(indent: 12, endIndent: 12),
       Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
         borderRadius: BorderRadius.circular(Corners.control), onTap: _account,
-        child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 8), child: Row(
+        child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 10), child: Row(
           mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
           _Initial(widget.app.userName),
           if (!compact) ...[

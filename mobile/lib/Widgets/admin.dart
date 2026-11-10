@@ -126,7 +126,7 @@ class DataView<T> extends StatelessWidget {
         return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
           clipBehavior: Clip.antiAlias, child: Column(children: [for (final (index, row) in rows.indexed) Material(color: surface, child: InkWell(
           onTap: onTap == null ? null : () => onTap!(row),
-          child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
+          child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 14),
             decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
@@ -135,24 +135,24 @@ class DataView<T> extends StatelessWidget {
                 if (columns.skip(1).where((c) => c.numeric).isNotEmpty)
                   Text(columns.skip(1).lastWhere((c) => c.numeric).cell(row), style: amountStyle.copyWith(fontSize: 14)),
               ]),
-              const SizedBox(height: 2),
+              const SizedBox(height: 4),
               Text([for (final col in columns.skip(1)) if (!col.numeric || col != columns.skip(1).lastWhere((c) => c.numeric)) '${col.label} ${col.cell(row)}'].join(' · '),
                 style: TextStyle(color: muted, fontSize: 13)),
-              if (actions != null) Wrap(spacing: Space.xs, children: actions!(row)),
+              if (actions != null) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: Space.xs, children: actions!(row))),
             ]))))]));
       }
       return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
         clipBehavior: Clip.antiAlias, child: Column(children: [
-          Container(height: 38, padding: const EdgeInsets.symmetric(horizontal: Space.lg),
+          Container(height: 44, padding: const EdgeInsets.symmetric(horizontal: Space.lg),
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: lineColor))), child: Row(children: [
             if (_selectable) const SizedBox(width: 40),
             for (final col in columns) Expanded(flex: col.flex, child: Text(col.label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: col.numeric ? TextAlign.end : TextAlign.start,
-              style: TextStyle(color: muted, fontSize: 12))),
+              style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w500))),
             if (actions != null) SizedBox(width: actionsWidth),
           ])),
           for (final (index, row) in rows.indexed) InkWell(onTap: onTap == null ? null : () => onTap!(row), child: Container(
-            constraints: const BoxConstraints(minHeight: 44),
-            padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 8),
+            constraints: const BoxConstraints(minHeight: 50),
+            padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 11),
             decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
             child: Row(children: [
               if (_selectable) _checkbox(row),
@@ -371,14 +371,14 @@ class ScreenHeader extends StatelessWidget {
 
 /// Scrollable page body with a consistent width and padding.
 class ScreenBody extends StatelessWidget {
-  const ScreenBody({super.key, required this.children, this.maxWidth = 1200, this.onRefresh});
+  const ScreenBody({super.key, required this.children, this.maxWidth = 1320, this.onRefresh});
   final List<Widget> children;
   final double maxWidth;
   final Future<void> Function()? onRefresh;
   @override Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final list = ListView(physics: const AlwaysScrollableScrollPhysics(),
-      padding: wide ? const EdgeInsets.fromLTRB(Space.xxl, Space.xxl, Space.xxl, Space.xxl) : const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.xl), children: [
+      padding: wide ? const EdgeInsets.fromLTRB(Space.xxl, Space.xl, Space.xxl, Space.xxl) : const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.lg, Space.xl), children: [
       Align(alignment: Alignment.topLeft, child: ConstrainedBox(constraints: BoxConstraints(maxWidth: maxWidth), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children))),
     ]);
     return onRefresh == null ? list : RefreshIndicator(onRefresh: onRefresh!, child: list);
@@ -402,9 +402,9 @@ class SectionCard extends StatelessWidget {
     decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
     clipBehavior: Clip.antiAlias,
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-      Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 14, Space.md, 10), child: Row(children: [
-        Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
-        if (trailing != null) DefaultTextStyle.merge(style: TextStyle(color: muted, fontSize: 12), child: trailing!),
+      Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 16, Space.md, 12), child: Row(children: [
+        Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+        if (trailing != null) DefaultTextStyle.merge(style: TextStyle(color: muted, fontSize: 13), child: trailing!),
       ])),
       if (padded) Padding(padding: const EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: child) else child,
     ]),
@@ -421,13 +421,13 @@ class LedgerRow extends StatelessWidget {
   final bool first;
   final Color? valueColor;
   @override Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 9),
+    padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 13),
     decoration: BoxDecoration(border: first ? null : Border(top: BorderSide(color: ruleColor))),
     child: Row(children: [
       if (leading != null) ...[leading!, const SizedBox(width: Space.md)],
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
-        if (subline != null) Text(subline!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12)),
+        if (subline != null) ...[const SizedBox(height: 2), Text(subline!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
       ])),
       const SizedBox(width: Space.md),
       Text(value, style: amountStyle.copyWith(fontSize: 14, color: valueColor ?? ink)),

@@ -77,19 +77,20 @@ class _CartLine extends StatelessWidget {
         if (result != null && context.mounted) { try { store.replace(item, result); } catch (e) { showError(context, e); } }
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}$tierBadge${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
               style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
-            if (short) Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12)),
+            if (short) ...[const SizedBox(height: 2), Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))],
           ])),
-          const SizedBox(width: Space.sm),
-          Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14)),
-          SizedBox(width: 28, height: 20, child: IconButton(padding: EdgeInsets.zero, iconSize: 16, onPressed: store.editable ? () => store.remove(item) : null,
+          const SizedBox(width: Space.md),
+          Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w500)),
+          const SizedBox(width: Space.xs),
+          SizedBox(width: 28, height: 22, child: IconButton(padding: EdgeInsets.zero, iconSize: 16, onPressed: store.editable ? () => store.remove(item) : null,
             tooltip: 'Hapus ${item.product.name}', style: IconButton.styleFrom(minimumSize: const Size(24, 24), foregroundColor: muted, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
             icon: const Icon(Icons.close))),
         ]),

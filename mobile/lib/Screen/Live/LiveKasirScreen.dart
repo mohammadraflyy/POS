@@ -256,19 +256,20 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
             appBar: AppBar(title: const Text('Keranjang')), body: SafeArea(child: Padding(padding: const EdgeInsets.all(Space.md), child: LiveCartPanel(store: widget.store))))))),
       ])));
     }
-    // the catalog and the cart are two cards on one 24px frame, so their edges line up
+    // the catalog and the cart are two cards on one frame, so their edges line up
     final catalog = Container(
       decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
       clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.md, Space.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (editBanner != null) ...[editBanner, const SizedBox(height: Space.md)], searchRow, keys])),
         const Divider(),
         Expanded(child: list),
       ]));
     // the till is driven from the keyboard on a PC - see handleKey
+    final cartWidth = box.maxWidth >= 1400 ? 420.0 : box.maxWidth >= 1200 ? 400.0 : 380.0;
     return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Padding(padding: const EdgeInsets.all(Space.xl), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Expanded(child: catalog), const SizedBox(width: Space.gap), SizedBox(width: 380, child: LiveCartPanel(store: widget.store)),
+      Expanded(child: catalog), const SizedBox(width: Space.gap), SizedBox(width: cartWidth, child: LiveCartPanel(store: widget.store)),
     ]))));
   }));
 }
