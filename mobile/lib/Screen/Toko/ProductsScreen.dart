@@ -290,7 +290,7 @@ class _UnitsScreenState extends State<UnitsScreen> {
     ]),
     LoadSwitch(loading: loading, error: error, onRetry: load, child: DataView<Map<String, dynamic>>(rows: rows,
       onTap: widget.isAdmin ? edit : null,
-      actionsWidth: 160,
+      actionsWidth: 185,
       actions: widget.isAdmin ? (u) => [
         TextButton(
           onPressed: () => toggleUnitActive(u),

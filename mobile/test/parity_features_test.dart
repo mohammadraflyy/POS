@@ -219,15 +219,15 @@ void main() {
       await guard.load();
       Map<String, dynamic>? sentBody;
       final api = BusinessApi((path, {required method, query, body}) async {
-        if (path == '/v1/opname/categories') return {'data': [{'id': 1, 'nama': 'Minuman'}]};
-        if (path == '/v1/opname/products') return {'data': [{'id': 5, 'namaItem': 'Air Mineral', 'kodeItem': 'AIR1', 'stok': 10, 'stockRevision': 3, 'satuan': 'BTL'}]};
-        if (path == '/v1/opname/adjustments') { sentBody = body; return {'ok': true}; }
+        if (path == '/v1/opname/categories') return <String, dynamic>{'data': <Map<String, dynamic>>[<String, dynamic>{'id': 1, 'nama': 'Minuman'}]};
+        if (path == '/v1/opname/products') return <String, dynamic>{'data': <Map<String, dynamic>>[<String, dynamic>{'id': 5, 'namaItem': 'Air Mineral', 'kodeItem': 'AIR1', 'stok': 10, 'stockRevision': 3, 'satuan': 'BTL'}]};
+        if (path == '/v1/opname/adjustments') { sentBody = body; return <String, dynamic>{'ok': true}; }
         throw StateError('Unexpected $path');
       });
 
       await show(tester, LiveOpnameScreen(api: api, guard: guard));
       await tapText(tester, 'Minuman');
-      await tapText(tester, 'Koreksi stok');
+      await tapText(tester, 'Air Mineral');
       await tester.enterText(find.widgetWithText(TextField, 'Total stok fisik'), '14');
       await tester.pump();
       expect(find.textContaining('Perubahan: 10 → 14 BTL (selisih +4)'), findsOneWidget);

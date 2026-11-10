@@ -237,7 +237,7 @@ class _SupplierDebtScreenState extends State<SupplierDebtScreen> {
           Text('Faktur belum lunas', style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: Space.sm),
           DataView<Map<String, dynamic>>(rows: invoices, emptyTitle: 'Semua faktur lunas',
             onTap: openInvoice,
-            actionsWidth: 200,
+            actionsWidth: 340,
             actions: (i) => [
               TextButton(onPressed: () => openInvoice(i), child: const Text('Edit faktur')),
               TextButton(onPressed: () => setSisa(i), child: const Text('Ubah sisa')),
