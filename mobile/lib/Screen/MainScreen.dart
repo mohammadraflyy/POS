@@ -164,29 +164,67 @@ class _MainScreenState extends State<MainScreen> {
   Widget _navRow(Menu menu, {required bool compact}) {
     final selected = menu == _menu;
     final info = menuInfo[menu]!;
-    final activeBg = isDark ? raised : primaryInk;
-    final activeFg = onPrimary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // High-contrast active state (WCAG AAA):
+    // Light mode: solid dark slate-900 pill with pure white text and icon.
+    // Dark mode: elevated slate-800 pill with sky-blue border, sky-blue icon, and pure white text.
+    final activeBg = isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A);
+    final activeFg = Colors.white;
+    final activeIconColor = isDark ? const Color(0xFF38BDF8) : Colors.white;
+
     final row = Material(
       color: selected ? activeBg : Colors.transparent,
       borderRadius: BorderRadius.circular(Corners.control),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(Corners.control),
-        onTap: () => _open(menu),
-        child: SizedBox(height: 38, child: Row(mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
-          if (!compact) const SizedBox(width: 12),
-          Icon(info.icon, size: 19, color: selected ? activeFg : muted),
-          if (!compact) ...[
-            const SizedBox(width: 12),
-            Expanded(child: Text(info.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 14, color: selected ? activeFg : secondaryInk, fontWeight: selected ? FontWeight.w600 : FontWeight.w400))),
-          ],
-        ])),
+      elevation: selected ? 1.5 : 0,
+      child: Container(
+        decoration: selected && isDark ? BoxDecoration(
+          border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
+          borderRadius: BorderRadius.circular(Corners.control),
+        ) : null,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Corners.control),
+          onTap: () => _open(menu),
+          child: SizedBox(
+            height: 40,
+            child: Row(
+              mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+              children: [
+                if (!compact) const SizedBox(width: 12),
+                Icon(
+                  info.icon,
+                  size: 20,
+                  color: selected ? activeIconColor : (isDark ? muted : const Color(0xFF64748B)),
+                ),
+                if (!compact) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      info.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: selected ? activeFg : (isDark ? secondaryInk : const Color(0xFF334155)),
+                        fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : Space.sm, vertical: 2),
-      child: Semantics(selected: selected, button: true, label: info.title,
-        child: compact ? Tooltip(message: info.title, waitDuration: const Duration(milliseconds: 300), child: row) : row),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : Space.sm, vertical: 2.5),
+      child: Semantics(
+        selected: selected,
+        button: true,
+        label: info.title,
+        child: compact ? Tooltip(message: info.title, waitDuration: const Duration(milliseconds: 300), child: row) : row,
+      ),
     );
   }
 
@@ -296,48 +334,54 @@ class _MainScreenState extends State<MainScreen> {
     final groups = <String, List<Menu>>{};
     for (final menu in menus) { (groups[menuInfo[menu]!.group] ??= []).add(menu); }
     final offline = widget.app.notice != null;
-    return SizedBox(width: compact ? 64 : 260, child: Column(children: [
-      _brand(compact: compact),
-      Expanded(child: ListView(padding: const EdgeInsets.only(bottom: Space.md), children: [
-        for (final (index, group) in groups.entries.indexed) ...[
-          if (compact)
-            Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
-          else
-            Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 20, Space.md, 8),
-              child: Text(
-                group.key.toUpperCase(),
-                style: TextStyle(
-                  color: muted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                ),
-              )),
-          for (final menu in group.value) _navRow(menu, compact: compact),
-        ],
-      ])),
-      const Divider(indent: 12, endIndent: 12),
-      Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
-        borderRadius: BorderRadius.circular(Corners.control), onTap: _account,
-        child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 10), child: Row(
-          mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
-          _Initial(widget.app.userName),
-          if (!compact) ...[
-            const SizedBox(width: 10),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(widget.app.userName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-              Row(children: [
-                Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: widget.app.isDemo ? muted : offline ? errorColor : successColor)),
-                const SizedBox(width: 6),
-                Flexible(child: Text(widget.app.isDemo ? 'Demo' : offline ? 'Server tidak terjangkau' : '${_roleLabel(widget.app.role)} · terhubung',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: muted))),
-              ]),
-            ])),
-            Icon(Icons.unfold_more, size: 16, color: muted),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      width: compact ? 64 : 260,
+      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      child: Column(children: [
+        _brand(compact: compact),
+        Expanded(child: ListView(padding: const EdgeInsets.only(bottom: Space.md), children: [
+          for (final (index, group) in groups.entries.indexed) ...[
+            if (compact)
+              Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
+            else
+              Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 20, Space.md, 8),
+                child: Text(
+                  group.key.toUpperCase(),
+                  style: TextStyle(
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                )),
+            for (final menu in group.value) _navRow(menu, compact: compact),
           ],
         ])),
-      ))),
-    ]));
+        const Divider(indent: 12, endIndent: 12),
+        Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
+          borderRadius: BorderRadius.circular(Corners.control), onTap: _account,
+          child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 10), child: Row(
+            mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
+            _Initial(widget.app.userName),
+            if (!compact) ...[
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(widget.app.userName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                Row(children: [
+                  Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: widget.app.isDemo ? muted : offline ? errorColor : successColor)),
+                  const SizedBox(width: 6),
+                  Flexible(child: Text(widget.app.isDemo ? 'Demo' : offline ? 'Server tidak terjangkau' : '${_roleLabel(widget.app.role)} · terhubung',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: muted))),
+                ]),
+              ])),
+              Icon(Icons.unfold_more, size: 16, color: muted),
+            ],
+          ])),
+        ))),
+      ]),
+    );
   }
 
   @override

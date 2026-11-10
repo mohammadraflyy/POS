@@ -302,14 +302,23 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
               ActionChip(
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                backgroundColor: i == widget.store.activeQueueIndex ? primaryInk : surface,
-                side: BorderSide(color: i == widget.store.activeQueueIndex ? primaryInk : lineColor),
+                backgroundColor: i == widget.store.activeQueueIndex
+                    ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E293B) : const Color(0xFF0F172A))
+                    : surface,
+                side: BorderSide(
+                  color: i == widget.store.activeQueueIndex
+                      ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A))
+                      : lineColor,
+                  width: i == widget.store.activeQueueIndex ? 1.5 : 1,
+                ),
                 label: Text(
                   widget.store.queues[i].label,
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: i == widget.store.activeQueueIndex ? FontWeight.w600 : FontWeight.normal,
-                    color: i == widget.store.activeQueueIndex ? onPrimary : ink,
+                    fontWeight: i == widget.store.activeQueueIndex ? FontWeight.bold : FontWeight.w500,
+                    color: i == widget.store.activeQueueIndex
+                        ? (Theme.of(context).brightness == Brightness.dark ? const Color(0xFF38BDF8) : Colors.white)
+                        : ink,
                   ),
                 ),
                 onPressed: () => widget.store.switchQueue(i),

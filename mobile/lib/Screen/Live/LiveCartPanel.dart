@@ -313,6 +313,8 @@ class _CartQueueTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final count = queue.items.length;
     final title = queue.label;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -321,12 +323,23 @@ class _CartQueueTab extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: isActive ? dataHue.withValues(alpha: 0.12) : surface,
+            color: isActive
+                ? (isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A))
+                : surface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isActive ? dataHue : ruleColor,
+              color: isActive
+                  ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A))
+                  : lineColor,
               width: isActive ? 1.5 : 1,
             ),
+            boxShadow: isActive ? [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.12),
+                blurRadius: 3,
+                offset: const Offset(0, 1),
+              ),
+            ] : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -336,7 +349,7 @@ class _CartQueueTab extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                  color: isActive ? dataHue : ink,
+                  color: isActive ? (isDark ? const Color(0xFF38BDF8) : Colors.white) : ink,
                 ),
               ),
               if (canClose) ...[
@@ -346,7 +359,11 @@ class _CartQueueTab extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                   child: Padding(
                     padding: const EdgeInsets.all(2),
-                    child: Icon(Icons.close, size: 14, color: isActive ? dataHue : muted),
+                    child: Icon(
+                      Icons.close,
+                      size: 14,
+                      color: isActive ? (isDark ? const Color(0xFF38BDF8) : Colors.white70) : muted,
+                    ),
                   ),
                 ),
               ],
