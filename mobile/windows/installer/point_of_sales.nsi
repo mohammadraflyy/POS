@@ -28,6 +28,7 @@ InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
+SetCompressorDictSize 64
 BrandingText "${APP_NAME} ${VERSION}"
 
 VIProductVersion "${VERSION}.0"
