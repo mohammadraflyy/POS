@@ -28,5 +28,12 @@ class BusinessApi {
   Future<Object?> purchase(Map<String, dynamic> input) => post('/v1/purchases', input);
   Future<List<Map<String, dynamic>>> categories() async => jsonRows(await get('/v1/opname/categories'));
   Future<List<Map<String, dynamic>>> opname(String q, Set<int> categories) async => jsonRows(await get('/v1/opname/products', {'q': q, 'categoryIds': categories.join(',')}));
-  Future<Object?> adjust(int id, num after, String? reason) => post('/v1/opname/adjustments', {'productId': id, 'stokSesudah': after, 'alasan': reason});
+  Future<Object?> adjust(int id, num after, String? reason, {num? expectedStock, int? expectedRevision}) =>
+      post('/v1/opname/adjustments', {
+        'productId': id,
+        'stokSesudah': after,
+        'alasan': reason,
+        if (expectedStock != null) 'expectedStock': expectedStock,
+        if (expectedRevision != null) 'expectedRevision': expectedRevision,
+      });
 }

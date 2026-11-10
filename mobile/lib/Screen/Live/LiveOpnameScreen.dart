@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../Widgets/admin.dart' show isDesktop;
 import '../../services/business_api.dart';
 import '../../services/mutation_guard.dart';
 import '../../models/live_models.dart';
 import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
+import '../Pairing/ScanScreen.dart';
 class LiveOpnameScreen extends StatefulWidget {
   const LiveOpnameScreen({super.key, required this.api, required this.guard, this.onSaved});
   final BusinessApi api;
@@ -15,13 +17,21 @@ class LiveOpnameScreen extends StatefulWidget {
 class _LiveOpnameScreenState extends State<LiveOpnameScreen> {
   List<Map<String, dynamic>> categories = [], rows = [];
   final selected = <int>{};
+  final searchController = TextEditingController();
   String query = '';
   bool loading = false;
   String? error, categoryError;
   int serial = 0;
   Timer? timer;
   @override void initState() { super.initState(); loadCategories(); }
-  @override void dispose() { timer?.cancel(); super.dispose(); }
+  @override void dispose() { timer?.cancel(); searchController.dispose(); super.dispose(); }
+  Future<void> scan() async {
+    final code = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanScreen()));
+    if (code == null || !mounted) return;
+    searchController.text = code;
+    query = code;
+    load();
+  }
   Future<void> loadCategories() async {
     try { final result = await widget.api.categories(); for (final c in result) { idNumber(c['id']); }
       if (mounted) setState(() { categories = result; categoryError = null; });
@@ -37,7 +47,11 @@ class _LiveOpnameScreenState extends State<LiveOpnameScreen> {
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: widget.guard, builder: (context, _) => ListView(padding: const EdgeInsets.all(Space.lg), children: [
     const PageIntro('Periksa stok', 'Koreksi hanya jika jumlah barang berbeda. Gunakan satuan dasar.'),
-    TextField(onChanged: (v) { query = v; serial++; timer?.cancel(); setState(() => loading = true); timer = Timer(const Duration(milliseconds: 350), load); }, decoration: const InputDecoration(hintText: 'Cari nama, kode, barcode, atau kategori', prefixIcon: Icon(Icons.search))),
+    Row(children: [
+      Expanded(child: TextField(controller: searchController, onChanged: (v) { query = v; serial++; timer?.cancel(); setState(() => loading = true); timer = Timer(const Duration(milliseconds: 350), load); }, decoration: const InputDecoration(hintText: 'Cari nama, kode, barcode, atau kategori', prefixIcon: Icon(Icons.search)))),
+      if (!isDesktop) ...[const SizedBox(width: Space.sm), IconButton.filled(onPressed: scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner, size: 20),
+        style: IconButton.styleFrom(backgroundColor: primaryInk, foregroundColor: onPrimary, minimumSize: const Size(44, 44)))],
+    ]),
     const SizedBox(height: 12), if (categoryError != null) TextButton(onPressed: loadCategories, child: const Text('Muat ulang kategori')),
     Wrap(spacing: 8, runSpacing: 8, children: [for (final c in categories) FilterChip(label: Text((c['nama'] ?? c['name'] ?? '').toString()), selected: selected.contains(idNumber(c['id'])), onSelected: (value) { final id = idNumber(c['id']); if (value) { selected.add(id); } else { selected.remove(id); } load(); })]),
     const SizedBox(height: 16), if (loading) const Center(child: CircularProgressIndicator())
@@ -67,6 +81,9 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
   bool saving = false;
   String? error;
   @override void dispose() { actual.dispose(); reason.dispose(); super.dispose(); }
+  num? get _typedAfter {
+    try { return actual.text.trim().isEmpty ? null : inputQty(actual.text, zero: true); } catch (_) { return null; }
+  }
   Future<void> save() async {
     if (saving) return; setState(() { saving = true; error = null; });
     try {
@@ -74,17 +91,39 @@ class _AdjustmentSheetState extends State<_AdjustmentSheet> {
       if (reason.text.length > 255) throw const FormatException('Alasan maksimal 255 karakter.');
       final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('Terapkan hasil hitung?'), content: Text('Stok di PC akan ditetapkan menjadi ${quantityText(after)} ${widget.product['satuan'] ?? ''}. Harga pokok tidak berubah.'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Periksa lagi')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Terapkan'))]));
       if (confirmed != true) return;
-      await widget.guard.run('Stock opname', () => widget.api.adjust(idNumber(widget.product['id'] ?? widget.product['productId']), after, reason.text.trim().isEmpty ? null : reason.text.trim()));
+      await widget.guard.run(
+        'Stock opname',
+        () => widget.api.adjust(
+          idNumber(widget.product['id'] ?? widget.product['productId']),
+          after,
+          reason.text.trim().isEmpty ? null : reason.text.trim(),
+          expectedStock: number(widget.product['stok']),
+          expectedRevision: number(widget.product['stockRevision'])?.toInt(),
+        ),
+      );
       if (mounted) Navigator.pop(context, true);
     } catch (e) { if (mounted) { setState(() => error = e.toString()); showError(context, e); } }
     finally { if (mounted) setState(() => saving = false); }
   }
-  @override Widget build(BuildContext context) => PopScope(canPop: !saving, child: SafeArea(child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(24, 0, 24, MediaQuery.viewInsetsOf(context).bottom + 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text((widget.product['namaItem'] ?? 'Hasil hitung fisik').toString(), style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: Space.lg),
-    SummaryRow('Stok sistem', '${quantityText(widget.product['stok'])} ${widget.product['satuan'] ?? ''}'),
-    const SizedBox(height: 12), TextField(controller: actual, enabled: !saving, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Total stok fisik', helperText: 'Isi hasil hitung akhir, bukan jumlah selisih.')),
-    const SizedBox(height: Space.lg), TextField(controller: reason, enabled: !saving, maxLength: 255, decoration: const InputDecoration(labelText: 'Alasan (opsional)')),
-    if (error != null) Text(error!, style: TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
-    SizedBox(width: double.infinity, child: FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Menyimpan…' : 'Simpan ke PC'))),
-  ]))));
+  @override Widget build(BuildContext context) {
+    final before = number(widget.product['stok']) ?? 0;
+    final after = _typedAfter;
+    final diff = after == null ? null : after - before;
+    final satuan = (widget.product['satuan'] ?? '').toString();
+    return PopScope(canPop: !saving, child: SafeArea(child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(24, 0, 24, MediaQuery.viewInsetsOf(context).bottom + 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text((widget.product['namaItem'] ?? 'Hasil hitung fisik').toString(), style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: Space.lg),
+      SummaryRow('Stok sistem', '${quantityText(before)} $satuan'),
+      const SizedBox(height: 12), TextField(controller: actual, enabled: !saving, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Total stok fisik', helperText: 'Isi hasil hitung akhir, bukan jumlah selisih.')),
+      if (after != null && diff != null) Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          'Perubahan: ${quantityText(before)} → ${quantityText(after)} $satuan (selisih ${diff >= 0 ? '+${quantityText(diff)}' : quantityText(diff)})',
+          style: TextStyle(fontSize: 13, color: diff == 0 ? muted : (diff < 0 ? warningColor : successColor)),
+        ),
+      ),
+      const SizedBox(height: Space.lg), TextField(controller: reason, enabled: !saving, maxLength: 255, decoration: const InputDecoration(labelText: 'Alasan (opsional)')),
+      if (error != null) Text(error!, style: TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
+      SizedBox(width: double.infinity, child: FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Menyimpan…' : 'Simpan ke PC'))),
+    ]))));
+  }
 }
