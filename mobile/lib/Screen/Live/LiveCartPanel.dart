@@ -48,7 +48,9 @@ class LiveCartPanel extends StatelessWidget {
     );
     if (value != null) store.setDiscount(value);
   }
-  @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([store, store.guard]), builder: (context, _) => CartLayout(
+  @override Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedBuilder(animation: Listenable.merge([store, store.guard]), builder: (context, _) => CartLayout(
     header: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -84,7 +86,35 @@ class LiveCartPanel extends StatelessWidget {
           const SizedBox(height: Space.xs),
         ],
         Row(children: [
-          Expanded(child: Text(store.items.isEmpty ? 'Keranjang' : 'Keranjang · ${store.items.length} barang', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
+          Expanded(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    store.items.isEmpty ? 'Keranjang' : 'Keranjang Kasir',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                if (store.items.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: primaryInk,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${store.items.length} Item',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: onPrimary),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
           if (store.editable && store.editingSaleId == null)
             IconButton(
               tooltip: 'Tahan antrean saat ini & buka baru (Alt+H)',
@@ -94,18 +124,48 @@ class LiveCartPanel extends StatelessWidget {
               },
               icon: const Icon(Icons.add_shopping_cart, size: 20),
             ),
-          IconButton(tooltip: 'Kosongkan keranjang (Alt+K)', onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
-            icon: const Icon(Icons.delete_outline)),
+          IconButton(
+            tooltip: 'Kosongkan keranjang (Alt+K)',
+            onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
+            icon: const Icon(Icons.delete_outline),
+          ),
         ]),
       ],
     ),
     items: [
-      if (store.customerName.isNotEmpty) Padding(padding: const EdgeInsets.only(top: Space.sm, bottom: Space.xs), child: Row(children: [
-        Icon(Icons.person_outline, size: 16, color: muted), const SizedBox(width: 6),
-        Expanded(child: Text('Pelanggan: ${store.customerName}', style: const TextStyle(fontSize: 13))),
-        TextButton(onPressed: store.editable ? () => store.setCustomer('') : null, style: TextButton.styleFrom(minimumSize: const Size(0, 28), padding: const EdgeInsets.symmetric(horizontal: 6)),
-          child: const Text('Umum')),
-      ])),
+      if (store.customerName.isNotEmpty)
+        Container(
+          margin: const EdgeInsets.only(top: Space.sm, bottom: Space.xs),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: isDark ? raised : const Color(0xFFF8FAFC),
+            border: Border.all(color: lineColor),
+            borderRadius: BorderRadius.circular(Corners.control),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.person_outline, size: 16, color: muted),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Pelanggan: ${store.customerName}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                onPressed: store.editable ? () => store.setCustomer('') : null,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 26),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: const Text('Umum', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
+        ),
       for (var index = 0; index < store.items.length; index++) _CartLine(store: store, index: index),
     ],
     footer: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -123,15 +183,22 @@ class LiveCartPanel extends StatelessWidget {
       SummaryRow('Total', store.items.isEmpty ? rupiah(0) : rupiah(store.price?.total), strong: true, color: store.items.isEmpty ? muted : dataHue), const SizedBox(height: Space.lg),
       SizedBox(width: double.infinity, child: FilledButton(
         onPressed: store.canCheckout ? () => openPayment(context, store) : null,
-        style: FilledButton.styleFrom(minimumSize: const Size(44, 46), elevation: 1),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(44, 48),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control)),
+          elevation: 2,
+          backgroundColor: primaryInk,
+          foregroundColor: onPrimary,
+        ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Icon(Icons.check_circle_outline, size: 18),
+          Icon(Icons.check_circle_outline, size: 19, color: store.canCheckout ? const Color(0xFF34D399) : onPrimary.withValues(alpha: 0.5)),
           const SizedBox(width: Space.sm),
-          Text(isDesktop ? 'Bayar  ·  End' : 'Bayar'),
+          Text(isDesktop ? 'Bayar  ·  End' : 'Bayar', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
         ]),
       )),
     ]),
   ));
+  }
 }
 
 /// One cart line: tap it to change quantity, unit, price or discount.
@@ -148,6 +215,23 @@ class _CartLine extends StatelessWidget {
     final priceSource = line?['priceSource']?.toString();
     final tierBadge = priceSource == 'price_tier' ? ' · grosir' : priceSource == 'manual' ? ' · manual' : '';
     final short = line?['stokCukup'] == false;
+
+    final isRiwayat = item.priceNote != null && item.priceNote!.contains('riwayat');
+    final isTambahan = item.priceNote != null && (item.priceNote!.contains('tambahan') || item.priceNote!.contains('katalog'));
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final cardBorder = isRiwayat
+        ? (isDark ? const Color(0xFFD97706) : const Color(0xFFFDE68A)) // amber-200
+        : isTambahan
+            ? (isDark ? const Color(0xFF059669) : const Color(0xFFA7F3D0)) // emerald-200
+            : lineColor;
+
+    final cardBg = isRiwayat
+        ? (isDark ? const Color(0xFF78350F).withValues(alpha: 0.25) : const Color(0xFFFFFBEB))
+        : isTambahan
+            ? (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.25) : const Color(0xFFECFDF5))
+            : surface;
+
     return InkWell(
       borderRadius: BorderRadius.circular(Corners.control),
       onTap: !store.editable ? null : () async {
@@ -155,12 +239,19 @@ class _CartLine extends StatelessWidget {
         if (result != null && context.mounted) { try { store.replace(item, result); } catch (e) { showError(context, e); } }
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: 3.5),
         decoration: BoxDecoration(
-          color: surface,
-          border: Border.all(color: ruleColor),
+          color: cardBg,
+          border: Border.all(color: cardBorder, width: (isRiwayat || isTambahan) ? 1.2 : 1),
           borderRadius: BorderRadius.circular(Corners.control),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
         ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -169,19 +260,22 @@ class _CartLine extends StatelessWidget {
             Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}$tierBadge${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
               style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
             if (item.priceNote != null && item.priceNote!.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: 5),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                 decoration: BoxDecoration(
-                  color: item.priceNote!.contains('riwayat') ? pillWarningBg : pillPositiveBg,
+                  color: isRiwayat ? pillWarningBg : pillPositiveBg,
                   borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: (isRiwayat ? pillWarningInk : pillPositiveInk).withValues(alpha: 0.25),
+                  ),
                 ),
                 child: Text(
                   item.priceNote!,
                   style: TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: item.priceNote!.contains('riwayat') ? pillWarningInk : pillPositiveInk,
+                    fontWeight: FontWeight.w600,
+                    color: isRiwayat ? pillWarningInk : pillPositiveInk,
                   ),
                 ),
               ),
@@ -189,7 +283,7 @@ class _CartLine extends StatelessWidget {
             if (short) ...[const SizedBox(height: 2), Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))],
           ])),
           const SizedBox(width: Space.md),
-          Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
           const SizedBox(width: Space.xs),
           SizedBox(width: 28, height: 22, child: IconButton(padding: EdgeInsets.zero, iconSize: 16, onPressed: store.editable ? () => store.remove(item) : null,
             tooltip: 'Hapus ${item.product.name}', style: IconButton.styleFrom(minimumSize: const Size(24, 24), foregroundColor: muted, tapTargetSize: MaterialTapTargetSize.shrinkWrap),

@@ -309,25 +309,33 @@ class _MoneyFigures extends StatelessWidget {
   final num masuk, laba, piutang;
   final int notes;
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
-    Widget cell(String label, String value, {String? caption, bool lead = false, Color? color, Widget? badge}) => Padding(
-      padding: const EdgeInsets.fromLTRB(Space.lg, 18, Space.lg, 18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text(label, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500))),
-          if (badge != null) badge,
-        ]),
-        const SizedBox(height: 6),
-        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
-          child: Text(value, style: (lead ? moneyStyle : amountStyle).copyWith(fontSize: lead ? 32 : 22, color: color ?? ink, height: 1.15))),
-        if (caption != null) ...[const SizedBox(height: 4), Text(caption, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
-      ]));
-    final lead = cell('Uang masuk', rupiah(masuk), caption: 'tunai + QRIS + transfer', lead: true);
+    Widget cell(String label, String value, {String? caption, bool lead = false, Color? color, Widget? badge, Color? stripeColor}) => Stack(
+      children: [
+        if (stripeColor != null)
+          Positioned(top: 0, left: 0, right: 0, height: 3.5, child: ColoredBox(color: stripeColor)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Space.lg, 18, Space.lg, 18),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(label, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500))),
+              if (badge != null) badge,
+            ]),
+            const SizedBox(height: 6),
+            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+              child: Text(value, style: (lead ? moneyStyle : amountStyle).copyWith(fontSize: lead ? 30 : 22, color: color ?? ink, height: 1.15))),
+            if (caption != null) ...[const SizedBox(height: 4), Text(caption, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
+          ]),
+        ),
+      ],
+    );
+    final lead = cell('Uang masuk', rupiah(masuk), caption: 'tunai + QRIS + transfer', lead: true, stripeColor: const Color(0xFF0EA5E9));
     final rest = [
       cell(
         'Laba kotor',
         rupiah(laba),
         caption: laba > 0 ? 'surplus keuntungan hari ini' : laba < 0 ? 'mengalami rugi operasional' : 'belum ada laba',
         color: laba > 0 ? successColor : laba < 0 ? errorColor : ink,
+        stripeColor: const Color(0xFF10B981),
         badge: laba > 0
             ? const TrendBadge(value: 'Untung', isUp: true)
             : laba < 0
@@ -338,6 +346,7 @@ class _MoneyFigures extends StatelessWidget {
         'Nota',
         '$notes',
         caption: notes == 0 ? 'belum ada penjualan' : 'selesai hari ini',
+        stripeColor: const Color(0xFF94A3B8),
         badge: notes > 0 ? Pill('$notes nota', color: successColor) : null,
       ),
       cell(
@@ -345,6 +354,7 @@ class _MoneyFigures extends StatelessWidget {
         rupiah(piutang),
         caption: piutang > 0 ? 'tagihan belum lunas' : 'semua bon telah lunas',
         color: piutang > 0 ? warningColor : ink,
+        stripeColor: const Color(0xFFF59E0B),
         badge: piutang > 0 ? Pill('Tertunda', color: warningColor) : Pill('Lunas', color: successColor),
       ),
     ];

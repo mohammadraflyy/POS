@@ -253,25 +253,43 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   }
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([widget.store, widget.store.guard]), builder: (context, _) => LayoutBuilder(builder: (context, box) {
     final wide = usesSplitCart(context, box);
-    final searchRow = Row(children: [
-      SizedBox(width: 92, child: TextField(controller: qty, focusNode: qtyFocus, textAlign: TextAlign.end,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true), textInputAction: TextInputAction.next,
-        style: amountStyle.copyWith(fontSize: 16),
-        // Enter in Jumlah goes on to the search, ready for the scan or the name
-        onSubmitted: (_) { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); },
-        onTap: () => qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length),
-        decoration: const InputDecoration(prefixText: '× ', hintText: '1', helperText: null, labelText: 'Jumlah'))),
-      const SizedBox(width: Space.sm),
-      Expanded(child: TextField(controller: search, textInputAction: TextInputAction.search, onChanged: (_) {
-        serial++; timer?.cancel(); setState(() { loading = true; error = null; });
-        timer = Timer(const Duration(milliseconds: 350), () => load());
-      }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(),
-        decoration: InputDecoration(hintText: isDesktop ? 'Cari nama, kode, atau scan barcode' : 'Cari barang', prefixIcon: const Icon(Icons.search, size: 20)))),
-      if (!isDesktop) ...[const SizedBox(width: Space.sm), IconButton.filled(onPressed: scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner, size: 20),
-        style: IconButton.styleFrom(backgroundColor: primaryInk, foregroundColor: onPrimary, minimumSize: const Size(44, 44)))],
-      const SizedBox(width: Space.xs),
-      IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
-    ]);
+    final searchRow = Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark ? raised : const Color(0xFFF8FAFC),
+        border: Border.all(color: lineColor),
+        borderRadius: BorderRadius.circular(Corners.control),
+      ),
+      child: Row(children: [
+        SizedBox(width: 88, child: TextField(controller: qty, focusNode: qtyFocus, textAlign: TextAlign.end,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true), textInputAction: TextInputAction.next,
+          style: amountStyle.copyWith(fontSize: 16),
+          // Enter in Jumlah goes on to the search, ready for the scan or the name
+          onSubmitted: (_) { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); },
+          onTap: () => qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length),
+          decoration: const InputDecoration(prefixText: '× ', hintText: '1', helperText: null, labelText: 'Jumlah'))),
+        const SizedBox(width: Space.sm),
+        Expanded(child: TextField(controller: search, textInputAction: TextInputAction.search, onChanged: (_) {
+          serial++; timer?.cancel(); setState(() { loading = true; error = null; });
+          timer = Timer(const Duration(milliseconds: 350), () => load());
+        }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(),
+          decoration: InputDecoration(hintText: isDesktop ? 'Cari nama, kode, atau scan barcode' : 'Cari barang', prefixIcon: const Icon(Icons.search, size: 20)))),
+        const SizedBox(width: Space.xs),
+        IconButton.filled(
+          onPressed: scan,
+          tooltip: 'Scan barcode',
+          icon: const Icon(Icons.qr_code_scanner, size: 20),
+          style: IconButton.styleFrom(
+            backgroundColor: primaryInk,
+            foregroundColor: onPrimary,
+            minimumSize: const Size(40, 40),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control)),
+          ),
+        ),
+        const SizedBox(width: Space.xs),
+        IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
+      ]),
+    );
     final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+H tahan/ganti antrean · Alt+T antrean baru · Alt+K kosongkan',
       style: TextStyle(color: muted, fontSize: 12))) : const SizedBox.shrink();
     final queueTabs = widget.store.queues.length > 1 ? Container(
@@ -362,7 +380,20 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           if (editBanner != null) ...[editBanner, const SizedBox(height: Space.md)],
           if (queueTabs != null) ...[queueTabs, const SizedBox(height: Space.sm)],
           searchRow, keys])),
-        const Divider(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark ? raised.withValues(alpha: 0.5) : const Color(0xFFF8FAFC),
+            border: Border(top: BorderSide(color: ruleColor), bottom: BorderSide(color: ruleColor)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Daftar Produk (Katalog Aktif)', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text('${products.length} barang ditampilkan', style: TextStyle(color: muted, fontSize: 12)),
+            ],
+          ),
+        ),
         Expanded(child: list),
       ]));
     // the till is driven from the keyboard on a PC - see handleKey

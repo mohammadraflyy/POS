@@ -190,6 +190,107 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  Widget _desktopHeader() {
+    final offline = widget.app.notice != null;
+    final isDemo = widget.app.isDemo;
+    final shopTitle = widget.app.shopName ?? _shopName ?? 'POS Kasir Toko';
+    final userRole = _roleLabel(widget.app.role);
+    final userName = widget.app.userName.isEmpty ? 'Kasir' : widget.app.userName;
+    final addressText = widget.app.address != null ? ' (${widget.app.address!.host}:${widget.app.address!.port})' : '';
+
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: Space.md),
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border(bottom: BorderSide(color: ruleColor)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isDemo ? warningColor : (offline ? errorColor : successColor),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              shopTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+          ),
+          const SizedBox(width: Space.sm),
+          Text('|', style: TextStyle(color: lineColor)),
+          const SizedBox(width: Space.sm),
+          Flexible(
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: 'Kasir: ', style: TextStyle(color: muted, fontSize: 13)),
+                TextSpan(
+                  text: '$userName ($userRole)',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isDemo ? pillWarningBg : (offline ? pillNegativeBg : pillPositiveBg),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: (isDemo ? pillWarningInk : (offline ? pillNegativeInk : pillPositiveInk)).withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isDemo ? warningColor : (offline ? errorColor : successColor),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isDemo ? 'Mode Demo' : (offline ? 'Server Terputus' : 'Server Terhubung$addressText'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isDemo ? pillWarningInk : (offline ? pillNegativeInk : pillPositiveInk),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: Space.sm),
+          OutlinedButton.icon(
+            onPressed: _account,
+            icon: const Icon(Icons.lock_outline, size: 14),
+            label: const Text('Kunci Kasir'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+              minimumSize: const Size(0, 32),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _sidebar(List<Menu> menus) {
     final compact = _railOnly;
     final groups = <String, List<Menu>>{};
@@ -202,8 +303,16 @@ class _MainScreenState extends State<MainScreen> {
           if (compact)
             Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
           else
-            Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 0 : 20, Space.md, 8),
-              child: Text(group.key, style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w500))),
+            Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 20, Space.md, 8),
+              child: Text(
+                group.key.toUpperCase(),
+                style: TextStyle(
+                  color: muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                ),
+              )),
           for (final menu in group.value) _navRow(menu, compact: compact),
         ],
       ])),
@@ -254,6 +363,7 @@ class _MainScreenState extends State<MainScreen> {
         _sidebar(widget.app.isDemo ? primaryMenus : menus),
         const VerticalDivider(width: 1),
         Expanded(child: Column(children: [
+          _desktopHeader(),
           if (updateBanner != null) updateBanner,
           if (demoBanner != null) demoBanner,
           Expanded(child: workspace),
