@@ -277,12 +277,17 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         return false;
       }
       if (!isOutsideCatalog) {
-        if (selectedIndex == 0) {
+        final isScrolledDown = catalogScroll.hasClients && catalogScroll.offset > 20;
+        if (selectedIndex == 0 && !isScrolledDown) {
           action = () {
             searchFocus.requestFocus();
             search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
           };
         } else {
+          if (selectedIndex == 0 && isScrolledDown) {
+            final visibleIdx = (catalogScroll.offset / 62.0).ceil().clamp(0, catalogLines.length - 1);
+            selectedIndex = visibleIdx;
+          }
           action = () => moveSelection(-1);
         }
       }
@@ -388,7 +393,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         products = rows;
         page = (number(data['currentPage']) ?? target).toInt();
         lastPage = (number(data['lastPage']) ?? target).toInt();
-        selectedIndex = products.isEmpty ? 0 : selectedIndex.clamp(0, products.length - 1);
+        final totalLines = catalogLines.length;
+        selectedIndex = totalLines == 0 ? 0 : selectedIndex.clamp(0, totalLines - 1);
       });
     } catch (e) { if (mounted && request == serial) { setState(() => error = e.toString()); showError(context, e); } }
     finally { if (mounted && request == serial) setState(() => loading = false); }
@@ -537,7 +543,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           price: rupiah(line.unit.price),
           unit: line.unit.name,
           inCart: widget.store.items.any((item) => item.product.id == line.product.id && item.unit.id == line.unit.id),
-          selected: false,
+          selected: isSelected,
           onConfigure: !loading && widget.store.editable ? () {
             searchFocus.unfocus();
             qtyFocus.unfocus();
@@ -603,7 +609,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Daftar Produk (Katalog Aktif)', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600)),
+              Flexible(child: Text('Daftar Produk (Katalog Aktif)', overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600))),
+              const SizedBox(width: Space.sm),
               Text('${products.length} barang ditampilkan', style: TextStyle(color: muted, fontSize: 12)),
             ],
           ),

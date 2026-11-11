@@ -39,7 +39,10 @@ class ProductRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final rowBg = surface;
+    final rowBg = selected
+        ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF0F9FF))
+        : surface;
+    final indicatorColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
     final avatarBg = isDark ? raised : const Color(0xFFF1F5F9);
     final avatarFg = isDark ? ink : const Color(0xFF475569);
 
@@ -53,7 +56,9 @@ class ProductRow extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: ruleColor, width: 1),
+                top: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.3) : Colors.transparent, width: selected ? 1 : 0),
+                bottom: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.3) : ruleColor, width: 1),
+                left: BorderSide(color: selected ? indicatorColor : Colors.transparent, width: selected ? 4 : 0),
               ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 12),
@@ -96,8 +101,8 @@ class ProductRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: ink,
+                        fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                        color: selected ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1)) : ink,
                       ),
                     ),
                     const SizedBox(height: 2),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../lib/core/theme.dart';
 import '../lib/Screen/MainScreen.dart';
@@ -94,6 +95,43 @@ void main() {
     await settle(tester);
     expect(find.textContaining('Belum lunas'), findsOneWidget);
     expect(find.text('#7'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('desktop sidebar allows keyboard selection with arrow keys, Alt+M, and Alt+number', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800); tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
+    final app = await tester.runAsync(() => signedIn('admin'));
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(), home: MainScreen(app: app!)));
+    await settle(tester);
+
+    // Initial menu is Kasir
+    expect(find.text('Daftar Produk (Katalog Aktif)'), findsOneWidget);
+
+    // Press Alt+M to focus sidebar menu
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pumpAndSettle();
+
+    // Press ArrowDown to navigate to the next menu
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+
+    // Press Alt+1 to jump to menu 1 (Dashboard)
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.digit1);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await settle(tester);
+    expect(find.text('Uang hari ini'), findsOneWidget);
+
+    // Press Alt+2 to jump to menu 2 (Kasir)
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await settle(tester);
+    expect(find.text('Daftar Produk (Katalog Aktif)'), findsOneWidget);
+
     await tester.pumpWidget(const SizedBox());
   });
 }
