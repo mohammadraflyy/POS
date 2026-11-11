@@ -6,6 +6,7 @@ import '../lib/Screen/MainScreen.dart';
 import '../lib/Screen/menus.dart';
 import '../lib/services/mobile_api.dart';
 import '../lib/state/app_state.dart';
+import '../lib/Widgets/ui.dart' show sidebarCursor;
 import 'session_test.dart' show MemoryStorage;
 
 /// Answers every endpoint the store screens read, by path, like a tiny server.
@@ -98,7 +99,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('desktop sidebar allows global arrow navigation between menus without shortcuts', (tester) async {
+  testWidgets('desktop sidebar: arrows only highlight a menu, Enter opens it', (tester) async {
     tester.view.physicalSize = const Size(1280, 800); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
     final app = await tester.runAsync(() => signedIn('admin'));
@@ -112,18 +113,31 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
 
-    // Press ArrowDown to navigate to the next menu in group (Riwayat Penjualan)
+    // ArrowDown highlights the next menu but stays on Kasir
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await settle(tester);
-    expect(find.text('Daftar Produk (Katalog Aktif)'), findsNothing);
-
-    // Press ArrowUp to navigate back to Kasir
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await settle(tester);
     expect(find.text('Daftar Produk (Katalog Aktif)'), findsOneWidget);
 
-    // Press ArrowUp to navigate to Dashboard
+    // Enter opens the highlighted menu (Riwayat)
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await settle(tester);
+    expect(find.text('Daftar Produk (Katalog Aktif)'), findsNothing);
+
+    // Two ups highlight Dashboard without leaving Riwayat; Enter opens it
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await settle(tester);
+    expect(find.text('Uang hari ini'), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await settle(tester);
+    expect(find.text('Uang hari ini'), findsOneWidget);
+
+    // Esc drops the highlight; a later Enter does nothing
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await settle(tester);
     expect(find.text('Uang hari ini'), findsOneWidget);
 

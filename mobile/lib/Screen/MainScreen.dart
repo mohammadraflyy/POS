@@ -52,6 +52,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    sidebarCursor.value = null;
     _updateCheckTimer?.cancel();
     HardwareKeyboard.instance.removeHandler(_handleKey);
     super.dispose();
@@ -137,27 +138,31 @@ class _MainScreenState extends State<MainScreen> {
     final typing = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null;
     if (typing) return false;
 
-    // Global arrow keys to navigate menus
-    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+    // Arrows only move the sidebar highlight; Enter opens the highlighted menu, Esc drops it.
+    final key = event.logicalKey;
+    final cursor = sidebarCursor.value as Menu?;
+    if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowUp) {
       final all = _orderedMenus();
-      final idx = all.indexOf(_menu);
-      if (idx >= 0 && idx < all.length - 1) {
-        _open(all[idx + 1]);
-        return true;
-      }
-    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      final all = _orderedMenus();
-      final idx = all.indexOf(_menu);
-      if (idx > 0) {
-        _open(all[idx - 1]);
-        return true;
-      }
+      final idx = all.indexOf(cursor ?? _menu);
+      final next = (idx + (key == LogicalKeyboardKey.arrowDown ? 1 : -1)).clamp(0, all.length - 1);
+      setState(() => sidebarCursor.value = all[next]);
+      return true;
+    }
+    if (cursor != null && (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter)) {
+      setState(() => _menu = cursor);
+      // cleared after this frame so the screen underneath does not also treat this Enter as its own
+      WidgetsBinding.instance.addPostFrameCallback((_) => sidebarCursor.value = null);
+      return true;
+    }
+    if (cursor != null && key == LogicalKeyboardKey.escape) {
+      setState(() => sidebarCursor.value = null);
+      return true;
     }
     return false;
   }
 
   void _open(Menu menu) {
-    setState(() => _menu = menu);
+    setState(() { _menu = menu; sidebarCursor.value = null; });
   }
 
   Future<void> _account() => showAccountPanel(context, app: widget.app, shopName: _shopName,
@@ -194,6 +199,8 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _navRow(Menu menu, {required bool compact}) {
     final selected = menu == _menu;
+    // the keyboard highlight: where Enter will go, not yet opened
+    final cursor = sidebarCursor.value == menu;
     final info = menuInfo[menu]!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -205,15 +212,16 @@ class _MainScreenState extends State<MainScreen> {
     final activeIconColor = isDark ? const Color(0xFF38BDF8) : Colors.white;
 
     final row = Material(
-      color: selected ? activeBg : Colors.transparent,
+      color: selected ? activeBg : (cursor ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0)) : Colors.transparent),
       borderRadius: BorderRadius.circular(Corners.control),
       elevation: selected ? 1.5 : 0,
       child: Container(
-        decoration: selected && isDark ? BoxDecoration(
-          border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
+        decoration: cursor || (selected && isDark) ? BoxDecoration(
+          border: Border.all(color: cursor ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7)) : const Color(0xFF38BDF8), width: cursor ? 2 : 1.5),
           borderRadius: BorderRadius.circular(Corners.control),
         ) : null,
         child: InkWell(
+          canRequestFocus: false,
           borderRadius: BorderRadius.circular(Corners.control),
           onTap: () => _open(menu),
           child: SizedBox(
@@ -345,14 +353,18 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
           const SizedBox(width: Space.sm),
-          OutlinedButton.icon(
-            onPressed: _account,
-            icon: const Icon(Icons.lock_outline, size: 14),
-            label: const Text('Kunci Kasir'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-              minimumSize: const Size(0, 32),
-              visualDensity: VisualDensity.compact,
+          Focus(
+            canRequestFocus: false,
+            descendantsAreFocusable: false,
+            child: OutlinedButton.icon(
+              onPressed: _account,
+              icon: const Icon(Icons.lock_outline, size: 14),
+              label: const Text('Kunci Kasir'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                minimumSize: const Size(0, 32),
+                visualDensity: VisualDensity.compact,
+              ),
             ),
           ),
         ],
@@ -393,6 +405,7 @@ class _MainScreenState extends State<MainScreen> {
         ])),
         const Divider(indent: 12, endIndent: 12),
         Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
+          canRequestFocus: false,
           borderRadius: BorderRadius.circular(Corners.control), onTap: _account,
           child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 10), child: Row(
                 mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [

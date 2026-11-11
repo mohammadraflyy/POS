@@ -261,6 +261,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
     } else if (key == LogicalKeyboardKey.enter) {
+      // Enter belongs to the sidebar while a menu is highlighted there
+      if (sidebarCursor.value != null) return false;
       final primaryCtx = FocusManager.instance.primaryFocus?.context;
       if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
         return false;
