@@ -15,6 +15,12 @@ class PurchaseDraftItem {
   final num? sellPrice;
   Map<String, dynamic> toJson() => {'productId': product.id, 'productUnitId': unit.id, 'qty': quantity, 'hargaBeli': price, if (sellPrice != null) 'hargaJual': sellPrice};
 }
+class PurchaseCatalogLine {
+  const PurchaseCatalogLine(this.product, this.unit);
+  final LiveProduct product;
+  final LiveUnit unit;
+}
+
 class LivePurchaseItemScreen extends StatefulWidget {
   const LivePurchaseItemScreen({super.key, required this.api, this.initialProduct});
   final BusinessApi api;
@@ -28,6 +34,17 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
   List<LiveProduct> products = [];
   bool loading = false;
   String? error;
+
+  List<PurchaseCatalogLine> get purchaseLines {
+    final list = <PurchaseCatalogLine>[];
+    for (final p in products) {
+      for (final u in p.units) {
+        list.add(PurchaseCatalogLine(p, u));
+      }
+    }
+    return list;
+  }
+
   @override void initState() {
     super.initState();
     final product = widget.initialProduct;
@@ -40,8 +57,13 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
     catch (e) { if (mounted) { setState(() => error = e.toString()); showError(context, e); } }
     finally { if (mounted) setState(() => loading = false); }
   }
-  Future<void> select(LiveProduct product) async {
-    final item = await showModalBottomSheet<PurchaseDraftItem>(context: context, isScrollControlled: true, showDragHandle: true, builder: (_) => _PurchaseFields(product: product));
+  Future<void> select(LiveProduct product, {LiveUnit? initialUnit}) async {
+    final item = await showModalBottomSheet<PurchaseDraftItem>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _PurchaseFields(product: product, initialUnit: initialUnit),
+    );
     if (mounted && item != null) Navigator.pop(context, item);
   }
   Future<void> scan() async {
@@ -52,54 +74,55 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
     catch (e) { if (mounted) { setState(() => error = e.toString()); showError(context, e); } }
     finally { if (mounted) setState(() => loading = false); }
   }
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Tambah barang masuk')), body: SafeArea(child: ListView(padding: const EdgeInsets.all(Space.lg), children: [
+  @override Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lines = purchaseLines;
+    return Scaffold(appBar: AppBar(title: const Text('Tambah barang masuk')), body: SafeArea(child: ListView(padding: const EdgeInsets.all(Space.lg), children: [
     Row(children: [Expanded(child: TextField(controller: query, onSubmitted: (_) => search(), decoration: const InputDecoration(hintText: 'Cari produk', prefixIcon: Icon(Icons.search)))),
       IconButton(onPressed: loading ? null : search, tooltip: 'Cari produk', icon: const Icon(Icons.arrow_forward)), if (!isDesktop) IconButton(onPressed: loading ? null : scan, tooltip: 'Scan barcode', icon: const Icon(Icons.qr_code_scanner))]),
     const SizedBox(height: Space.lg), if (loading) const Center(child: CircularProgressIndicator()),
     if (error != null) Text(error!, style: TextStyle(color: errorColor)),
     if (!loading && products.isEmpty && error == null) const EmptyPanel(icon: Icons.inventory_2_outlined, title: 'Cari barang masuk', message: 'Masukkan nama atau scan barcode dari produk.'),
-    for (final product in products)
+    for (final line in lines)
       ListTile(
-        title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(
+          line.unit.conversionFactor > 1 ? '${line.product.name} · ${line.unit.name}' : line.product.name,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
         subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            '${line.product.code} • Stok ${quantityText(line.unit.conversionFactor > 1 && line.product.stock != null ? line.product.stock! / line.unit.conversionFactor : line.product.stock)} ${line.unit.name}${line.unit.conversionFactor > 1 ? ' (isi ${line.unit.conversionFactor})' : ''}${line.unit.cost != null && line.unit.cost! > 0 ? ' • Modal ${rupiah(line.unit.cost)}' : ''}',
+            style: TextStyle(color: muted, fontSize: 13),
+          ),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: isDark ? raised : const Color(0xFFE0F2FE),
+            borderRadius: BorderRadius.circular(Corners.control),
+            border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFBAE6FD)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text('${product.code} • Stok ${quantityText(product.stock)}'),
-              if (product.units.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    Text('Satuan: ', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w500)),
-                    ...product.units.map((u) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).brightness == Brightness.dark ? raised : const Color(0xFFF1F5F9),
-                        border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        u.conversionFactor > 1 ? '${u.name} (isi ${u.conversionFactor})' : u.name,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF38BDF8) : primaryInk,
-                        ),
-                      ),
-                    )),
-                  ],
+              Icon(Icons.add, size: 14, color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1)),
+              const SizedBox(width: 4),
+              Text(
+                line.unit.name,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1),
                 ),
-              ],
+              ),
             ],
           ),
         ),
-        trailing: const Icon(Icons.add_circle_outline),
-        onTap: loading ? null : () => select(product),
+        onTap: loading ? null : () => select(line.product, initialUnit: line.unit),
       ),
   ])));
+  }
 }
 Future<PurchaseDraftItem?> editPurchaseItem(BuildContext context, PurchaseDraftItem existing) =>
   showModalBottomSheet<PurchaseDraftItem>(
@@ -110,13 +133,14 @@ Future<PurchaseDraftItem?> editPurchaseItem(BuildContext context, PurchaseDraftI
   );
 
 class _PurchaseFields extends StatefulWidget {
-  const _PurchaseFields({required this.product, this.existing});
+  const _PurchaseFields({required this.product, this.existing, this.initialUnit});
   final LiveProduct product;
   final PurchaseDraftItem? existing;
+  final LiveUnit? initialUnit;
   @override State<_PurchaseFields> createState() => _PurchaseFieldsState();
 }
 class _PurchaseFieldsState extends State<_PurchaseFields> {
-  late LiveUnit unit = widget.existing?.unit ?? widget.product.units.first;
+  late LiveUnit unit = widget.existing?.unit ?? widget.initialUnit ?? widget.product.units.first;
   late final quantity = TextEditingController(text: widget.existing?.quantity.toString() ?? '1');
   late final price = TextEditingController(text: _plain(widget.existing?.price ?? unit.cost));
   late final sell = TextEditingController(text: _plain(widget.existing?.sellPrice));

@@ -13,6 +13,20 @@ import 'package:flutter/services.dart';
 import '../../Widgets/admin.dart' show isDesktop;
 import '../../services/barcode_burst.dart';
 import '../../Widgets/keyboard_picker.dart';
+
+class CatalogLine {
+  const CatalogLine(this.product, this.unit);
+  final LiveProduct product;
+  final LiveUnit unit;
+
+  String get displayName => unit.conversionFactor > 1 ? '${product.name} (${unit.name})' : product.name;
+  num? get stock {
+    if (product.stock == null) return null;
+    final conv = unit.conversionFactor;
+    return conv > 1 ? (product.stock! / conv) : product.stock;
+  }
+}
+
 class LiveKasirScreen extends StatefulWidget {
   const LiveKasirScreen({super.key, required this.store, this.active = true});
   final LiveStore store;
@@ -25,6 +39,16 @@ class LiveKasirScreen extends StatefulWidget {
 class _LiveKasirScreenState extends State<LiveKasirScreen> {
   final search = TextEditingController();
   final searchFocus = FocusNode();
+
+  List<CatalogLine> get catalogLines {
+    final list = <CatalogLine>[];
+    for (final p in products) {
+      for (final u in p.units) {
+        list.add(CatalogLine(p, u));
+      }
+    }
+    return list;
+  }
 
   /// "Jumlah", as on the desktop till: the next product added (clicked or scanned) goes
   /// in at this quantity, then it falls back to 1.
@@ -44,9 +68,41 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   bool loading = true;
   String? error;
   int page = 1, lastPage = 1, serial = 0, seenCatalogRevision = 0;
-  @override void initState() { super.initState(); seenCatalogRevision = widget.store.catalogRevision; widget.store.addListener(watchStock); HardwareKeyboard.instance.addHandler(handleKey); load(); }
+  @override void initState() {
+    super.initState();
+    seenCatalogRevision = widget.store.catalogRevision;
+    widget.store.addListener(watchStock);
+    searchFocus.addListener(_onFocusChange);
+    qtyFocus.addListener(_onFocusChange);
+    HardwareKeyboard.instance.addHandler(handleKey);
+    load();
+  }
+  void _onFocusChange() { if (mounted) setState(() {}); }
   void watchStock() { if (mounted && seenCatalogRevision != widget.store.catalogRevision) { seenCatalogRevision = widget.store.catalogRevision; load(target: page); } }
-  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); widget.store.removeListener(watchStock); timer?.cancel(); search.dispose(); searchFocus.dispose(); qty.dispose(); qtyFocus.dispose(); catalogScroll.dispose(); super.dispose(); }
+  @override void dispose() {
+    HardwareKeyboard.instance.removeHandler(handleKey);
+    widget.store.removeListener(watchStock);
+    searchFocus.removeListener(_onFocusChange);
+    qtyFocus.removeListener(_onFocusChange);
+    timer?.cancel();
+    search.dispose();
+    searchFocus.dispose();
+    qty.dispose();
+    qtyFocus.dispose();
+    catalogScroll.dispose();
+    super.dispose();
+  }
+
+  bool get isOutsideCatalog {
+    if (searchFocus.hasFocus || qtyFocus.hasFocus) return true;
+    final primary = FocusManager.instance.primaryFocus;
+    final context = primary?.context;
+    if (context != null) {
+      if (context.findAncestorWidgetOfExactType<LiveCartPanel>() != null) return true;
+      if (context.findAncestorWidgetOfExactType<EditableText>() != null) return true;
+    }
+    return false;
+  }
   /// The quantity typed in Jumlah; a blank or unreadable entry means 1.
   num get enteredQty {
     try { final value = inputQty(qty.text.trim().isEmpty ? '1' : qty.text); return value > 0 ? value : 1; }
@@ -107,9 +163,10 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     }
   }
   void moveSelection(int delta) {
-    if (products.isEmpty) return;
+    final lines = catalogLines;
+    if (lines.isEmpty) return;
     setState(() {
-      selectedIndex = (selectedIndex + delta).clamp(0, products.length - 1);
+      selectedIndex = (selectedIndex + delta).clamp(0, lines.length - 1);
     });
     if (catalogScroll.hasClients) {
       final target = selectedIndex * 62.0;
@@ -124,10 +181,11 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   }
 
   void pickSelected() {
-    if (products.isEmpty || !widget.store.editable) return;
-    final idx = selectedIndex.clamp(0, products.length - 1);
-    final p = products[idx];
-    addOne(p);
+    final lines = catalogLines;
+    if (lines.isEmpty || !widget.store.editable) return;
+    final idx = selectedIndex.clamp(0, lines.length - 1);
+    final line = lines[idx];
+    addOne(line.product, unit: line.unit);
     search.clear();
     searchFocus.requestFocus();
     setState(() => selectedIndex = 0);
@@ -157,7 +215,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       return;
     }
 
-    if (products.isNotEmpty) {
+    final lines = catalogLines;
+    if (lines.isNotEmpty) {
       pickSelected();
       return;
     }
@@ -199,11 +258,11 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       action = pay;
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
-    } else if (!typing && key == LogicalKeyboardKey.arrowDown) {
+    } else if (!isOutsideCatalog && key == LogicalKeyboardKey.arrowDown) {
       action = () => moveSelection(1);
-    } else if (!typing && key == LogicalKeyboardKey.arrowUp) {
+    } else if (!isOutsideCatalog && key == LogicalKeyboardKey.arrowUp) {
       action = () => moveSelection(-1);
-    } else if (!typing && key == LogicalKeyboardKey.enter) {
+    } else if (!isOutsideCatalog && key == LogicalKeyboardKey.enter) {
       action = pickSelected;
     } else if (alt && key == LogicalKeyboardKey.keyH) {
       action = () {
@@ -336,19 +395,15 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent) return KeyEventResult.ignored;
             if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-              moveSelection(1);
-              return KeyEventResult.handled;
-            }
-            if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-              moveSelection(-1);
-              return KeyEventResult.handled;
-            }
-            if (event.logicalKey == LogicalKeyboardKey.pageDown) {
-              moveSelection(5);
-              return KeyEventResult.handled;
+              if (products.isNotEmpty) {
+                searchFocus.unfocus();
+                setState(() => selectedIndex = 0);
+                return KeyEventResult.handled;
+              }
             }
             if (event.logicalKey == LogicalKeyboardKey.pageUp) {
-              moveSelection(-5);
+              qtyFocus.requestFocus();
+              qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length);
               return KeyEventResult.handled;
             }
             if (event.logicalKey == LogicalKeyboardKey.slash && search.text.isEmpty) {
@@ -437,32 +492,40 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         ),
       ),
     ) : null;
+    final lines = catalogLines;
     final list = CustomScrollView(controller: catalogScroll, slivers: [
       if (loading) const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),
       if (error != null) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: EmptyPanel(icon: Icons.wifi_off, title: 'Katalog belum dimuat', message: error!, action: OutlinedButton(onPressed: () => load(), child: const Text('Coba lagi')))))
-      else if (products.isEmpty && !loading) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: Text('Tidak ada barang yang cocok. Coba kata lain atau scan barcodenya.', style: TextStyle(color: muted))))
+      else if (lines.isEmpty && !loading) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: Text('Tidak ada barang yang cocok. Coba kata lain atau scan barcodenya.', style: TextStyle(color: muted))))
       else SliverList(delegate: SliverChildBuilderDelegate((context, index) {
-        final p = products[index];
-        final isSelected = isDesktop && index == selectedIndex;
+        final line = lines[index];
+        final isSelected = isDesktop && !isOutsideCatalog && index == selectedIndex;
         return ProductRow(
-          name: p.name,
-          code: p.code,
-          stock: quantityText(p.stock),
-          price: rupiah(p.units.first.price),
-          unit: p.units.first.name,
-          inCart: widget.store.items.any((item) => item.product.id == p.id),
+          name: line.displayName,
+          code: line.unit.conversionFactor > 1 ? '${line.product.code} · ${line.unit.name}' : line.product.code,
+          stock: line.stock == null ? '-' : quantityText(line.stock),
+          price: rupiah(line.unit.price),
+          unit: line.unit.name,
+          inCart: widget.store.items.any((item) => item.product.id == line.product.id && item.unit.id == line.unit.id),
           selected: isSelected,
           onConfigure: !loading && widget.store.editable ? () {
+            searchFocus.unfocus();
+            qtyFocus.unfocus();
             setState(() => selectedIndex = index);
             if (isDesktop) {
-              addOne(p);
+              addOne(line.product, unit: line.unit);
             } else {
-              configure(p);
+              configure(line.product);
             }
           } : null,
-          onAdd: loading || !widget.store.editable ? null : () { setState(() => selectedIndex = index); addOne(p); },
+          onAdd: loading || !widget.store.editable ? null : () {
+            searchFocus.unfocus();
+            qtyFocus.unfocus();
+            setState(() => selectedIndex = index);
+            addOne(line.product, unit: line.unit);
+          },
         );
-      }, childCount: products.length)),
+      }, childCount: lines.length)),
       if (lastPage > 1) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Row(children: [
         Text('Halaman $page dari $lastPage', style: TextStyle(color: muted, fontSize: 13)),
         const Spacer(),
