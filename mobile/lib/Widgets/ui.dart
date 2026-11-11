@@ -412,18 +412,25 @@ class CartAction extends StatelessWidget {
 }
 
 class CartLayout extends StatelessWidget {
-  const CartLayout({super.key, required this.header, required this.items, required this.footer});
+  const CartLayout({
+    super.key,
+    required this.header,
+    required this.items,
+    required this.footer,
+    this.scrollController,
+  });
   final Widget header, footer;
   final List<Widget> items;
+  final ScrollController? scrollController;
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
     final compact = box.maxHeight < 560 || MediaQuery.textScalerOf(context).scale(14) > 20;
     final contents = items.isEmpty ? <Widget>[Padding(padding: EdgeInsets.symmetric(vertical: Space.xl),
       child: Text('Keranjang masih kosong. Scan barang atau pilih dari katalog.', style: TextStyle(color: muted)))] : items;
     return Material(color: surface, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.panel), side: BorderSide(color: lineColor)),
       clipBehavior: Clip.antiAlias, child: compact
-      ? ListView(padding: const EdgeInsets.all(Space.lg), children: [header, const Divider(), ...contents, const Divider(), footer])
+      ? ListView(controller: scrollController, padding: const EdgeInsets.all(Space.lg), children: [header, const Divider(), ...contents, const Divider(), footer])
       : Column(children: [Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.lg, Space.md, Space.md), child: header), const Divider(),
-          Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: Space.lg), children: contents)),
+          Expanded(child: ListView(controller: scrollController, padding: const EdgeInsets.symmetric(horizontal: Space.lg), children: contents)),
           const Divider(), Padding(padding: const EdgeInsets.all(Space.lg), child: footer),
         ]));
   });

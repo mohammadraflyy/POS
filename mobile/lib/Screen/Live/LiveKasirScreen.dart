@@ -284,10 +284,43 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       if (prev >= 0) {
         widget.store.selectCartIndex(prev);
         return true;
+      } else {
+        widget.store.selectCartIndex(null);
+        searchFocus.requestFocus();
+        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
+        return true;
       }
+    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowLeft) {
+      widget.store.selectCartIndex(null);
+      searchFocus.requestFocus();
+      search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
+      return true;
+    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.home) {
+      widget.store.selectCartIndex(0);
+      return true;
     } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.escape) {
       widget.store.selectCartIndex(null);
+      searchFocus.requestFocus();
       return true;
+    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowDown) {
+      if (catalogLines.isNotEmpty) {
+        moveSelection(1);
+        return true;
+      }
+    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowUp) {
+      if (selectedIndex > 0) {
+        moveSelection(-1);
+        return true;
+      } else {
+        searchFocus.requestFocus();
+        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
+        return true;
+      }
+    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowRight) {
+      if (widget.store.items.isNotEmpty) {
+        widget.store.selectCartIndex(0);
+        return true;
+      }
     } else if (key == LogicalKeyboardKey.enter) {
       final primaryCtx = FocusManager.instance.primaryFocus?.context;
       if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
@@ -434,6 +467,13 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
                 return KeyEventResult.handled;
               }
             }
+            if (event.logicalKey == LogicalKeyboardKey.arrowRight && search.selection.baseOffset == search.text.length) {
+              if (widget.store.items.isNotEmpty) {
+                searchFocus.unfocus();
+                widget.store.selectCartIndex(0);
+                return KeyEventResult.handled;
+              }
+            }
             if (event.logicalKey == LogicalKeyboardKey.pageUp) {
               qtyFocus.requestFocus();
               qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length);
@@ -540,7 +580,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           price: rupiah(line.unit.price),
           unit: line.unit.name,
           inCart: widget.store.items.any((item) => item.product.id == line.product.id && item.unit.id == line.unit.id),
-          selected: false,
+          selected: isSelected,
           onConfigure: widget.store.editable ? () {
             searchFocus.unfocus();
             qtyFocus.unfocus();
@@ -634,7 +674,13 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     // the till is driven from the keyboard on a PC - see handleKey
     final cartWidth = box.maxWidth >= 1400 ? 420.0 : box.maxWidth >= 1200 ? 400.0 : 380.0;
     return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Padding(padding: const EdgeInsets.all(Space.xl), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Expanded(child: catalog), const SizedBox(width: Space.gap), SizedBox(width: cartWidth, child: LiveCartPanel(store: widget.store)),
+      Expanded(child: catalog), const SizedBox(width: Space.gap), SizedBox(width: cartWidth, child: LiveCartPanel(
+        store: widget.store,
+        onExitTop: () {
+          searchFocus.requestFocus();
+          search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
+        },
+      )),
     ]))));
   }));
 }

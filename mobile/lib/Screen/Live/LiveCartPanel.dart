@@ -39,20 +39,65 @@ Future<void> _confirmCloseQueue(BuildContext context, LiveStore store, int index
   store.removeQueue(index);
 }
 
-class LiveCartPanel extends StatelessWidget {
-  const LiveCartPanel({super.key, required this.store});
+class LiveCartPanel extends StatefulWidget {
+  const LiveCartPanel({super.key, required this.store, this.onExitTop});
   final LiveStore store;
+  final VoidCallback? onExitTop;
+
+  @override
+  State<LiveCartPanel> createState() => _LiveCartPanelState();
+}
+
+class _LiveCartPanelState extends State<LiveCartPanel> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    widget.store.addListener(_onStoreChanged);
+  }
+
+  void _onStoreChanged() {
+    final idx = widget.store.selectedCartIndex;
+    if (idx != null && idx == 0 && _scrollController.hasClients && _scrollController.offset > 0) {
+      _scrollController.animateTo(0, duration: const Duration(milliseconds: 150), curve: Curves.easeInOut);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant LiveCartPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.store != widget.store) {
+      oldWidget.store.removeListener(_onStoreChanged);
+      widget.store.addListener(_onStoreChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.store.removeListener(_onStoreChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> discount(BuildContext context) async {
     final value = await showDialog<num>(
       context: context,
-      builder: (_) => _DiscountDialog(initial: store.discount, subtotal: store.price?.subtotal ?? 0),
+      builder: (_) => _DiscountDialog(initial: widget.store.discount, subtotal: widget.store.price?.subtotal ?? 0),
     );
-    if (value != null) store.setDiscount(value);
+    if (value != null) widget.store.setDiscount(value);
   }
-  @override Widget build(BuildContext context) {
+
+  @override
+  Widget build(BuildContext context) {
+    final store = widget.store;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return AnimatedBuilder(animation: Listenable.merge([store, store.guard]), builder: (context, _) => CartLayout(
-    header: Column(
+    return AnimatedBuilder(
+      animation: Listenable.merge([store, store.guard]),
+      builder: (context, _) => CartLayout(
+        scrollController: _scrollController,
+        header: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -179,6 +224,7 @@ class LiveCartPanel extends StatelessWidget {
             store: store,
             index: index,
             isSelected: store.selectedCartIndex == index,
+            onExitTop: widget.onExitTop,
           ),
     ],
     footer: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -222,11 +268,13 @@ class _CartLine extends StatefulWidget {
     required this.store,
     required this.index,
     required this.isSelected,
+    this.onExitTop,
   });
 
   final LiveStore store;
   final int index;
   final bool isSelected;
+  final VoidCallback? onExitTop;
 
   @override
   State<_CartLine> createState() => _CartLineState();
@@ -241,9 +289,25 @@ class _CartLineState extends State<_CartLine> {
     _focusNode = FocusNode(debugLabel: 'CartLine_${widget.index}');
     if (widget.isSelected) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_focusNode.hasFocus) _focusNode.requestFocus();
+        if (mounted) {
+          if (!_focusNode.hasFocus) _focusNode.requestFocus();
+          _ensureVisible();
+        }
       });
     }
+  }
+
+  void _ensureVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.1,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   @override
@@ -251,6 +315,7 @@ class _CartLineState extends State<_CartLine> {
     super.didUpdateWidget(oldWidget);
     if (widget.isSelected && !oldWidget.isSelected) {
       if (!_focusNode.hasFocus) _focusNode.requestFocus();
+      _ensureVisible();
     } else if (!widget.isSelected && oldWidget.isSelected) {
       if (_focusNode.hasFocus) _focusNode.unfocus();
     }
@@ -337,7 +402,22 @@ class _CartLineState extends State<_CartLine> {
           if (prev >= 0) {
             widget.store.selectCartIndex(prev);
             return KeyEventResult.handled;
+          } else {
+            widget.store.selectCartIndex(null);
+            _focusNode.unfocus();
+            widget.onExitTop?.call();
+            return KeyEventResult.handled;
           }
+        }
+        if (key == LogicalKeyboardKey.arrowLeft) {
+          widget.store.selectCartIndex(null);
+          _focusNode.unfocus();
+          widget.onExitTop?.call();
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.home) {
+          widget.store.selectCartIndex(0);
+          return KeyEventResult.handled;
         }
         if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
           if (widget.store.editable) {
@@ -347,6 +427,8 @@ class _CartLineState extends State<_CartLine> {
         }
         if (key == LogicalKeyboardKey.escape) {
           widget.store.selectCartIndex(null);
+          _focusNode.unfocus();
+          widget.onExitTop?.call();
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;

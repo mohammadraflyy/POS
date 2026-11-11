@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../lib/core/theme.dart';
 import '../lib/models/live_models.dart';
@@ -162,6 +163,67 @@ void main() {
     // Verify it is added to the cart
     expect(store.items.length, equals(1));
     expect(store.items.first.product.id, equals(99));
+
+    store.dispose();
+  });
+
+  testWidgets('cart navigation walks up with arrowUp and exits to search when reaching top', (tester) async {
+    final guard = MutationGuard(MemoryPending());
+    final api = BusinessApi((path, {required method, query, body}) async {
+      if (path == '/v1/carts/price') {
+        return {'lines': [], 'subtotal': 0, 'diskon': 0, 'total': 0, 'stockEnough': true};
+      }
+      if (path == '/v1/catalog/search') {
+        return {'items': [], 'currentPage': 1, 'lastPage': 1};
+      }
+      return {};
+    });
+
+    final store = LiveStore(api, guard);
+    // Add 10 items to cart
+    for (var i = 1; i <= 10; i++) {
+      final p = LiveProduct(i, 'Item $i', 'CODE$i', 50, [LiveUnit(null, 'Pcs', 1000 * i)]);
+      store.put(LiveCartItem(product: p, unit: p.units.first, quantity: 1));
+    }
+    expect(store.items.length, 10);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: buildTheme(Palette.light),
+      home: Scaffold(
+        body: LiveKasirScreen(store: store, active: true),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Select index 2
+    store.selectCartIndex(2);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 2);
+
+    // Arrow up to index 1
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 1);
+
+    // Arrow up to index 0 (paling atas)
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 0);
+
+    // Arrow up again while already at top ("udah mentok")
+    // Should clear cart selection and exit to search focus
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, isNull);
+
+    // Verify search field is now focused
+    final searchInput = tester.widgetList<TextField>(find.byType(TextField)).firstWhere((f) => f.decoration?.labelText != 'Jumlah');
+    expect(searchInput.focusNode?.hasFocus, isTrue);
+
+    // Arrow right from search field (when empty) jumps back into cart at index 0
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 0);
 
     store.dispose();
   });

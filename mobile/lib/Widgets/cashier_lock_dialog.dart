@@ -327,3 +327,4 @@ class _CashierLockDialogState extends State<CashierLockDialog> {
     );
   }
 }
+
