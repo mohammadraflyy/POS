@@ -262,6 +262,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Cetak struk #41?'), findsOneWidget);
+
+    // Keyboard L skips printing
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyL);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cetak struk #41?'), findsNothing);
+    expect(store.items, isEmpty);
+    await finish(tester);
+  });
+
+  testWidgets('Receipt dialog supports arrow keys and Enter to toggle and select Lewati', (tester) async {
+    await openTill(tester);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyU);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cetak struk #41?'), findsOneWidget);
+
+    // ArrowLeft switches to Lewati
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+
+    // Enter confirms Lewati
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cetak struk #41?'), findsNothing);
+    expect(store.items, isEmpty);
     await finish(tester);
   });
 }

@@ -262,7 +262,7 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
       for (var i = 0; i < items.length; i++) Padding(padding: const EdgeInsets.only(bottom: 10), child: WhitePanel(padding: EdgeInsets.zero, child: ListTile(
         onTap: enabled ? () => editItem(i) : null,
         title: Text(items[i].product.name),
-        subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name} × ${rupiah(items[i].price)} = ${rupiah(items[i].quantity * items[i].price)}${items[i].sellPrice == null ? '' : ' · jual jadi ${rupiah(items[i].sellPrice)}'}'),
+        subtitle: Text('${quantityText(items[i].quantity)} ${items[i].unit.name}${items[i].unit.conversionFactor > 1 ? ' (isi ${items[i].unit.conversionFactor})' : ''} × ${rupiah(items[i].price)} = ${rupiah(items[i].quantity * items[i].price)}${items[i].sellPrice == null ? '' : ' · jual jadi ${rupiah(items[i].sellPrice)}'}'),
         trailing: IconButton(tooltip: 'Hapus barang pembelian', onPressed: enabled ? () { setState(() => items.removeAt(i)); _saveDraft(); } : null, icon: const Icon(Icons.close)),
       ))),
       Wrap(

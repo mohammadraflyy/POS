@@ -58,7 +58,47 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
     const SizedBox(height: Space.lg), if (loading) const Center(child: CircularProgressIndicator()),
     if (error != null) Text(error!, style: TextStyle(color: errorColor)),
     if (!loading && products.isEmpty && error == null) const EmptyPanel(icon: Icons.inventory_2_outlined, title: 'Cari barang masuk', message: 'Masukkan nama atau scan barcode dari produk.'),
-    for (final product in products) ListTile(title: Text(product.name), subtitle: Text('${product.code} • Stok ${quantityText(product.stock)}'), trailing: const Icon(Icons.add), onTap: loading ? null : () => select(product)),
+    for (final product in products)
+      ListTile(
+        title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${product.code} • Stok ${quantityText(product.stock)}'),
+              if (product.units.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    Text('Satuan: ', style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w500)),
+                    ...product.units.map((u) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark ? raised : const Color(0xFFF1F5F9),
+                        border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        u.conversionFactor > 1 ? '${u.name} (isi ${u.conversionFactor})' : u.name,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF38BDF8) : primaryInk,
+                        ),
+                      ),
+                    )),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        trailing: const Icon(Icons.add_circle_outline),
+        onTap: loading ? null : () => select(product),
+      ),
   ])));
 }
 Future<PurchaseDraftItem?> editPurchaseItem(BuildContext context, PurchaseDraftItem existing) =>
@@ -100,12 +140,37 @@ class _PurchaseFieldsState extends State<_PurchaseFields> {
     return '${gain < 0 ? 'Rugi' : 'Untung'} ${rupiah(gain.abs())} per ${unit.name} (${(gain / selling * 100).toStringAsFixed(0)}%)';
   }
   @override Widget build(BuildContext context) => SafeArea(child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(24, 0, 24, MediaQuery.viewInsetsOf(context).bottom + 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(widget.product.name, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: Space.lg),
+    Text(widget.product.name, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: Space.md),
+    if (widget.product.units.isNotEmpty) ...[
+      Text('Pilihan satuan pembelian:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: muted)),
+      const SizedBox(height: Space.xs),
+      Wrap(
+        spacing: Space.sm,
+        runSpacing: Space.xs,
+        children: widget.product.units.map((u) {
+          final isSelected = unit == u;
+          final detail = u.conversionFactor > 1 ? 'isi ${u.conversionFactor}' : 'satuan dasar';
+          return ChoiceChip(
+            selected: isSelected,
+            onSelected: (_) => setState(() {
+              unit = u;
+              if (u.cost != null && u.cost! > 0) price.text = _plain(u.cost);
+              sell.clear();
+            }),
+            label: Text('${u.name} ($detail)'),
+          );
+        }).toList(),
+      ),
+      const SizedBox(height: Space.md),
+    ],
     DropdownButtonFormField<LiveUnit>(
       value: unit,
       isExpanded: true,
       decoration: const InputDecoration(labelText: 'Satuan pembelian'),
-      items: widget.product.units.map((u) => DropdownMenuItem(value: u, child: Text(u.name))).toList(),
+      items: widget.product.units.map((u) => DropdownMenuItem(
+        value: u,
+        child: Text('${u.name} ${u.conversionFactor > 1 ? '• Isi ${u.conversionFactor}' : '• Satuan dasar'}${u.cost != null && u.cost! > 0 ? ' • Modal ${rupiah(u.cost)}' : ''}'),
+      )).toList(),
       onChanged: (u) => setState(() {
         unit = u!;
         if (u.cost != null && u.cost! > 0) price.text = _plain(u.cost);

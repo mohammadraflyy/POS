@@ -30,18 +30,14 @@ Future<void> openPayment(BuildContext context, LiveStore store) async {
   if (sale == null || !context.mounted) return;
   final away = store.viaInternet;
   final amount = sale.method == 'tunai' ? 'Kembalian ${rupiah(sale.change)}.' : 'Total ${rupiah(sale.total)}.';
-  final print = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
-    title: Text('Cetak struk #${sale.saleId}?'),
-    content: Text(away ? '$amount\n\nAnda terhubung lewat internet: struk akan tercetak di printer toko.' : amount),
-    actions: [
-      away
-        ? FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: const Text('Lewati'))
-        : TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Lewati')),
-      away
-        ? TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Cetak di toko'))
-        : FilledButton(autofocus: true, onPressed: () => Navigator.pop(context, true), child: const Text('Cetak')),
-    ],
-  ));
+  final print = await showDialog<bool>(
+    context: context,
+    builder: (context) => _ReceiptConfirmDialog(
+      saleId: sale.saleId,
+      amount: amount,
+      away: away,
+    ),
+  );
   if (print != true || !context.mounted) {
     if (context.mounted) showNotice(context, 'Transaksi #${sale.saleId} disimpan.', kind: NoticeKind.success);
     return;
@@ -382,4 +378,157 @@ class _PaymentDiscountDialogState extends State<_PaymentDiscountDialog> {
       ),
     ],
   );
+}
+
+class _ReceiptConfirmDialog extends StatefulWidget {
+  const _ReceiptConfirmDialog({
+    required this.saleId,
+    required this.amount,
+    required this.away,
+  });
+
+  final int saleId;
+  final String amount;
+  final bool away;
+
+  @override
+  State<_ReceiptConfirmDialog> createState() => _ReceiptConfirmDialogState();
+}
+
+class _ReceiptConfirmDialogState extends State<_ReceiptConfirmDialog> {
+  late bool choosePrint = !widget.away;
+  final lewatiFocus = FocusNode();
+  final cetakFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        if (choosePrint) {
+          cetakFocus.requestFocus();
+        } else {
+          lewatiFocus.requestFocus();
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    lewatiFocus.dispose();
+    cetakFocus.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(choosePrint);
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    final alt = HardwareKeyboard.instance.isAltPressed;
+
+    if (key == LogicalKeyboardKey.escape || key == LogicalKeyboardKey.keyL || (alt && key == LogicalKeyboardKey.keyL)) {
+      Navigator.of(context).pop(false);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.keyC || (alt && key == LogicalKeyboardKey.keyC)) {
+      Navigator.of(context).pop(true);
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.tab ||
+        key == LogicalKeyboardKey.pageUp ||
+        key == LogicalKeyboardKey.pageDown) {
+      setState(() {
+        choosePrint = !choosePrint;
+        if (choosePrint) {
+          cetakFocus.requestFocus();
+        } else {
+          lewatiFocus.requestFocus();
+        }
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.space) {
+      _submit();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final printLabel = widget.away ? 'Cetak di toko' : 'Cetak';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _handleKey,
+      child: AlertDialog(
+        title: Text('Cetak struk #${widget.saleId}?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.away
+                ? '${widget.amount}\n\nAnda terhubung lewat internet: struk akan tercetak di printer toko.'
+                : widget.amount),
+            const SizedBox(height: Space.md),
+            Text(
+              'Gunakan ← / → untuk pilih, Enter untuk konfirmasi (L: Lewati, C: Cetak)',
+              style: TextStyle(color: muted, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          widget.away
+              ? FilledButton(
+                  focusNode: lewatiFocus,
+                  autofocus: !choosePrint,
+                  onPressed: () => Navigator.of(context).pop(false),
+                  style: FilledButton.styleFrom(
+                    side: !choosePrint ? BorderSide(color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7), width: 2) : BorderSide.none,
+                  ),
+                  child: const Text('Lewati'),
+                )
+              : TextButton(
+                  focusNode: lewatiFocus,
+                  autofocus: !choosePrint,
+                  onPressed: () => Navigator.of(context).pop(false),
+                  style: TextButton.styleFrom(
+                    side: !choosePrint ? BorderSide(color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7), width: 2) : BorderSide.none,
+                  ),
+                  child: const Text('Lewati'),
+                ),
+          widget.away
+              ? TextButton(
+                  focusNode: cetakFocus,
+                  autofocus: choosePrint,
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: TextButton.styleFrom(
+                    side: choosePrint ? BorderSide(color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7), width: 2) : BorderSide.none,
+                  ),
+                  child: Text(printLabel),
+                )
+              : FilledButton(
+                  focusNode: cetakFocus,
+                  autofocus: choosePrint,
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: FilledButton.styleFrom(
+                    side: choosePrint ? BorderSide(color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7), width: 2) : BorderSide.none,
+                  ),
+                  child: Text(printLabel),
+                ),
+        ],
+      ),
+    );
+  }
 }
