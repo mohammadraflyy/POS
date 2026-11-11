@@ -47,6 +47,7 @@ class LiveStore extends ChangeNotifier {
   final DraftStore? drafts;
   Timer? _draftTimer;
   final List<LiveCartItem> items = [];
+  int? selectedCartIndex;
   num discount = 0;
   ServerPrice? price;
   bool pricing = false;
@@ -134,6 +135,7 @@ class LiveStore extends ChangeNotifier {
     if (index == activeQueueIndex || index < 0 || index >= queues.length) return;
     _syncActiveQueue();
     activeQueueIndex = index;
+    selectedCartIndex = null;
     _loadFromQueue(queues[index]);
     _saveDraft();
     _emit();
@@ -353,7 +355,7 @@ class LiveStore extends ChangeNotifier {
   Timer? _debounce;
   bool _closed = false;
   bool get editable => !guard.busy && guard.pending == null;
-  bool get canCheckout => editable && guard.ready && items.isNotEmpty && !pricing && price != null && price!.stockEnough;
+  bool get canCheckout => editable && guard.ready && items.isNotEmpty && !pricing && price != null && (editingSaleId != null || price!.stockEnough);
   void _emit() { if (!_closed) notifyListeners(); }
   void put(LiveCartItem item) {
     if (!editable) throw const ApiFailure('Selesaikan pemeriksaan transaksi sebelumnya terlebih dahulu.');
@@ -389,9 +391,50 @@ class LiveStore extends ChangeNotifier {
     }
     reprice();
   }
-  void remove(LiveCartItem item) { if (!editable) return; items.remove(item); reprice(); }
+  void selectCartIndex(int? index) {
+    if (index == null || index < 0 || index >= items.length) {
+      selectedCartIndex = null;
+    } else {
+      selectedCartIndex = index;
+    }
+    _emit();
+  }
+
+  void removeSelectedCartItem() {
+    if (!editable || selectedCartIndex == null || selectedCartIndex! < 0 || selectedCartIndex! >= items.length) return;
+    final idx = selectedCartIndex!;
+    final item = items[idx];
+    remove(item);
+    if (items.isEmpty) {
+      selectedCartIndex = null;
+    } else {
+      selectedCartIndex = idx.clamp(0, items.length - 1);
+    }
+    _emit();
+  }
+
+  void remove(LiveCartItem item) {
+    if (!editable) return;
+    items.remove(item);
+    if (selectedCartIndex != null) {
+      if (items.isEmpty) {
+        selectedCartIndex = null;
+      } else if (selectedCartIndex! >= items.length) {
+        selectedCartIndex = items.length - 1;
+      }
+    }
+    reprice();
+  }
   void setDiscount(num value) { if (!editable) return; discount = value; reprice(); }
-  void clear() { if (!editable) return; items.clear(); discount = 0; _resetDetails(); _syncActiveQueue(); reprice(); }
+  void clear() {
+    if (!editable) return;
+    items.clear();
+    selectedCartIndex = null;
+    discount = 0;
+    _resetDetails();
+    _syncActiveQueue();
+    reprice();
+  }
   void reprice() {
     _saveDraft();
     _debounce?.cancel(); final revision = ++_revision;

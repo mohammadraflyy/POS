@@ -260,6 +260,26 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       action = pay;
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
+    } else if (!typing && (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace)) {
+      if (widget.store.selectedCartIndex != null && widget.store.editable) {
+        widget.store.removeSelectedCartItem();
+        return true;
+      }
+    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowDown) {
+      final next = widget.store.selectedCartIndex! + 1;
+      if (next < widget.store.items.length) {
+        widget.store.selectCartIndex(next);
+        return true;
+      }
+    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowUp) {
+      final prev = widget.store.selectedCartIndex! - 1;
+      if (prev >= 0) {
+        widget.store.selectCartIndex(prev);
+        return true;
+      }
+    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.escape) {
+      widget.store.selectCartIndex(null);
+      return true;
     } else if (key == LogicalKeyboardKey.enter) {
       final primaryCtx = FocusManager.instance.primaryFocus?.context;
       if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
@@ -544,7 +564,24 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       decoration: BoxDecoration(color: pillWarningBg, border: Border.all(color: noticeBorder), borderRadius: BorderRadius.circular(Corners.panel)),
       child: Row(children: [
         Icon(Icons.edit_note, size: 18, color: pillWarningInk), const SizedBox(width: Space.sm),
-        Expanded(child: Text('Mengubah nota #$editing. Ubah barang di sini, lalu Bayar untuk menyimpan perubahan.', style: TextStyle(color: pillWarningInk, fontSize: 13))),
+        Expanded(child: Text('Mengubah nota #$editing', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: pillWarningInk, fontSize: 13, fontWeight: FontWeight.w600))),
+        OutlinedButton.icon(
+          onPressed: () {
+            widget.store.api.printSale(editing).then((res) {
+              if (mounted) showNotice(context, 'Struk #$editing dikirim ke printer PC.', kind: NoticeKind.success);
+            }).catchError((e) {
+              if (mounted) showError(context, e);
+            });
+          },
+          icon: const Icon(Icons.print_outlined, size: 15),
+          label: const Text('Cetak Nota'),
+          style: OutlinedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+            minimumSize: const Size(0, 28),
+          ),
+        ),
+        const SizedBox(width: Space.sm),
         TextButton(onPressed: widget.store.editable ? widget.store.cancelEdit : null, child: const Text('Batal ubah')),
       ]));
     if (!wide) {

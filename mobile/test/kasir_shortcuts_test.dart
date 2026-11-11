@@ -359,4 +359,42 @@ void main() {
     sidebarFocus.dispose();
     await finish(tester);
   });
+
+  testWidgets('deleting highlighted item in cart with Delete key', (tester) async {
+    await openTill(tester);
+    expect(store.items, hasLength(1));
+
+    // Tap pada item di keranjang agar di sorot
+    await tester.tap(find.text('Kopi Sachet').last);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 0);
+
+    // Tekan tombol Delete untuk menghapus item
+    await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(store.items, isEmpty);
+    expect(store.selectedCartIndex, isNull);
+    await finish(tester);
+  });
+
+  testWidgets('deleting highlighted item in cart with Backspace key', (tester) async {
+    await openTill(tester);
+    expect(store.items, hasLength(1));
+
+    // Pilih item keranjang
+    store.selectCartIndex(0);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 0);
+
+    // Tekan Backspace
+    await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(store.items, isEmpty);
+    await finish(tester);
+  });
 }

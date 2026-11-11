@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../Widgets/admin.dart' show isDesktop;
 import '../../models/live_models.dart';
 import '../../state/live_store.dart';
@@ -166,7 +167,13 @@ class LiveCartPanel extends StatelessWidget {
             ],
           ),
         ),
-      for (var index = 0; index < store.items.length; index++) _CartLine(store: store, index: index),
+      for (var index = 0; index < store.items.length; index++)
+        _CartLine(
+          key: ValueKey(store.items[index].key),
+          store: store,
+          index: index,
+          isSelected: store.selectedCartIndex == index,
+        ),
     ],
     footer: Column(mainAxisSize: MainAxisSize.min, children: [
       if (store.pricing) const LinearProgressIndicator(minHeight: 2),
@@ -201,94 +208,243 @@ class LiveCartPanel extends StatelessWidget {
   }
 }
 
-/// One cart line: tap it to change quantity, unit, price or discount.
-class _CartLine extends StatelessWidget {
-  const _CartLine({required this.store, required this.index});
+/// One cart line: tap it to select/highlight ("di sorot"), delete with Del/Backspace,
+/// or double click / Enter to change quantity, unit, price or discount.
+class _CartLine extends StatefulWidget {
+  const _CartLine({
+    super.key,
+    required this.store,
+    required this.index,
+    required this.isSelected,
+  });
+
   final LiveStore store;
   final int index;
+  final bool isSelected;
+
+  @override
+  State<_CartLine> createState() => _CartLineState();
+}
+
+class _CartLineState extends State<_CartLine> {
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode(debugLabel: 'CartLine_${widget.index}');
+    if (widget.isSelected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_focusNode.hasFocus) _focusNode.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _CartLine oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isSelected && !oldWidget.isSelected) {
+      if (!_focusNode.hasFocus) _focusNode.requestFocus();
+    } else if (!widget.isSelected && oldWidget.isSelected) {
+      if (_focusNode.hasFocus) _focusNode.unfocus();
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _openEdit() async {
+    final item = widget.store.items[widget.index];
+    final result = await editLiveItem(context, item.product, existing: item);
+    if (result != null && mounted) {
+      try {
+        widget.store.replace(item, result);
+      } catch (e) {
+        showError(context, e);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final item = store.items[index];
-    final line = store.price != null && index < store.price!.lines.length ? store.price!.lines[index] : null;
+    final item = widget.store.items[widget.index];
+    final line = widget.store.price != null && widget.index < widget.store.price!.lines.length ? widget.store.price!.lines[widget.index] : null;
     final price = line?['hargaJual'];
     final discount = number(line?['diskon']) ?? 0;
     final priceSource = line?['priceSource']?.toString();
     final tierBadge = priceSource == 'price_tier' ? ' · grosir' : priceSource == 'manual' ? ' · manual' : '';
-    final short = line?['stokCukup'] == false;
+    // While editing an existing sale/bon, stock was already deducted so do not warn shortage
+    final short = line?['stokCukup'] == false && widget.store.editingSaleId == null;
 
     final isRiwayat = item.priceNote != null && item.priceNote!.contains('riwayat');
     final isTambahan = item.priceNote != null && (item.priceNote!.contains('tambahan') || item.priceNote!.contains('katalog'));
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isSelected = widget.isSelected;
 
-    final cardBorder = isRiwayat
-        ? (isDark ? const Color(0xFFD97706) : const Color(0xFFFDE68A)) // amber-200
-        : isTambahan
-            ? (isDark ? const Color(0xFF059669) : const Color(0xFFA7F3D0)) // emerald-200
-            : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1));
+    final cardBorder = isSelected
+        ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7))
+        : (isRiwayat
+            ? (isDark ? const Color(0xFFD97706) : const Color(0xFFFDE68A)) // amber-200
+            : isTambahan
+                ? (isDark ? const Color(0xFF059669) : const Color(0xFFA7F3D0)) // emerald-200
+                : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)));
 
-    final cardBg = isRiwayat
-        ? (isDark ? const Color(0xFF78350F).withValues(alpha: 0.25) : const Color(0xFFFFFBEB))
-        : isTambahan
-            ? (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.25) : const Color(0xFFECFDF5))
-            : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC));
+    final cardBg = isSelected
+        ? (isDark ? const Color(0xFF0C4A6E).withValues(alpha: 0.35) : const Color(0xFFF0F9FF))
+        : (isRiwayat
+            ? (isDark ? const Color(0xFF78350F).withValues(alpha: 0.25) : const Color(0xFFFFFBEB))
+            : isTambahan
+                ? (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.25) : const Color(0xFFECFDF5))
+                : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)));
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(Corners.control),
-      onTap: !store.editable ? null : () async {
-        final result = await editLiveItem(context, item.product, existing: item);
-        if (result != null && context.mounted) { try { store.replace(item, result); } catch (e) { showError(context, e); } }
+    return Focus(
+      focusNode: _focusNode,
+      onFocusChange: (hasFocus) {
+        if (hasFocus && widget.store.selectedCartIndex != widget.index) {
+          widget.store.selectCartIndex(widget.index);
+        }
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-        margin: const EdgeInsets.symmetric(vertical: 3.5),
-        decoration: BoxDecoration(
-          color: cardBg,
-          border: Border.all(color: cardBorder, width: (isRiwayat || isTambahan) ? 1.2 : 1),
-          borderRadius: BorderRadius.circular(Corners.control),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final key = event.logicalKey;
+        if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) {
+          if (widget.store.editable) {
+            widget.store.removeSelectedCartItem();
+            return KeyEventResult.handled;
+          }
+        }
+        if (key == LogicalKeyboardKey.arrowDown) {
+          final next = widget.index + 1;
+          if (next < widget.store.items.length) {
+            widget.store.selectCartIndex(next);
+            return KeyEventResult.handled;
+          }
+        }
+        if (key == LogicalKeyboardKey.arrowUp) {
+          final prev = widget.index - 1;
+          if (prev >= 0) {
+            widget.store.selectCartIndex(prev);
+            return KeyEventResult.handled;
+          }
+        }
+        if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+          if (widget.store.editable) {
+            _openEdit();
+            return KeyEventResult.handled;
+          }
+        }
+        if (key == LogicalKeyboardKey.escape) {
+          widget.store.selectCartIndex(null);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: InkWell(
+        canRequestFocus: false,
+        borderRadius: BorderRadius.circular(Corners.control),
+        onTap: () {
+          widget.store.selectCartIndex(widget.index);
+          _focusNode.requestFocus();
+          if (!isDesktop && widget.store.editable) {
+            _openEdit();
+          }
+        },
+        onDoubleTap: (isDesktop && widget.store.editable) ? _openEdit : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+          margin: const EdgeInsets.symmetric(vertical: 3.5),
+          decoration: BoxDecoration(
+            color: cardBg,
+            border: Border.all(
+              color: cardBorder,
+              width: isSelected ? 2.0 : ((isRiwayat || isTambahan) ? 1.2 : 1.0),
             ),
-          ],
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 3),
-            Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}$tierBadge${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
-              style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
-            if (item.priceNote != null && item.priceNote!.isNotEmpty) ...[
-              const SizedBox(height: 5),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                decoration: BoxDecoration(
-                  color: isRiwayat ? pillWarningBg : pillPositiveBg,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: (isRiwayat ? pillWarningInk : pillPositiveInk).withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Text(
-                  item.priceNote!,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isRiwayat ? pillWarningInk : pillPositiveInk,
-                  ),
-                ),
+            borderRadius: BorderRadius.circular(Corners.control),
+            boxShadow: [
+              BoxShadow(
+                color: isSelected
+                    ? (isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.3) : const Color(0xFF0284C7).withValues(alpha: 0.2))
+                    : Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
+                blurRadius: isSelected ? 4 : 2,
+                offset: const Offset(0, 1),
               ),
             ],
-            if (short) ...[const SizedBox(height: 2), Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))],
-          ])),
-          const SizedBox(width: Space.md),
-          Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
-          const SizedBox(width: Space.xs),
-          SizedBox(width: 28, height: 22, child: IconButton(padding: EdgeInsets.zero, iconSize: 16, onPressed: store.editable ? () => store.remove(item) : null,
-            tooltip: 'Hapus ${item.product.name}', style: IconButton.styleFrom(minimumSize: const Size(24, 24), foregroundColor: muted, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-            icon: const Icon(Icons.close))),
-        ]),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 3),
+              Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}$tierBadge${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
+                style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
+              if (item.priceNote != null && item.priceNote!.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: isRiwayat ? pillWarningBg : pillPositiveBg,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: (isRiwayat ? pillWarningInk : pillPositiveInk).withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Text(
+                    item.priceNote!,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isRiwayat ? pillWarningInk : pillPositiveInk,
+                    ),
+                  ),
+                ),
+              ],
+              if (short) ...[const SizedBox(height: 2), Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))],
+            ])),
+            const SizedBox(width: Space.md),
+            Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
+            const SizedBox(width: Space.xs),
+            if (widget.store.editable) ...[
+              SizedBox(
+                width: 24,
+                height: 22,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 15,
+                  onPressed: _openEdit,
+                  tooltip: 'Ubah ${item.product.name} (Enter atau klik 2x)',
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(20, 20),
+                    foregroundColor: muted,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const Icon(Icons.edit_outlined),
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
+            SizedBox(
+              width: 24,
+              height: 22,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 16,
+                onPressed: widget.store.editable ? () {
+                  widget.store.selectCartIndex(widget.index);
+                  widget.store.removeSelectedCartItem();
+                } : null,
+                tooltip: 'Hapus ${item.product.name} (Del / Backspace)',
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(20, 20),
+                  foregroundColor: muted,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.close),
+              ),
+            ),
+          ]),
+        ),
       ),
     );
   }

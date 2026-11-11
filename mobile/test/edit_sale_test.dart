@@ -80,6 +80,34 @@ void main() {
     await tester.runAsync(() async => db.close());
   });
 
+  testWidgets('editing a bon whose stock in inventory is zero succeeds and can print', (tester) async {
+    await start(tester, Menu.riwayat);
+    final bonId = (await tester.runAsync(() async => db.scalar<int>("SELECT max(id) FROM sales WHERE status = 'selesai' AND metode_pembayaran = 'tunai'")))!;
+    await tester.runAsync(() async {
+      db.execute("UPDATE sales SET metode_pembayaran = 'bon', nama_pelanggan = 'Pak Joko' WHERE id = ?", [bonId]);
+      final items = db.select('SELECT product_id FROM sale_items WHERE sale_id = ?', [bonId]);
+      for (final it in items) {
+        db.execute('UPDATE products SET stok = 0 WHERE id = ?', [it['product_id']]);
+      }
+    });
+
+    await tapText(tester, '#$bonId');
+    await tapText(tester, 'Ubah nota di kasir');
+    expect(find.textContaining('Mengubah nota #$bonId'), findsOneWidget);
+    expect(find.text('Cetak Nota'), findsOneWidget);
+
+    await tapText(tester, 'Bayar');
+    expect(find.text('Ubah nota #$bonId'), findsOneWidget);
+
+    await tapText(tester, 'Simpan perubahan');
+    expect(find.text('Cetak struk #$bonId?'), findsOneWidget);
+    await tapText(tester, 'Cetak');
+
+    expect(find.textContaining('Mengubah nota'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async => db.close());
+  });
+
   testWidgets('a sale carries its charge and note to the server', (tester) async {
     await start(tester, Menu.kasir);
     await tester.tap(find.byTooltip('Tambah Air Galon Isi Ulang'));

@@ -117,7 +117,7 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([guard, store]), builder: (context, _) => NoticeListener(
     message: guard.error ?? (guard.pending != null && !guard.busy ? 'Hasil transaksi belum dapat dipastikan. Periksa data di PC sebelum menyimpan lagi. Jangan mengulangi transaksi yang sudah tercatat.' : null),
     child: NoticeListener(kind: NoticeKind.error, message: store.priceError,
-      child: NoticeListener(message: store.price != null && !store.price!.stockEnough ? 'Stok tidak cukup untuk jumlah dalam keranjang. Kurangi jumlah atau pilih barang lain sebelum membayar.' : null,
+      child: NoticeListener(message: store.price != null && !store.price!.stockEnough && store.editingSaleId == null ? 'Stok tidak cukup untuk jumlah dalam keranjang. Kurangi jumlah atau pilih barang lain sebelum membayar.' : null,
         child: Column(children: [
     if (!guard.ready || (guard.pending != null && !guard.busy) || guard.error != null)
       Container(color: pillWarningBg, padding: const EdgeInsets.all(12), child: Row(children: [
