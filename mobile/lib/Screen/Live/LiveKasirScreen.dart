@@ -537,7 +537,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           price: rupiah(line.unit.price),
           unit: line.unit.name,
           inCart: widget.store.items.any((item) => item.product.id == line.product.id && item.unit.id == line.unit.id),
-          selected: isSelected,
+          selected: false,
           onConfigure: !loading && widget.store.editable ? () {
             searchFocus.unfocus();
             qtyFocus.unfocus();
