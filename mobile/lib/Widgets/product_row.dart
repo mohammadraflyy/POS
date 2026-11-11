@@ -166,34 +166,6 @@ class ProductRow extends StatelessWidget {
               ),
               const SizedBox(width: Space.xs),
 
-              // Keyboard Enter Hint when selected on Desktop
-              if (selected && isDesktop) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  margin: const EdgeInsets.only(right: Space.xs),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF334155) : const Color(0xFFBAE6FD),
-                    borderRadius: BorderRadius.circular(Corners.control),
-                    border: Border.all(color: indicatorColor.withValues(alpha: 0.6)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.keyboard_return, size: 12, color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1)),
-                      const SizedBox(width: 3),
-                      Text(
-                        'Enter',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
               // Tactile Add Button (+) matching mockup
               IconButton(
                 tooltip: 'Tambah $name',
