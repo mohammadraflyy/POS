@@ -176,7 +176,20 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
     final form = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const Text('Metode pembayaran', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)), const SizedBox(height: Space.sm),
       Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [for (final value in methods.keys) ChoiceChip(showCheckmark: false,
-        label: Text(isDesktop ? '${methods[value]}  ·  Alt+${methodKeys[value]}' : methods[value]!), selected: method == value,
+        label: Text(
+          isDesktop ? '${methods[value]}  ·  Alt+${methodKeys[value]}' : methods[value]!,
+          style: TextStyle(
+            fontWeight: method == value ? FontWeight.bold : FontWeight.w500,
+            color: method == value ? (isDark ? const Color(0xFF38BDF8) : Colors.white) : ink,
+          ),
+        ),
+        selected: method == value,
+        selectedColor: isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+        backgroundColor: surface,
+        side: BorderSide(
+          color: method == value ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A)) : controlBorder,
+          width: method == value ? 2.0 : 1.0,
+        ),
         onSelected: sending ? null : (_) => setState(() => method = value))]),
       const SizedBox(height: Space.xl),
       TextField(controller: customer, textInputAction: TextInputAction.next, enabled: !sending, onChanged: (_) => setState(() {}),

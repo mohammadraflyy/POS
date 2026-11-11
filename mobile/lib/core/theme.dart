@@ -196,49 +196,117 @@ ThemeData _buildTheme() {
     error: errorColor, onError: onPrimary,
     surfaceTint: Colors.transparent,
   );
-  final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control));
-  return ThemeData(
-    useMaterial3: true,
-    brightness: palette.brightness,
-    fontFamily: fontFamily,
-    colorScheme: scheme,
-    textTheme: text,
-    visualDensity: VisualDensity.standard,
-    scaffoldBackgroundColor: canvas,
-    splashFactory: NoSplash.splashFactory,
-    hoverColor: palette.overlay.withAlpha(10),
-    highlightColor: palette.overlay.withAlpha(15),
-    focusColor: palette.overlay.withAlpha(20),
-    appBarTheme: AppBarTheme(backgroundColor: canvas, foregroundColor: ink,
-      surfaceTintColor: Colors.transparent, elevation: 0, scrolledUnderElevation: 0, centerTitle: false, toolbarHeight: 48,
-      shape: Border(bottom: BorderSide(color: lineColor)),
-      titleTextStyle: TextStyle(fontFamily: fontFamily, fontSize: 16, fontWeight: FontWeight.w500, color: ink)),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true, fillColor: surface, isDense: true,
-      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      floatingLabelBehavior: FloatingLabelBehavior.always, helperMaxLines: 3, errorMaxLines: 3,
-      labelStyle: TextStyle(color: muted, fontSize: 14), floatingLabelStyle: TextStyle(color: ink, fontSize: 14, fontWeight: FontWeight.w500),
-      hintStyle: TextStyle(color: muted), helperStyle: TextStyle(color: muted, fontSize: 12),
-      prefixIconColor: muted, suffixIconColor: muted,
-      border: _inputBorder(controlBorder), enabledBorder: _inputBorder(controlBorder),
-      focusedBorder: _inputBorder(ink, 1.5), disabledBorder: _inputBorder(lineColor),
-      errorBorder: _inputBorder(errorColor), focusedErrorBorder: _inputBorder(errorColor, 1.5),
-    ),
-    filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
-      backgroundColor: primaryInk, foregroundColor: onPrimary,
-      disabledBackgroundColor: raised, disabledForegroundColor: muted,
-      minimumSize: const Size(40, 42), padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-      shape: buttonShape, elevation: 0.5, shadowColor: Colors.black.withAlpha(isDark ? 80 : 40),
-      textStyle: const TextStyle(fontFamily: fontFamily, fontWeight: FontWeight.w500, fontSize: 14),
-    )),
-    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(
-      foregroundColor: ink, backgroundColor: surface, side: BorderSide(color: controlBorder),
-      minimumSize: const Size(40, 42), padding: const EdgeInsets.symmetric(horizontal: Space.lg),
-      shape: buttonShape, textStyle: const TextStyle(fontFamily: fontFamily, fontWeight: FontWeight.w500, fontSize: 14),
-    )),
-    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: ink,
-      minimumSize: const Size(40, 40), shape: buttonShape, textStyle: const TextStyle(fontFamily: fontFamily, fontWeight: FontWeight.w500, fontSize: 14))),
-    iconButtonTheme: IconButtonThemeData(style: IconButton.styleFrom(foregroundColor: ink, minimumSize: const Size(40, 40), shape: buttonShape)),
+    final focusHighlight = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
+    final focusSoftBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF0F9FF);
+    final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control));
+    return ThemeData(
+      useMaterial3: true,
+      brightness: palette.brightness,
+      fontFamily: fontFamily,
+      colorScheme: scheme,
+      textTheme: text,
+      visualDensity: VisualDensity.standard,
+      scaffoldBackgroundColor: canvas,
+      splashFactory: NoSplash.splashFactory,
+      hoverColor: palette.overlay.withAlpha(10),
+      highlightColor: palette.overlay.withAlpha(15),
+      focusColor: focusHighlight.withAlpha(35),
+      appBarTheme: AppBarTheme(backgroundColor: canvas, foregroundColor: ink,
+        surfaceTintColor: Colors.transparent, elevation: 0, scrolledUnderElevation: 0, centerTitle: false, toolbarHeight: 48,
+        shape: Border(bottom: BorderSide(color: lineColor)),
+        titleTextStyle: TextStyle(fontFamily: fontFamily, fontSize: 16, fontWeight: FontWeight.w500, color: ink)),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true, fillColor: surface, isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        floatingLabelBehavior: FloatingLabelBehavior.always, helperMaxLines: 3, errorMaxLines: 3,
+        labelStyle: TextStyle(color: muted, fontSize: 14),
+        floatingLabelStyle: TextStyle(color: focusHighlight, fontSize: 14, fontWeight: FontWeight.bold),
+        hintStyle: TextStyle(color: muted), helperStyle: TextStyle(color: muted, fontSize: 12),
+        prefixIconColor: WidgetStateColor.resolveWith((states) => states.contains(WidgetState.focused) ? focusHighlight : muted),
+        suffixIconColor: WidgetStateColor.resolveWith((states) => states.contains(WidgetState.focused) ? focusHighlight : muted),
+        border: _inputBorder(controlBorder, 1.2), enabledBorder: _inputBorder(controlBorder, 1.2),
+        focusedBorder: _inputBorder(focusHighlight, 2.5), disabledBorder: _inputBorder(lineColor),
+        errorBorder: _inputBorder(errorColor, 1.2), focusedErrorBorder: _inputBorder(errorColor, 2.5),
+      ),
+      filledButtonTheme: FilledButtonThemeData(style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return raised;
+          return primaryInk;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return muted;
+          return onPrimary;
+        }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return BorderSide(color: focusHighlight, width: 2.5);
+          return BorderSide.none;
+        }),
+        elevation: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return 3.0;
+          return 0.5;
+        }),
+        minimumSize: const WidgetStatePropertyAll(Size(40, 42)),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: Space.lg)),
+        shape: WidgetStatePropertyAll(buttonShape),
+        shadowColor: WidgetStatePropertyAll(Colors.black.withAlpha(isDark ? 80 : 40)),
+        textStyle: const WidgetStatePropertyAll(TextStyle(fontFamily: fontFamily, fontWeight: FontWeight.w600, fontSize: 14)),
+      )),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: ButtonStyle(
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return muted;
+          if (states.contains(WidgetState.focused)) return focusHighlight;
+          return ink;
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return Colors.transparent;
+          if (states.contains(WidgetState.focused)) return focusSoftBg;
+          return surface;
+        }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return BorderSide(color: focusHighlight, width: 2.5);
+          return BorderSide(color: controlBorder, width: 1.2);
+        }),
+        minimumSize: const WidgetStatePropertyAll(Size(40, 42)),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: Space.lg)),
+        shape: WidgetStatePropertyAll(buttonShape),
+        textStyle: const WidgetStatePropertyAll(TextStyle(fontFamily: fontFamily, fontWeight: FontWeight.w600, fontSize: 14)),
+      )),
+      textButtonTheme: TextButtonThemeData(style: ButtonStyle(
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return muted;
+          if (states.contains(WidgetState.focused)) return focusHighlight;
+          return ink;
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return focusSoftBg;
+          return Colors.transparent;
+        }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return BorderSide(color: focusHighlight, width: 2.0);
+          return BorderSide.none;
+        }),
+        minimumSize: const WidgetStatePropertyAll(Size(40, 40)),
+        padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: Space.md)),
+        shape: WidgetStatePropertyAll(buttonShape),
+        textStyle: const WidgetStatePropertyAll(TextStyle(fontFamily: fontFamily, fontWeight: FontWeight.w500, fontSize: 14)),
+      )),
+      iconButtonTheme: IconButtonThemeData(style: ButtonStyle(
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) return muted;
+          if (states.contains(WidgetState.focused)) return focusHighlight;
+          return ink;
+        }),
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return focusSoftBg;
+          return Colors.transparent;
+        }),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) return BorderSide(color: focusHighlight, width: 2.0);
+          return BorderSide.none;
+        }),
+        minimumSize: const WidgetStatePropertyAll(Size(40, 40)),
+        shape: WidgetStatePropertyAll(buttonShape),
+      )),
     cardTheme: CardThemeData(
       color: surface,
       surfaceTintColor: Colors.transparent,
@@ -258,9 +326,24 @@ ThemeData _buildTheme() {
       thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? onPrimary : surface),
       trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? successColor : controlBorder),
       trackOutlineColor: WidgetStateProperty.all(Colors.transparent)),
-    chipTheme: ChipThemeData(backgroundColor: surface, selectedColor: raised, checkmarkColor: ink,
-      side: BorderSide(color: controlBorder), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control)),
-      labelStyle: TextStyle(fontFamily: fontFamily, color: ink, fontSize: 14), padding: EdgeInsets.symmetric(horizontal: 6)),
+    chipTheme: ChipThemeData(
+      backgroundColor: surface,
+      selectedColor: isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
+      checkmarkColor: isDark ? const Color(0xFF38BDF8) : Colors.white,
+      side: WidgetStateBorderSide.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return BorderSide(color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A), width: 2.0);
+        }
+        if (states.contains(WidgetState.focused)) {
+          return BorderSide(color: focusHighlight, width: 2.0);
+        }
+        return BorderSide(color: controlBorder, width: 1.0);
+      }),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control)),
+      labelStyle: TextStyle(fontFamily: fontFamily, color: ink, fontSize: 14),
+      secondaryLabelStyle: TextStyle(fontFamily: fontFamily, color: isDark ? const Color(0xFF38BDF8) : Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    ),
     tabBarTheme: TabBarThemeData(labelColor: ink, unselectedLabelColor: muted, indicatorColor: ink,
       indicatorSize: TabBarIndicatorSize.label, dividerColor: lineColor,
       labelStyle: TextStyle(fontFamily: fontFamily, fontSize: 14, fontWeight: FontWeight.w500),

@@ -55,8 +55,9 @@ class ProductRow extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.4) : ruleColor),
-              left: BorderSide(color: indicatorColor, width: selected ? 4.0 : 3.5),
+              top: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.5) : Colors.transparent, width: selected ? 1.5 : 0),
+              bottom: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.5) : ruleColor, width: selected ? 1.5 : 1),
+              left: BorderSide(color: indicatorColor, width: selected ? 4.5 : 3.5),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 11),
@@ -97,7 +98,11 @@ class ProductRow extends StatelessWidget {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                        color: selected ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1)) : ink,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
