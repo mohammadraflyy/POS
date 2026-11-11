@@ -35,9 +35,6 @@ class _MainScreenState extends State<MainScreen> {
   AppUpdateInfo? _availableUpdate;
   bool _dismissedUpdate = false;
   Timer? _updateCheckTimer;
-  final Map<Menu, FocusNode> _menuFocusNodes = {};
-
-  FocusNode _nodeFor(Menu menu) => _menuFocusNodes.putIfAbsent(menu, () => FocusNode(debugLabel: 'menu_${menu.name}'));
 
   @override
   void initState() {
@@ -57,9 +54,6 @@ class _MainScreenState extends State<MainScreen> {
   void dispose() {
     _updateCheckTimer?.cancel();
     HardwareKeyboard.instance.removeHandler(_handleKey);
-    for (final node in _menuFocusNodes.values) {
-      node.dispose();
-    }
     super.dispose();
   }
 
@@ -124,40 +118,39 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  List<Menu> _orderedMenus() {
+    final menus = widget.app.isDemo ? primaryMenus : menusFor(widget.app);
+    final groups = <String, List<Menu>>{};
+    for (final menu in menus) {
+      (groups[menuInfo[menu]!.group] ??= []).add(menu);
+    }
+    return [for (final group in groups.values) ...group];
+  }
+
   bool _handleKey(KeyEvent event) {
     if (event is! KeyDownEvent || !mounted || ModalRoute.of(context)?.isCurrent == false) return false;
     if (event.logicalKey == LogicalKeyboardKey.keyB && HardwareKeyboard.instance.isControlPressed) {
       setState(() => _railOnly = !_railOnly);
       return true;
     }
-    final isAlt = HardwareKeyboard.instance.isAltPressed;
-    final isCtrl = HardwareKeyboard.instance.isControlPressed;
-    // Alt+M or Ctrl+M focuses active menu in sidebar
-    if ((isAlt || isCtrl) && event.logicalKey == LogicalKeyboardKey.keyM) {
-      _nodeFor(_menu).requestFocus();
-      return true;
-    }
-    // Alt+1 .. Alt+9 direct menu shortcuts
-    if (isAlt) {
-      final numKey = event.logicalKey;
-      final digit = numKey == LogicalKeyboardKey.digit1 ? 1
-          : numKey == LogicalKeyboardKey.digit2 ? 2
-          : numKey == LogicalKeyboardKey.digit3 ? 3
-          : numKey == LogicalKeyboardKey.digit4 ? 4
-          : numKey == LogicalKeyboardKey.digit5 ? 5
-          : numKey == LogicalKeyboardKey.digit6 ? 6
-          : numKey == LogicalKeyboardKey.digit7 ? 7
-          : numKey == LogicalKeyboardKey.digit8 ? 8
-          : numKey == LogicalKeyboardKey.digit9 ? 9
-          : null;
-      if (digit != null) {
-        final menus = widget.app.isDemo ? primaryMenus : menusFor(widget.app);
-        if (digit - 1 < menus.length) {
-          final target = menus[digit - 1];
-          _nodeFor(target).requestFocus();
-          _open(target);
-          return true;
-        }
+    // Don't intercept arrow keys if user is typing in a text field
+    final typing = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null;
+    if (typing) return false;
+
+    // Global arrow keys to navigate menus
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      final all = _orderedMenus();
+      final idx = all.indexOf(_menu);
+      if (idx >= 0 && idx < all.length - 1) {
+        _open(all[idx + 1]);
+        return true;
+      }
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      final all = _orderedMenus();
+      final idx = all.indexOf(_menu);
+      if (idx > 0) {
+        _open(all[idx - 1]);
+        return true;
       }
     }
     return false;
@@ -199,11 +192,10 @@ class _MainScreenState extends State<MainScreen> {
     ]),
   );
 
-  Widget _navRow(Menu menu, {required bool compact, required List<Menu> allMenus}) {
+  Widget _navRow(Menu menu, {required bool compact}) {
     final selected = menu == _menu;
     final info = menuInfo[menu]!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final focusNode = _nodeFor(menu);
 
     // High-contrast active state (WCAG AAA):
     // Light mode: solid dark slate-900 pill with pure white text and icon.
@@ -212,97 +204,49 @@ class _MainScreenState extends State<MainScreen> {
     final activeFg = Colors.white;
     final activeIconColor = isDark ? const Color(0xFF38BDF8) : Colors.white;
 
-    final row = Focus(
-      focusNode: focusNode,
-      onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        final key = event.logicalKey;
-        final idx = allMenus.indexOf(menu);
-        if (key == LogicalKeyboardKey.arrowDown) {
-          if (idx >= 0 && idx < allMenus.length - 1) {
-            final next = allMenus[idx + 1];
-            _nodeFor(next).requestFocus();
-            _open(next);
-            return KeyEventResult.handled;
-          }
-        } else if (key == LogicalKeyboardKey.arrowUp) {
-          if (idx > 0) {
-            final prev = allMenus[idx - 1];
-            _nodeFor(prev).requestFocus();
-            _open(prev);
-            return KeyEventResult.handled;
-          }
-        } else if (key == LogicalKeyboardKey.arrowRight) {
-          node.nextFocus();
-          return KeyEventResult.handled;
-        } else if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.space) {
-          _open(menu);
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: Builder(builder: (context) {
-        final hasFocus = Focus.of(context).hasFocus;
-        final isHighlighted = selected || hasFocus;
-        return Material(
-          color: selected
-              ? activeBg
-              : (hasFocus ? (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)) : Colors.transparent),
+    final row = Material(
+      color: selected ? activeBg : Colors.transparent,
+      borderRadius: BorderRadius.circular(Corners.control),
+      elevation: selected ? 1.5 : 0,
+      child: Container(
+        decoration: selected && isDark ? BoxDecoration(
+          border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
           borderRadius: BorderRadius.circular(Corners.control),
-          elevation: selected ? 1.5 : 0,
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: hasFocus
-                    ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7))
-                    : (selected && isDark ? const Color(0xFF38BDF8) : Colors.transparent),
-                width: hasFocus ? 2.0 : (selected && isDark ? 1.5 : 1.0),
-              ),
-              borderRadius: BorderRadius.circular(Corners.control),
-            ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(Corners.control),
-              onTap: () {
-                focusNode.requestFocus();
-                _open(menu);
-              },
-              child: SizedBox(
-                height: 40,
-                child: Row(
-                  mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
-                  children: [
-                    if (!compact) const SizedBox(width: 12),
-                    Icon(
-                      info.icon,
-                      size: 20,
-                      color: selected
-                          ? activeIconColor
-                          : (hasFocus ? (isDark ? Colors.white : const Color(0xFF0F172A)) : (isDark ? muted : const Color(0xFF64748B))),
-                    ),
-                    if (!compact) ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          info.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: selected
-                                ? activeFg
-                                : (hasFocus ? (isDark ? Colors.white : const Color(0xFF0F172A)) : (isDark ? secondaryInk : const Color(0xFF334155))),
-                            fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+        ) : null,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(Corners.control),
+          onTap: () => _open(menu),
+          child: SizedBox(
+            height: 40,
+            child: Row(
+              mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+              children: [
+                if (!compact) const SizedBox(width: 12),
+                Icon(
+                  info.icon,
+                  size: 20,
+                  color: selected ? activeIconColor : (isDark ? muted : const Color(0xFF64748B)),
                 ),
-              ),
+                if (!compact) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      info.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: selected ? activeFg : (isDark ? secondaryInk : const Color(0xFF334155)),
+                        fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-        );
-      }),
+        ),
+      ),
     );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: compact ? 8 : Space.sm, vertical: 2.5),
@@ -444,7 +388,7 @@ class _MainScreenState extends State<MainScreen> {
                     letterSpacing: 0.8,
                   ),
                 )),
-            for (final menu in group.value) _navRow(menu, compact: compact, allMenus: allMenus),
+            for (final menu in group.value) _navRow(menu, compact: compact),
           ],
         ])),
         const Divider(indent: 12, endIndent: 12),

@@ -98,7 +98,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('desktop sidebar allows keyboard selection with arrow keys, Alt+M, and Alt+number', (tester) async {
+  testWidgets('desktop sidebar allows global arrow navigation between menus without shortcuts', (tester) async {
     tester.view.physicalSize = const Size(1280, 800); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
     final app = await tester.runAsync(() => signedIn('admin'));
@@ -108,29 +108,24 @@ void main() {
     // Initial menu is Kasir
     expect(find.text('Daftar Produk (Katalog Aktif)'), findsOneWidget);
 
-    // Press Alt+M to focus sidebar menu
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    // Unfocus any text field so global arrow keys fire
+    FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
 
-    // Press ArrowDown to navigate to the next menu
+    // Press ArrowDown to navigate to the next menu in group (Riwayat Penjualan)
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pumpAndSettle();
-
-    // Press Alt+1 to jump to menu 1 (Dashboard)
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.digit1);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     await settle(tester);
-    expect(find.text('Uang hari ini'), findsOneWidget);
+    expect(find.text('Daftar Produk (Katalog Aktif)'), findsNothing);
 
-    // Press Alt+2 to jump to menu 2 (Kasir)
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    // Press ArrowUp to navigate back to Kasir
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await settle(tester);
     expect(find.text('Daftar Produk (Katalog Aktif)'), findsOneWidget);
+
+    // Press ArrowUp to navigate to Dashboard
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await settle(tester);
+    expect(find.text('Uang hari ini'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

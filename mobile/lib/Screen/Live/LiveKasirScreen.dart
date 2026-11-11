@@ -260,37 +260,6 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       action = pay;
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
-    } else if (key == LogicalKeyboardKey.arrowDown) {
-      final primaryCtx = FocusManager.instance.primaryFocus?.context;
-      if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
-        return false;
-      }
-      if (searchFocus.hasFocus) {
-        searchFocus.unfocus();
-        action = () => moveSelection(0);
-      } else if (!isOutsideCatalog) {
-        action = () => moveSelection(1);
-      }
-    } else if (key == LogicalKeyboardKey.arrowUp) {
-      final primaryCtx = FocusManager.instance.primaryFocus?.context;
-      if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
-        return false;
-      }
-      if (!isOutsideCatalog) {
-        final isScrolledDown = catalogScroll.hasClients && catalogScroll.offset > 20;
-        if (selectedIndex == 0 && !isScrolledDown) {
-          action = () {
-            searchFocus.requestFocus();
-            search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
-          };
-        } else {
-          if (selectedIndex == 0 && isScrolledDown) {
-            final visibleIdx = (catalogScroll.offset / 62.0).ceil().clamp(0, catalogLines.length - 1);
-            selectedIndex = visibleIdx;
-          }
-          action = () => moveSelection(-1);
-        }
-      }
     } else if (key == LogicalKeyboardKey.enter) {
       final primaryCtx = FocusManager.instance.primaryFocus?.context;
       if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
@@ -543,7 +512,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           price: rupiah(line.unit.price),
           unit: line.unit.name,
           inCart: widget.store.items.any((item) => item.product.id == line.product.id && item.unit.id == line.unit.id),
-          selected: isSelected,
+          selected: false,
           onConfigure: !loading && widget.store.editable ? () {
             searchFocus.unfocus();
             qtyFocus.unfocus();
