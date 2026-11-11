@@ -48,18 +48,21 @@ class ProductRow extends StatelessWidget {
 
     return Material(
       color: rowBg,
-      child: InkWell(
-        onTap: onConfigure,
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.5) : Colors.transparent, width: selected ? 1.5 : 0),
-              bottom: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.5) : ruleColor, width: selected ? 1.5 : 1),
-              left: BorderSide(color: selected ? indicatorColor : Colors.transparent, width: selected ? 4.5 : 0),
+      child: Tooltip(
+        message: 'Tambah $name',
+        waitDuration: const Duration(seconds: 1),
+        child: InkWell(
+          onTap: available ? (onAdd ?? onConfigure) : null,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.5) : Colors.transparent, width: selected ? 1.5 : 0),
+                bottom: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.5) : ruleColor, width: selected ? 1.5 : 1),
+                left: BorderSide(color: selected ? indicatorColor : Colors.transparent, width: selected ? 4.5 : 0),
+              ),
             ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 11),
-          child: Row(
+            padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 12),
+            child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Product Initials Avatar Box (Mockup fidelity)
@@ -164,27 +167,8 @@ class ProductRow extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: Space.xs),
-
-              // Tactile Add Button (+) matching mockup
-              IconButton(
-                tooltip: 'Tambah $name',
-                onPressed: available ? onAdd : null,
-                style: IconButton.styleFrom(
-                  backgroundColor: available
-                      ? (selected ? (isDark ? const Color(0xFF0284C7) : primaryInk) : primaryInk)
-                      : (isDark ? raised : const Color(0xFFE2E8F0)),
-                  foregroundColor: available ? onPrimary : muted,
-                  disabledBackgroundColor: isDark ? raised : const Color(0xFFF1F5F9),
-                  disabledForegroundColor: muted,
-                  elevation: available ? 1 : 0,
-                  minimumSize: const Size(36, 36),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control)),
-                  padding: EdgeInsets.zero,
-                ),
-                icon: const Icon(Icons.add, size: 18),
-              ),
             ],
+          ),
           ),
         ),
       ),

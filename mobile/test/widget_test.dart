@@ -12,7 +12,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(theme: buildTheme(), home: MainScreen(app: app)));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      final add = find.byWidgetPredicate((widget) => widget is IconButton && widget.tooltip == 'Tambah Kopi Susu Aren');
+      final add = find.byTooltip('Tambah Kopi Susu Aren');
       // In landscape the lazy product grid starts below the viewport.
       for (var attempt = 0; attempt < 12 && add.hitTestable().evaluate().isEmpty; attempt++) {
         await tester.drag(find.byType(CustomScrollView).first, const Offset(0, -100));
