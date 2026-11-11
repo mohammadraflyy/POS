@@ -302,6 +302,19 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       widget.store.selectCartIndex(null);
       searchFocus.requestFocus();
       return true;
+    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowDown) {
+      if (catalogScroll.hasClients) {
+        final max = catalogScroll.position.maxScrollExtent;
+        final next = (catalogScroll.offset + 72.0).clamp(0.0, max);
+        catalogScroll.animateTo(next, duration: const Duration(milliseconds: 60), curve: Curves.easeOut);
+        return true;
+      }
+    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowUp) {
+      if (catalogScroll.hasClients) {
+        final prev = (catalogScroll.offset - 72.0).clamp(0.0, catalogScroll.position.maxScrollExtent);
+        catalogScroll.animateTo(prev, duration: const Duration(milliseconds: 60), curve: Curves.easeOut);
+        return true;
+      }
     } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowRight) {
       if (widget.store.items.isNotEmpty) {
         widget.store.selectCartIndex(0);
