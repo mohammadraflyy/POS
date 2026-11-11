@@ -25,7 +25,7 @@ class AppState extends ChangeNotifier {
   AppMode mode = AppMode.pairing;
   bool busy = false, initializing = true;
   String? notice;
-  String userName = '', role = '', userId = '';
+  String userName = '', role = '', userId = '', userUsername = '';
 
   /// The PC on the shop's Wi-Fi.
   Uri? address;
@@ -93,6 +93,7 @@ class AppState extends ChangeNotifier {
         address = parseAddress(data['address'] as String);
         _token = data['token'] as String;
         deviceName = data['deviceName']?.toString() ?? '';
+        userUsername = data['username']?.toString() ?? '';
         final remote = data['remote'];
         if (remote is Map) {
           remoteAddress = remote['address']?.toString();
@@ -147,6 +148,7 @@ class AppState extends ChangeNotifier {
   Future<void> _signedIn(Uri base, String token, String name, Map<String, dynamic> user) async {
     await _forgetRemote();
     address = base; _token = token; deviceName = name; _clearBranding();
+    userUsername = user['username']?.toString() ?? '';
     await _save();
     _generation++;
     userName = user['name']?.toString() ?? user['username'].toString();
@@ -157,6 +159,7 @@ class AppState extends ChangeNotifier {
   }
   Future<void> _save() => storage.write(jsonEncode({
     'address': address.toString(), 'token': _token, 'deviceName': deviceName,
+    if (userUsername.isNotEmpty) 'username': userUsername,
     if (remoteAddress != null) 'remote': {
       'address': remoteAddress, 'authKey': _remoteKey, 'keyIssuedAt': _remoteKeyIssued?.toIso8601String(), 'joined': _remoteJoined,
     },
@@ -172,6 +175,7 @@ class AppState extends ChangeNotifier {
   Future<void> _validateSession() async {
     final data = await _routed((base) => api.me(base, _token!));
     final user = _readUser(data);
+    userUsername = user['username']?.toString() ?? '';
     userName = user['name']?.toString() ?? user['username'].toString();
     role = user['role'].toString(); userId = (user['id'] ?? user['username']).toString();
   }
@@ -280,6 +284,7 @@ class AppState extends ChangeNotifier {
       final data = await _routed((base) => api.me(base, _token!));
       if (generation != _generation) return;
       final user = _readUser(data);
+      userUsername = user['username']?.toString() ?? '';
       userName = user['name']?.toString() ?? user['username'].toString();
       role = user['role'].toString(); userId = (user['id'] ?? user['username']).toString(); notice = null;
       await _maintainRemote();
@@ -298,11 +303,28 @@ class AppState extends ChangeNotifier {
   }
   void startDemo() {
     _generation++; demo = DemoStore(); cart.clear(); billDiscount = 0; _clearBranding();
-    mode = AppMode.demo; notice = null; userName = 'Kasir Demo'; notifyListeners();
+    mode = AppMode.demo; notice = null; userName = 'Kasir Demo'; userUsername = 'demo'; notifyListeners();
   }
   Future<void> logout() async {
     _generation++; await _clearCredentials(); _clearBranding();
-    mode = AppMode.pairing; cart.clear(); billDiscount = 0; userName = ''; notifyListeners();
+    mode = AppMode.pairing; cart.clear(); billDiscount = 0; userName = ''; userUsername = ''; notifyListeners();
+  }
+
+  /// Verifies the cashier/user's password against the server to unlock the terminal.
+  /// If connected, authenticates with `/v1/auth/login` and updates the session token on success.
+  Future<bool> verifyAndUnlock(String password) async {
+    if (isDemo) return true;
+    if (address == null) throw const ApiFailure('Server kasir belum terhubung.');
+    final loginUsername = userUsername.isNotEmpty ? userUsername : userName;
+    if (loginUsername.trim().isEmpty) throw const ApiFailure('Identitas kasir tidak valid.');
+    final signed = await _routed((base) => api.login(base, loginUsername.trim(), password, deviceName.trim()));
+    final token = signed['token'];
+    if (token is String && token.isNotEmpty) {
+      _token = token;
+      await _save();
+      return true;
+    }
+    return false;
   }
   Future<Object?> businessRequest(String path, {required String method,
     Map<String, String>? query, Map<String, dynamic>? body}) async {

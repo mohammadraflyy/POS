@@ -6,6 +6,7 @@ import '../../services/business_api.dart';
 import '../../services/mobile_api.dart';
 import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
+import '../../Widgets/receipt_preview.dart';
 import '../../services/store_api.dart';
 import '../Toko/BonActions.dart';
 import '../../Widgets/admin.dart' show dateTimeLabel, metodeLabel, text;
@@ -102,6 +103,27 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
     showNotice(context, 'Teks struk berhasil disalin! Anda dapat menempelkannya ke WhatsApp.', kind: NoticeKind.success);
   }
 
+  void _showReceiptPreview(Map<String, dynamic> sale, List<Map> lines) {
+    showReceiptPreviewDialog(
+      context,
+      storeName: 'Point of Sales',
+      saleId: int.tryParse((sale['nomorNota'] ?? sale['id'] ?? widget.id).toString()) ?? widget.id,
+      date: DateTime.tryParse((sale['tanggal'] ?? sale['createdAt'] ?? '').toString()) ?? DateTime.now(),
+      cashier: sale['kasirName']?.toString(),
+      customer: sale['namaPelanggan']?.toString(),
+      items: lines.map((e) => Map<String, dynamic>.from(e)).toList(),
+      subtotal: number(sale['subtotal']),
+      discount: number(sale['diskon']),
+      charge: number(sale['biayaLain']),
+      total: number(sale['total'] ?? widget.confirmation?['total']),
+      method: (sale['metodePembayaran'] ?? 'tunai').toString(),
+      paid: number(sale['dibayar']),
+      change: number(sale['kembalian']),
+      remaining: sale['metodePembayaran'] == 'bon' ? ((number(sale['total']) ?? 0) - (number(sale['dibayar']) ?? 0)) : null,
+      note: sale['keterangan']?.toString(),
+    );
+  }
+
   @override Widget build(BuildContext context) {
     final sale = detail?['sale'] is Map ? jsonObject(detail!['sale']) : detail;
     final rawItems = detail?['items'] ?? sale?['items'];
@@ -167,6 +189,12 @@ class _LiveSaleScreenState extends State<LiveSaleScreen> {
           } catch (e) { if (mounted) showError(context, e); }
         })],
       const SizedBox(height: Space.xl),
+      OutlinedButton.icon(
+        onPressed: sale == null ? null : () => _showReceiptPreview(sale, lines),
+        icon: const Icon(Icons.receipt_long_outlined, size: 18),
+        label: const Text('Pratinjau struk (58 mm / 80 mm)'),
+      ),
+      const SizedBox(height: Space.sm),
       OutlinedButton.icon(
         onPressed: sale == null ? null : _copyReceiptText,
         icon: const Icon(Icons.share_outlined, size: 18),

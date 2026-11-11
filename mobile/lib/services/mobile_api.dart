@@ -99,9 +99,13 @@ class MobileApi {
       'Accept': 'application/json', if (token != null) 'Authorization': 'Bearer $token',
     }, body);
     if (result.status == 401) {
-      throw ApiFailure(path == '/v1/pair'
+      final data = result.body;
+      final serverMsg = data is Map && data['error'] != null ? data['error'].toString() : null;
+      throw ApiFailure(serverMsg ?? (path == '/v1/pair'
         ? 'Pairing gagal. Kode atau akun tidak valid. Buat kode baru di PC lalu coba kembali.'
-        : 'Akses perangkat sudah tidak valid. Hubungkan ulang perangkat dari PC.',
+        : path == '/v1/auth/login'
+          ? 'Username atau password salah.'
+          : 'Akses perangkat sudah tidak valid. Hubungkan ulang perangkat dari PC.'),
         unauthorized: true, statusCode: 401);
     }
     if (result.status < 200 || result.status >= 300) {

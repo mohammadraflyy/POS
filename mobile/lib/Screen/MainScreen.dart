@@ -12,6 +12,7 @@ import 'StockOpname/StockOpnameScreen.dart';
 import 'Live/LiveWorkspace.dart';
 import 'menus.dart';
 import 'AccountPanel.dart';
+import '../Widgets/cashier_lock_dialog.dart';
 import '../services/updater_service.dart';
 
 /// The shell. On a PC: an open plane - a labelled sidebar on the stone ground with the
@@ -124,12 +125,22 @@ class _MainScreenState extends State<MainScreen> {
       setState(() => _railOnly = !_railOnly);
       return true;
     }
+    if (event.logicalKey == LogicalKeyboardKey.keyL && HardwareKeyboard.instance.isControlPressed) {
+      _lockKasir();
+      return true;
+    }
     return false;
   }
 
   void _open(Menu menu) {
     setState(() => _menu = menu);
   }
+
+  Future<void> _lockKasir() => showCashierLockDialog(
+    context,
+    app: widget.app,
+    shopName: widget.app.shopName ?? _shopName ?? 'Point of Sales',
+  );
 
   Future<void> _account() => showAccountPanel(context, app: widget.app, shopName: _shopName,
     onOpenSettings: menusFor(widget.app).contains(Menu.pengaturan) ? () => _open(Menu.pengaturan) : null);
@@ -240,95 +251,107 @@ class _MainScreenState extends State<MainScreen> {
 
     return Container(
       height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: Space.md),
+      padding: const EdgeInsets.symmetric(horizontal: Space.lg),
       decoration: BoxDecoration(
         color: surface,
         border: Border(bottom: BorderSide(color: ruleColor)),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isDemo ? warningColor : (offline ? errorColor : successColor),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              shopTitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-            ),
-          ),
-          const SizedBox(width: Space.sm),
-          Text('|', style: TextStyle(color: lineColor)),
-          const SizedBox(width: Space.sm),
-          Flexible(
-            child: Text.rich(
-              TextSpan(children: [
-                TextSpan(text: 'Kasir: ', style: TextStyle(color: muted, fontSize: 13)),
-                TextSpan(
-                  text: '$userName ($userRole)',
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                ),
-              ]),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isDemo ? pillWarningBg : (offline ? pillNegativeBg : pillPositiveBg),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: (isDemo ? pillWarningInk : (offline ? pillNegativeInk : pillPositiveInk)).withValues(alpha: 0.3),
-              ),
-            ),
+          Expanded(
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 6,
-                  height: 6,
+                  width: 8,
+                  height: 8,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: isDemo ? warningColor : (offline ? errorColor : successColor),
                   ),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  isDemo ? 'Mode Demo' : (offline ? 'Server Terputus' : 'Server Terhubung$addressText'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isDemo ? pillWarningInk : (offline ? pillNegativeInk : pillPositiveInk),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    shopTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ),
+                const SizedBox(width: Space.sm),
+                Text('|', style: TextStyle(color: lineColor)),
+                const SizedBox(width: Space.sm),
+                Flexible(
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: 'Kasir: ', style: TextStyle(color: muted, fontSize: 13)),
+                      TextSpan(
+                        text: '$userName ($userRole)',
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                    ]),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: Space.sm),
-          Focus(
-            canRequestFocus: false,
-            descendantsAreFocusable: false,
-            child: OutlinedButton.icon(
-              onPressed: _account,
-              icon: const Icon(Icons.lock_outline, size: 14),
-              label: const Text('Kunci Kasir'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                minimumSize: const Size(0, 32),
-                visualDensity: VisualDensity.compact,
+          const SizedBox(width: Space.md),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isDemo ? pillWarningBg : (offline ? pillNegativeBg : pillPositiveBg),
+                  borderRadius: BorderRadius.circular(Corners.chip),
+                  border: Border.all(
+                    color: (isDemo ? pillWarningInk : (offline ? pillNegativeInk : pillPositiveInk)).withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isDemo ? warningColor : (offline ? errorColor : successColor),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isDemo ? 'Mode Demo' : (offline ? 'Server Terputus' : 'Server Terhubung$addressText'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isDemo ? pillWarningInk : (offline ? pillNegativeInk : pillPositiveInk),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(width: Space.sm),
+              Tooltip(
+                message: 'Kunci Kasir (Ctrl+L)',
+                child: OutlinedButton.icon(
+                  onPressed: _lockKasir,
+                  icon: const Icon(Icons.lock_outline, size: 14),
+                  label: const Text('Kunci Kasir'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                    minimumSize: const Size(0, 32),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
