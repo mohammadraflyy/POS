@@ -31,29 +31,29 @@ class Palette {
 
   static const light = Palette(
     brightness: Brightness.light,
-    canvas: Color(0xFFF8FAFC), surface: Colors.white, raised: Color(0xFFF1F5F9), activePill: Color(0xFFE2E8F0),
-    lineColor: Color(0xFFE2E8F0), ruleColor: Color(0xFFF1F5F9), controlBorder: Color(0xFFCBD5E1),
-    ink: Color(0xFF0F172A), muted: Color(0xFF64748B), secondaryInk: Color(0xFF334155),
+    canvas: Color(0xFFF1F5F9), surface: Colors.white, raised: Color(0xFFF8FAFC), activePill: Color(0xFFE2E8F0),
+    lineColor: Color(0xFFCBD5E1), ruleColor: Color(0xFFE2E8F0), controlBorder: Color(0xFF94A3B8),
+    ink: Color(0xFF0F172A), muted: Color(0xFF475569), secondaryInk: Color(0xFF1E293B),
     primaryInk: Color(0xFF0F172A), onPrimary: Colors.white,
     dataHue: Color(0xFF0284C7), dataHueSoft: Color(0xFFE0F2FE),
     successColor: Color(0xFF16A34A), warningColor: Color(0xFFD97706), errorColor: Color(0xFFDC2626),
     pillPositiveBg: Color(0xFFDCFCE7), pillPositiveInk: Color(0xFF15803D), pillNegativeBg: Color(0xFFFEE2E2), pillNegativeInk: Color(0xFFB91C1C),
-    pillWarningBg: Color(0xFFFEF3C7), pillWarningInk: Color(0xFFB45309), pillNeutralBg: Color(0xFFF1F5F9), pillNeutralInk: Color(0xFF475569),
-    noticeBorder: Color(0xFFFCD34D), gridLine: Color(0xFFE2E8F0), baseline: Color(0xFF94A3B8), comparison: Color(0xFF64748B),
+    pillWarningBg: Color(0xFFFEF3C7), pillWarningInk: Color(0xFFB45309), pillNeutralBg: Color(0xFFF1F5F9), pillNeutralInk: Color(0xFF334155),
+    noticeBorder: Color(0xFFF59E0B), gridLine: Color(0xFFCBD5E1), baseline: Color(0xFF64748B), comparison: Color(0xFF475569),
     overlay: Colors.black,
   );
 
   static const dark = Palette(
     brightness: Brightness.dark,
-    canvas: Color(0xFF090D16), surface: Color(0xFF111827), raised: Color(0xFF1F2937), activePill: Color(0xFF374151),
-    lineColor: Color(0xFF1F2937), ruleColor: Color(0xFF1A2234), controlBorder: Color(0xFF374151),
-    ink: Color(0xFFF8FAFC), muted: Color(0xFF94A3B8), secondaryInk: Color(0xFFCBD5E1),
+    canvas: Color(0xFF090D16), surface: Color(0xFF131D2E), raised: Color(0xFF1E293B), activePill: Color(0xFF334155),
+    lineColor: Color(0xFF334155), ruleColor: Color(0xFF232F42), controlBorder: Color(0xFF475569),
+    ink: Color(0xFFF8FAFC), muted: Color(0xFF94A3B8), secondaryInk: Color(0xFFE2E8F0),
     primaryInk: Color(0xFF38BDF8), onPrimary: Color(0xFF0F172A),
     dataHue: Color(0xFF38BDF8), dataHueSoft: Color(0xFF0C4A6E),
     successColor: Color(0xFF22C55E), warningColor: Color(0xFFF59E0B), errorColor: Color(0xFFEF4444),
     pillPositiveBg: Color(0xFF052E16), pillPositiveInk: Color(0xFF4ADE80), pillNegativeBg: Color(0xFF450A0A), pillNegativeInk: Color(0xFFF87171),
-    pillWarningBg: Color(0xFF451A03), pillWarningInk: Color(0xFFFBBF24), pillNeutralBg: Color(0xFF1E293B), pillNeutralInk: Color(0xFF94A3B8),
-    noticeBorder: Color(0xFF78350F), gridLine: Color(0xFF1E293B), baseline: Color(0xFF475569), comparison: Color(0xFF94A3B8),
+    pillWarningBg: Color(0xFF451A03), pillWarningInk: Color(0xFFFBBF24), pillNeutralBg: Color(0xFF1E293B), pillNeutralInk: Color(0xFFCBD5E1),
+    noticeBorder: Color(0xFF92400E), gridLine: Color(0xFF2D3C52), baseline: Color(0xFF64748B), comparison: Color(0xFFCBD5E1),
     overlay: Colors.white,
   );
 }

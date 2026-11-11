@@ -132,9 +132,14 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
         return true;
       }
     }
-    // Enter / End anywhere when not inside an active text input:
+    // End anywhere on payment screen (even when typing in paid/customer):
+    if (key == LogicalKeyboardKey.end) {
+      if (widget.store.canCheckout) submit();
+      return true;
+    }
+    // Enter / numpadEnter anywhere when not inside an active text input:
     final typing = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null;
-    if (!typing && (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.end)) {
+    if (!typing && (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter)) {
       if (widget.store.canCheckout) submit();
       return true;
     }
@@ -314,7 +319,7 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       const SizedBox(height: Space.lg),
       SizedBox(height: 44, child: FilledButton.icon(onPressed: sending || !store.canCheckout ? null : submit,
         icon: sending ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : const Icon(Icons.check, size: 18),
-        label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  Alt+S' : ''}'))),
+        label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  End / Alt+S' : ''}'))),
     ]));
 
     return PopScope(canPop: !sending, child: Scaffold(

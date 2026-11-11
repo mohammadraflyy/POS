@@ -239,4 +239,29 @@ void main() {
     expect(store.items, isEmpty);
     await finish(tester);
   });
+
+  testWidgets('End key saves transaction when on payment screen, even while paid field is focused', (tester) async {
+    await openTill(tester);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+
+    // 1st End opens payment
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pumpAndSettle();
+    expect(find.byType(LivePaymentScreen), findsOneWidget);
+
+    // Fill uang pas
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyU);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+
+    // 2nd End triggers submit directly
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cetak struk #41?'), findsOneWidget);
+    await finish(tester);
+  });
 }
