@@ -153,7 +153,9 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       widget.store.setDetails(charge: _charge, text: note.text);
       final total = _total;
       if (total == null) throw const FormatException('Harga keranjang belum tersedia.');
-      final amount = method == 'qris' || method == 'transfer' ? total : inputRupiah(paid.text.isEmpty && method == 'bon' ? '0' : paid.text);
+      final amount = method == 'qris' || method == 'transfer' || (method == 'tunai' && paid.text.trim().isEmpty)
+          ? total
+          : inputRupiah(paid.text.isEmpty && method == 'bon' ? '0' : paid.text);
       final trimmedCustomer = customer.text.trim();
       if (method == 'bon' && (trimmedCustomer.isEmpty || trimmedCustomer.toLowerCase() == 'umum')) {
         throw const FormatException('Transaksi bon harus atas nama pelanggan, bukan UMUM. Pilih pelanggan dulu.');
@@ -229,7 +231,7 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(child: TextField(controller: paid, textInputAction: TextInputAction.done, enabled: !sending, autofocus: isDesktop, onChanged: (_) => setState(() {}),
             onSubmitted: (_) { if (store.canCheckout) submit(); }, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: amountStyle.copyWith(fontSize: 16),
-            decoration: InputDecoration(labelText: method == 'bon' ? 'Uang muka (Rp)' : 'Uang diterima (Rp)', helperText: method == 'bon' ? 'Kosong = belum bayar sama sekali' : 'Tanpa titik ribuan'))),
+            decoration: InputDecoration(labelText: method == 'bon' ? 'Uang muka (Rp)' : 'Uang diterima (Rp)', helperText: method == 'bon' ? 'Kosong = belum bayar sama sekali' : 'Kosong = uang pas, atau isi uang diterima'))),
           const SizedBox(width: Space.sm),
           Padding(padding: const EdgeInsets.only(top: 2), child: OutlinedButton(onPressed: sending || total == null ? null : () => setState(() => paid.text = _plain(total)), child: const Text('Uang pas'))),
         ]),
@@ -315,7 +317,7 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       const SizedBox(height: Space.lg),
       SizedBox(height: 44, child: FilledButton.icon(onPressed: sending || !store.canCheckout ? null : submit,
         icon: sending ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : const Icon(Icons.check, size: 18),
-        label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  Alt+S' : ''}'))),
+        label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  End' : ''}'))),
     ]));
 
     return PopScope(canPop: !sending, child: Scaffold(
@@ -456,7 +458,7 @@ class _ReceiptConfirmDialogState extends State<_ReceiptConfirmDialog> {
       return KeyEventResult.handled;
     }
 
-    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.space) {
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.end) {
       _submit();
       return KeyEventResult.handled;
     }

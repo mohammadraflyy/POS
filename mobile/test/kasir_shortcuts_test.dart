@@ -274,6 +274,33 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('End key saves transaction directly with uang pas when paid field is left blank', (tester) async {
+    await openTill(tester);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+
+    // 1st End opens payment
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pumpAndSettle();
+    expect(find.byType(LivePaymentScreen), findsOneWidget);
+
+    // Leave paid field empty, directly hit 2nd End to save as uang pas
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cetak struk #41?'), findsOneWidget);
+
+    // End on receipt dialog also submits
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cetak struk #41?'), findsNothing);
+    expect(store.items, isEmpty);
+    await finish(tester);
+  });
+
   testWidgets('Receipt dialog supports arrow keys and Enter to toggle and select Lewati', (tester) async {
     await openTill(tester);
     FocusManager.instance.primaryFocus?.unfocus();

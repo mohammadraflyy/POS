@@ -152,7 +152,7 @@ class _AccountPanelState extends State<_AccountPanel> {
           for (final (keys, what) in const [
             ('PageUp', 'ke kolom Jumlah'), ('PageDown / F2', 'ke kolom cari'), ('/', 'palet barang'), ('Alt+P', 'pilih pelanggan'),
             ('F3', 'ubah baris teratas'), ('End / F12', 'bayar'), ('Alt+K', 'kosongkan keranjang'),
-            ('Alt+T / B / Q / R', 'tunai / bon / QRIS / transfer'), ('Alt+S', 'simpan pembayaran'), ('Ctrl+B', 'ciutkan menu samping'),
+            ('Alt+T / B / Q / R', 'tunai / bon / QRIS / transfer'), ('End / Alt+S', 'simpan transaksi'), ('Ctrl+B', 'ciutkan menu samping'),
           ]) Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 8), child: Row(children: [
             Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(color: raised, borderRadius: BorderRadius.circular(Corners.chip), border: Border.all(color: lineColor)),

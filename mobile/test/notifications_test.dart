@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../lib/Widgets/ui.dart';
 import '../lib/Screen/Pairing/PairingScreen.dart';
@@ -109,5 +110,28 @@ void main() {
     await tester.pumpAndSettle();
     await showNotice(page, 'Pesan dari layar yang sudah ditutup');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Mengerti button can be dismissed with Enter and NumpadEnter key', (tester) async {
+    late BuildContext page;
+    await tester.pumpWidget(MaterialApp(home: Builder(builder: (context) {
+      page = context;
+      return const Scaffold(body: Text('Form'));
+    })));
+    final first = showNotice(page, 'Peringatan 1', kind: NoticeKind.warning);
+    await tester.pumpAndSettle();
+    expect(find.text('Peringatan 1'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    await first;
+    expect(find.byType(AlertDialog), findsNothing);
+
+    final second = showNotice(page, 'Peringatan 2', kind: NoticeKind.error);
+    await tester.pumpAndSettle();
+    expect(find.text('Peringatan 2'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.numpadEnter);
+    await tester.pumpAndSettle();
+    await second;
+    expect(find.byType(AlertDialog), findsNothing);
   });
 }

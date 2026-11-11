@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/theme.dart';
 
 enum NoticeKind { error, warning, success, info }
@@ -58,29 +59,51 @@ Future<void> showNotice(BuildContext context, String message, {
         return FadeTransition(opacity: curved, child: SlideTransition(
           position: Tween<Offset>(begin: const Offset(0, .025), end: Offset.zero).animate(curved), child: child));
       },
-      pageBuilder: (dialogContext, animation, secondary) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          title: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(icon, color: color, size: 24), const SizedBox(width: Space.md),
-            Expanded(child: Text(heading)),
-          ]),
-          scrollable: true,
-          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(message),
-            if (details != null && details.trim().isNotEmpty) ExpansionTile(
-              tilePadding: EdgeInsets.zero, title: const Text('Detail masalah'),
-              children: [SelectableText(details, style: Theme.of(dialogContext).textTheme.bodySmall)],
+      pageBuilder: (dialogContext, animation, secondary) {
+        var handled = false;
+        void dismiss(bool action) {
+          if (handled) return;
+          handled = true;
+          Navigator.of(dialogContext).pop(action);
+        }
+        return PopScope(
+          canPop: false,
+          child: Focus(
+            autofocus: true,
+            onKeyEvent: (node, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                dismiss(onAction != null);
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: AlertDialog(
+              title: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(icon, color: color, size: 24), const SizedBox(width: Space.md),
+                Expanded(child: Text(heading)),
+              ]),
+              scrollable: true,
+              content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(message),
+                if (details != null && details.trim().isNotEmpty) ExpansionTile(
+                  tilePadding: EdgeInsets.zero, title: const Text('Detail masalah'),
+                  children: [SelectableText(details, style: Theme.of(dialogContext).textTheme.bodySmall)],
+                ),
+              ]),
+              actions: [
+                if (onAction != null) TextButton(onPressed: () => dismiss(false), child: const Text('Nanti')),
+                FilledButton(
+                  autofocus: true,
+                  onPressed: () => dismiss(onAction != null),
+                  child: Text(actionLabel ?? 'Mengerti'),
+                ),
+              ],
             ),
-          ]),
-          actions: [
-            if (onAction != null) TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Nanti')),
-            FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(onAction != null),
-            child: Text(actionLabel ?? 'Mengerti'),
-          )],
-        ),
-      ),
+          ),
+        );
+      },
     );
     if (act == true && onAction != null) {
       // Run recovery after the notice leaves the queue. Recovery may show another notice.

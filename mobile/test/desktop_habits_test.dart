@@ -120,7 +120,7 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.end);
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Uang diterima (Rp)'), '2000');
-      await tester.tap(find.text('Simpan transaksi  ·  Alt+S'));
+      await tester.tap(find.text('Simpan transaksi  ·  End'));
       await tester.pumpAndSettle();
 
       expect(find.text('Kembalian Rp500.'), findsOneWidget);

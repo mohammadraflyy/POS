@@ -210,13 +210,33 @@ Future<void> promptAppUpdate(BuildContext context, {bool notifyIfLatest = true})
     if (context.mounted && notifyIfLatest) {
       showDialog<void>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Gagal Memeriksa'),
-          content: const Text('Tidak dapat terhubung ke server rilis GitHub. Pastikan perangkat terhubung ke internet.'),
-          actions: [
-            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mengerti')),
-          ],
-        ),
+        builder: (ctx) {
+          var handled = false;
+          void dismiss() {
+            if (handled) return;
+            handled = true;
+            Navigator.pop(ctx);
+          }
+          return Focus(
+            autofocus: true,
+            onKeyEvent: (node, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                dismiss();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: AlertDialog(
+              title: const Text('Gagal Memeriksa'),
+              content: const Text('Tidak dapat terhubung ke server rilis GitHub. Pastikan perangkat terhubung ke internet.'),
+              actions: [
+                FilledButton(autofocus: true, onPressed: dismiss, child: const Text('Mengerti')),
+              ],
+            ),
+          );
+        },
       );
     }
     return;
@@ -226,13 +246,33 @@ Future<void> promptAppUpdate(BuildContext context, {bool notifyIfLatest = true})
     if (context.mounted && notifyIfLatest) {
       showDialog<void>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Aplikasi Sudah Versi Terbaru'),
-          content: Text('Point of Sales Anda (v${info?.currentVersion}) sudah merupakan versi paling mutakhir.'),
-          actions: [
-            FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tutup')),
-          ],
-        ),
+        builder: (ctx) {
+          var handled = false;
+          void dismiss() {
+            if (handled) return;
+            handled = true;
+            Navigator.pop(ctx);
+          }
+          return Focus(
+            autofocus: true,
+            onKeyEvent: (node, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                dismiss();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: AlertDialog(
+              title: const Text('Aplikasi Sudah Versi Terbaru'),
+              content: Text('Point of Sales Anda (v${info?.currentVersion}) sudah merupakan versi paling mutakhir.'),
+              actions: [
+                FilledButton(autofocus: true, onPressed: dismiss, child: const Text('Tutup')),
+              ],
+            ),
+          );
+        },
       );
     }
     return;
