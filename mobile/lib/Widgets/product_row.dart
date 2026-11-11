@@ -41,10 +41,8 @@ class ProductRow extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final rowBg = selected
         ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFE0F2FE))
-        : (inCart ? (isDark ? raised.withValues(alpha: 0.5) : const Color(0xFFF8FAFC)) : surface);
-    final indicatorColor = selected
-        ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7))
-        : (inCart ? primaryInk : Colors.transparent);
+        : surface;
+    final indicatorColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
     final avatarBg = isDark ? raised : const Color(0xFFF1F5F9);
     final avatarFg = isDark ? ink : const Color(0xFF475569);
 
@@ -57,7 +55,7 @@ class ProductRow extends StatelessWidget {
             border: Border(
               top: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.5) : Colors.transparent, width: selected ? 1.5 : 0),
               bottom: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.5) : ruleColor, width: selected ? 1.5 : 1),
-              left: BorderSide(color: indicatorColor, width: selected ? 4.5 : 3.5),
+              left: BorderSide(color: selected ? indicatorColor : Colors.transparent, width: selected ? 4.5 : 0),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 11),
@@ -105,16 +103,24 @@ class ProductRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      inCart ? '$code · di keranjang' : code,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: inCart ? primaryInk : muted,
-                        fontSize: 12,
-                        fontFamily: monoFamily,
-                        fontWeight: inCart ? FontWeight.w500 : FontWeight.w400,
-                      ),
+                    Row(
+                      children: [
+                        if (inCart) ...[
+                          Icon(Icons.check_circle_outline, size: 12, color: isDark ? const Color(0xFF34D399) : successColor),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(
+                          inCart ? '$code · di keranjang' : code,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: inCart ? (isDark ? const Color(0xFF34D399) : successColor) : muted,
+                            fontSize: 12,
+                            fontFamily: monoFamily,
+                            fontWeight: inCart ? FontWeight.w500 : FontWeight.w400,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
