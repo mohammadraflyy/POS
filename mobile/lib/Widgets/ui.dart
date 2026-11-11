@@ -25,10 +25,6 @@ class HeaderArea extends StatelessWidget {
   Widget build(BuildContext context) => child;
 }
 
-/// The sidebar menu the arrow keys have highlighted but Enter has not opened yet (null
-/// when none). Screens leave Enter alone while it is set, so Enter only opens the menu.
-final sidebarCursor = ValueNotifier<Object?>(null);
-
 /// A status mark inside a row or beside a value: a pale tint with dark text of the same
 /// hue and subtle matching border. [color] picks the pair (success, error, warning); anything else is neutral.
 class Pill extends StatelessWidget {
