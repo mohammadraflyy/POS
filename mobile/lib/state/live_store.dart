@@ -344,7 +344,9 @@ class LiveStore extends ChangeNotifier {
 
   void cancelEdit() {
     editingSaleId = null; saleDate = null; otherCharge = 0; note = '';
-    items.clear(); discount = 0; reprice();
+    items.clear(); discount = 0; customerName = '';
+    _syncActiveQueue();
+    reprice();
   }
 
   void _resetDetails() { editingSaleId = null; saleDate = null; otherCharge = 0; note = ''; customerName = ''; }
@@ -363,6 +365,7 @@ class LiveStore extends ChangeNotifier {
     final index = items.indexWhere((i) => i.key == item.key);
     // New items land at index 0 so F3 (editTopLine) always edits the most recently added item, matching desktop-node.
     if (index < 0) { items.insert(0, item); } else { items[index] = item; }
+    _syncActiveQueue();
     reprice();
   }
   void replace(LiveCartItem oldItem, LiveCartItem newItem) {
@@ -389,6 +392,7 @@ class LiveStore extends ChangeNotifier {
     } else {
       items.insert(0, newItem);
     }
+    _syncActiveQueue();
     reprice();
   }
   void selectCartIndex(int? index) {
@@ -423,6 +427,7 @@ class LiveStore extends ChangeNotifier {
         selectedCartIndex = items.length - 1;
       }
     }
+    _syncActiveQueue();
     reprice();
   }
   void setDiscount(num value) { if (!editable) return; discount = value; reprice(); }

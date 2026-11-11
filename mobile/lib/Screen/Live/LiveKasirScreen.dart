@@ -197,33 +197,41 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   /// - If empty: drops focus (blur) so the next 'End' shortcut pays without mouse, like the old desktop app
   /// - If exact barcode/code match: puts that product in the cart immediately
   /// - If results exist: picks the currently selected/highlighted product
+  bool _submitting = false;
+
   /// - If nothing found: opens the product palette dialog
   Future<void> submitSearch() async {
-    timer?.cancel();
-    final text = search.text.trim();
-    if (text.isEmpty) {
-      searchFocus.unfocus();
-      return;
-    }
-    if (loading) await load();
-    if (!mounted || !widget.store.editable) return;
+    if (_submitting) return;
+    _submitting = true;
+    try {
+      timer?.cancel();
+      final text = search.text.trim();
+      if (text.isEmpty) {
+        searchFocus.unfocus();
+        return;
+      }
+      if (loading) await load();
+      if (!mounted || !widget.store.editable) return;
 
-    final exact = products.where((p) => p.barcode == text || p.code.toLowerCase() == text.toLowerCase()).toList();
-    if (exact.length == 1) {
-      addOne(exact.single);
-      search.clear();
-      searchFocus.requestFocus();
-      setState(() => selectedIndex = 0);
-      return;
-    }
+      final exact = products.where((p) => p.barcode == text || p.code.toLowerCase() == text.toLowerCase()).toList();
+      if (exact.length == 1) {
+        addOne(exact.single);
+        search.clear();
+        searchFocus.requestFocus();
+        setState(() => selectedIndex = 0);
+        return;
+      }
 
-    final lines = catalogLines;
-    if (lines.isNotEmpty) {
-      pickSelected();
-      return;
-    }
+      final lines = catalogLines;
+      if (lines.isNotEmpty) {
+        pickSelected();
+        return;
+      }
 
-    openPalette(initialQuery: text);
+      openPalette(initialQuery: text);
+    } finally {
+      _submitting = false;
+    }
   }
   /// F3: change the quantity of the line at the top of the cart, as on the desktop till.
   Future<void> editTopLine() async {
@@ -319,12 +327,12 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     search.text = code;
     await load();
     if (!mounted) return;
-    final exact = products.where((p) => p.barcode == code).toList();
+    final exact = products.where((p) => p.barcode == code || p.code.toLowerCase() == code.toLowerCase()).toList();
     final match = exact.length == 1 ? exact.single : products.length == 1 ? products.single : null;
     if (match == null) { showNotice(context, 'Barcode $code tidak ditemukan di katalog.', kind: NoticeKind.warning); return; }
     addOne(match);
     search.clear();
-    load();
+    await load();
   }
 
   /// The desktop's product palette (/): every product in every unit it is sold in, with
@@ -533,7 +541,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           unit: line.unit.name,
           inCart: widget.store.items.any((item) => item.product.id == line.product.id && item.unit.id == line.unit.id),
           selected: false,
-          onConfigure: !loading && widget.store.editable ? () {
+          onConfigure: widget.store.editable ? () {
             searchFocus.unfocus();
             qtyFocus.unfocus();
             setState(() => selectedIndex = index);
@@ -543,7 +551,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
               configure(line.product);
             }
           } : null,
-          onAdd: loading || !widget.store.editable ? null : () {
+          onAdd: !widget.store.editable ? null : () {
             searchFocus.unfocus();
             qtyFocus.unfocus();
             setState(() => selectedIndex = index);

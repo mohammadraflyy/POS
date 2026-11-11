@@ -167,13 +167,19 @@ class LiveCartPanel extends StatelessWidget {
             ],
           ),
         ),
-      for (var index = 0; index < store.items.length; index++)
-        _CartLine(
-          key: ValueKey(store.items[index].key),
-          store: store,
-          index: index,
-          isSelected: store.selectedCartIndex == index,
-        ),
+      if (store.items.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: Space.xl),
+          child: Text('Keranjang masih kosong. Scan barang atau pilih dari katalog.', style: TextStyle(color: muted)),
+        )
+      else
+        for (var index = 0; index < store.items.length; index++)
+          _CartLine(
+            key: ObjectKey(store.items[index]),
+            store: store,
+            index: index,
+            isSelected: store.selectedCartIndex == index,
+          ),
     ],
     footer: Column(mainAxisSize: MainAxisSize.min, children: [
       if (store.pricing) const LinearProgressIndicator(minHeight: 2),
@@ -272,8 +278,11 @@ class _CartLineState extends State<_CartLine> {
   Widget build(BuildContext context) {
     final item = widget.store.items[widget.index];
     final line = widget.store.price != null && widget.index < widget.store.price!.lines.length ? widget.store.price!.lines[widget.index] : null;
-    final price = line?['hargaJual'];
-    final discount = number(line?['diskon']) ?? 0;
+    final fallbackPrice = item.manualPrice ?? item.unit.price;
+    final price = line?['hargaJual'] ?? fallbackPrice;
+    final discount = number(line?['diskon']) ?? item.discount ?? 0;
+    final fallbackSubtotal = price != null ? (price * item.quantity - discount).round() : null;
+    final displaySubtotal = line?['subtotal'] ?? fallbackSubtotal;
     final priceSource = line?['priceSource']?.toString();
     final tierBadge = priceSource == 'price_tier' ? ' · grosir' : priceSource == 'manual' ? ' · manual' : '';
     // While editing an existing sale/bon, stock was already deducted so do not warn shortage
@@ -403,7 +412,7 @@ class _CartLineState extends State<_CartLine> {
               if (short) ...[const SizedBox(height: 2), Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))],
             ])),
             const SizedBox(width: Space.md),
-            Text(line == null ? '…' : rupiah(line['subtotal']), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
+            Text(displaySubtotal == null ? '…' : rupiah(displaySubtotal), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
             const SizedBox(width: Space.xs),
             if (widget.store.editable) ...[
               SizedBox(
