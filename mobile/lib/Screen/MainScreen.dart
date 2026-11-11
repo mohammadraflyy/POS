@@ -127,7 +127,10 @@ class _MainScreenState extends State<MainScreen> {
     return false;
   }
 
-  void _open(Menu menu) => setState(() => _menu = menu);
+  void _open(Menu menu) {
+    setState(() => _menu = menu);
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
 
   Future<void> _account() => showAccountPanel(context, app: widget.app, shopName: _shopName,
     onOpenSettings: menusFor(widget.app).contains(Menu.pengaturan) ? () => _open(Menu.pengaturan) : null);
@@ -183,6 +186,7 @@ class _MainScreenState extends State<MainScreen> {
           borderRadius: BorderRadius.circular(Corners.control),
         ) : null,
         child: InkWell(
+          canRequestFocus: false,
           borderRadius: BorderRadius.circular(Corners.control),
           onTap: () => _open(menu),
           child: SizedBox(
@@ -336,40 +340,34 @@ class _MainScreenState extends State<MainScreen> {
     final offline = widget.app.notice != null;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return FocusScope(
-      debugLabel: 'MainSidebarScope',
-      child: Shortcuts(
-        shortcuts: const <ShortcutActivator, Intent>{
-          SingleActivator(LogicalKeyboardKey.arrowDown): DirectionalFocusIntent(TraversalDirection.down),
-          SingleActivator(LogicalKeyboardKey.arrowUp): DirectionalFocusIntent(TraversalDirection.up),
-        },
-        child: Container(
-          width: compact ? 64 : 260,
-          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-          child: Column(children: [
-            _brand(compact: compact),
-            Expanded(child: ListView(padding: const EdgeInsets.only(bottom: Space.md), children: [
-              for (final (index, group) in groups.entries.indexed) ...[
-                if (compact)
-                  Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
-                else
-                  Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 20, Space.md, 8),
-                    child: Text(
-                      group.key.toUpperCase(),
-                      style: TextStyle(
-                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                      ),
-                    )),
-                for (final menu in group.value) _navRow(menu, compact: compact),
-              ],
-            ])),
-            const Divider(indent: 12, endIndent: 12),
-            Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
-              borderRadius: BorderRadius.circular(Corners.control), onTap: _account,
-              child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 10), child: Row(
+    return Container(
+      width: compact ? 64 : 260,
+      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      child: Column(children: [
+        _brand(compact: compact),
+        Expanded(child: ListView(padding: const EdgeInsets.only(bottom: Space.md), children: [
+          for (final (index, group) in groups.entries.indexed) ...[
+            if (compact)
+              Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
+            else
+              Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 20, Space.md, 8),
+                child: Text(
+                  group.key.toUpperCase(),
+                  style: TextStyle(
+                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                  ),
+                )),
+            for (final menu in group.value) _navRow(menu, compact: compact),
+          ],
+        ])),
+        const Divider(indent: 12, endIndent: 12),
+        Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
+          canRequestFocus: false,
+          borderRadius: BorderRadius.circular(Corners.control), onTap: _account,
+          child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 10), child: Row(
                 mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
                 _Initial(widget.app.userName),
                 if (!compact) ...[
@@ -388,9 +386,7 @@ class _MainScreenState extends State<MainScreen> {
               ])),
             ))),
           ]),
-        ),
-      ),
-    );
+        );
   }
 
   @override

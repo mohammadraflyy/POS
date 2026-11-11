@@ -277,7 +277,14 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         return false;
       }
       if (!isOutsideCatalog) {
-        action = () => moveSelection(-1);
+        if (selectedIndex == 0) {
+          action = () {
+            searchFocus.requestFocus();
+            search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
+          };
+        } else {
+          action = () => moveSelection(-1);
+        }
       }
     } else if (key == LogicalKeyboardKey.enter) {
       final primaryCtx = FocusManager.instance.primaryFocus?.context;
