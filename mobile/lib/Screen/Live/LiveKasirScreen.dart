@@ -302,20 +302,6 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       widget.store.selectCartIndex(null);
       searchFocus.requestFocus();
       return true;
-    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowDown) {
-      if (catalogLines.isNotEmpty) {
-        moveSelection(1);
-        return true;
-      }
-    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowUp) {
-      if (selectedIndex > 0) {
-        moveSelection(-1);
-        return true;
-      } else {
-        searchFocus.requestFocus();
-        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
-        return true;
-      }
     } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowRight) {
       if (widget.store.items.isNotEmpty) {
         widget.store.selectCartIndex(0);
@@ -580,7 +566,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           price: rupiah(line.unit.price),
           unit: line.unit.name,
           inCart: widget.store.items.any((item) => item.product.id == line.product.id && item.unit.id == line.unit.id),
-          selected: isSelected,
+          selected: false,
           onConfigure: widget.store.editable ? () {
             searchFocus.unfocus();
             qtyFocus.unfocus();

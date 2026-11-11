@@ -39,9 +39,7 @@ class ProductRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final rowBg = selected
-        ? (isDark ? const Color(0xFF0C4A6E).withValues(alpha: 0.35) : const Color(0xFFF0F9FF))
-        : surface;
+    final rowBg = surface;
     final avatarBg = isDark ? raised : const Color(0xFFF1F5F9);
     final avatarFg = isDark ? ink : const Color(0xFF475569);
 
@@ -55,9 +53,6 @@ class ProductRow extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               border: Border(
-                left: selected
-                    ? BorderSide(color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7), width: 3)
-                    : BorderSide.none,
                 bottom: BorderSide(color: ruleColor, width: 1),
               ),
             ),
