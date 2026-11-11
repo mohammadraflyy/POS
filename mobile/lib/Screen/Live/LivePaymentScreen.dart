@@ -319,7 +319,7 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       const SizedBox(height: Space.lg),
       SizedBox(height: 44, child: FilledButton.icon(onPressed: sending || !store.canCheckout ? null : submit,
         icon: sending ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : const Icon(Icons.check, size: 18),
-        label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  End / Alt+S' : ''}'))),
+        label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  Alt+S' : ''}'))),
     ]));
 
     return PopScope(canPop: !sending, child: Scaffold(

@@ -104,20 +104,23 @@ class ProductRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         if (inCart) ...[
                           Icon(Icons.check_circle_outline, size: 12, color: isDark ? const Color(0xFF34D399) : successColor),
                           const SizedBox(width: 4),
                         ],
-                        Text(
-                          inCart ? '$code · di keranjang' : code,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: inCart ? (isDark ? const Color(0xFF34D399) : successColor) : muted,
-                            fontSize: 12,
-                            fontFamily: monoFamily,
-                            fontWeight: inCart ? FontWeight.w500 : FontWeight.w400,
+                        Flexible(
+                          child: Text(
+                            inCart ? '$code · di keranjang' : code,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: inCart ? (isDark ? const Color(0xFF34D399) : successColor) : muted,
+                              fontSize: 12,
+                              fontFamily: monoFamily,
+                              fontWeight: inCart ? FontWeight.w500 : FontWeight.w400,
+                            ),
                           ),
                         ),
                       ],
