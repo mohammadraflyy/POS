@@ -9,6 +9,7 @@ import '../lib/state/live_store.dart';
 import '../lib/Screen/Live/LiveKasirScreen.dart';
 import '../lib/Screen/Live/LivePaymentScreen.dart';
 import '../lib/Widgets/product_row.dart';
+import '../lib/Widgets/ui.dart';
 import 'live_store_test.dart' show MemoryPending;
 
 /// The till's search box (Jumlah sits before it).
@@ -303,6 +304,59 @@ void main() {
 
     expect(find.text('Cetak struk #41?'), findsNothing);
     expect(store.items, isEmpty);
+    await finish(tester);
+  });
+
+  testWidgets('arrow keys and Enter do nothing in catalog when focus is in SidebarArea', (tester) async {
+    final sidebarFocus = FocusNode();
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
+    guard = MutationGuard(MemoryPending()); await guard.load();
+    store = LiveStore(BusinessApi((path, {required method, query, body}) async {
+      if (path == '/v1/catalog/search') return {'data': [{'id': 1, 'namaItem': 'Kopi Sachet', 'kodeItem': 'KOPI1', 'satuan': 'PCS', 'stok': 50, 'hargaJual': 1500,
+        'units': [{'productUnitId': 7, 'satuan': 'RENTENG', 'konversi': 10, 'hargaJual': 14000}]}], 'currentPage': 1, 'lastPage': 1};
+      if (path == '/v1/customers') return {'names': <String>['Bu Siti']};
+      if (path == '/v1/carts/price') return {'lines': [], 'subtotal': 0, 'diskon': 0, 'total': 0};
+      throw StateError('Unexpected request: $path');
+    }), guard);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: buildTheme(),
+      home: Scaffold(
+        body: Row(
+          children: [
+            SidebarArea(
+              child: Focus(
+                focusNode: sidebarFocus,
+                child: const Text('Sidebar Item'),
+              ),
+            ),
+            Expanded(child: LiveKasirScreen(store: store)),
+          ],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Focus the sidebar item
+    sidebarFocus.requestFocus();
+    await tester.pumpAndSettle();
+    expect(sidebarFocus.hasFocus, isTrue);
+
+    // Press ArrowDown and Enter while sidebar has focus
+    final countBefore = store.items.length;
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    // Nothing added, selection did not trigger
+    expect(store.items.length, countBefore);
+
+    sidebarFocus.dispose();
     await finish(tester);
   });
 }

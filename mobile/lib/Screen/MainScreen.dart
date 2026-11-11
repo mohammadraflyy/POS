@@ -336,51 +336,60 @@ class _MainScreenState extends State<MainScreen> {
     final offline = widget.app.notice != null;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      width: compact ? 64 : 260,
-      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-      child: Column(children: [
-        _brand(compact: compact),
-        Expanded(child: ListView(padding: const EdgeInsets.only(bottom: Space.md), children: [
-          for (final (index, group) in groups.entries.indexed) ...[
-            if (compact)
-              Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
-            else
-              Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 20, Space.md, 8),
-                child: Text(
-                  group.key.toUpperCase(),
-                  style: TextStyle(
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
-                  ),
-                )),
-            for (final menu in group.value) _navRow(menu, compact: compact),
-          ],
-        ])),
-        const Divider(indent: 12, endIndent: 12),
-        Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
-          borderRadius: BorderRadius.circular(Corners.control), onTap: _account,
-          child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 10), child: Row(
-            mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
-            _Initial(widget.app.userName),
-            if (!compact) ...[
-              const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(widget.app.userName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                Row(children: [
-                  Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: widget.app.isDemo ? muted : offline ? errorColor : successColor)),
-                  const SizedBox(width: 6),
-                  Flexible(child: Text(widget.app.isDemo ? 'Demo' : offline ? 'Server tidak terjangkau' : '${_roleLabel(widget.app.role)} · terhubung',
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: muted))),
-                ]),
+    return FocusScope(
+      debugLabel: 'MainSidebarScope',
+      child: Shortcuts(
+        shortcuts: const <ShortcutActivator, Intent>{
+          SingleActivator(LogicalKeyboardKey.arrowDown): DirectionalFocusIntent(TraversalDirection.down),
+          SingleActivator(LogicalKeyboardKey.arrowUp): DirectionalFocusIntent(TraversalDirection.up),
+        },
+        child: Container(
+          width: compact ? 64 : 260,
+          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+          child: Column(children: [
+            _brand(compact: compact),
+            Expanded(child: ListView(padding: const EdgeInsets.only(bottom: Space.md), children: [
+              for (final (index, group) in groups.entries.indexed) ...[
+                if (compact)
+                  Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
+                else
+                  Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 20, Space.md, 8),
+                    child: Text(
+                      group.key.toUpperCase(),
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
+                    )),
+                for (final menu in group.value) _navRow(menu, compact: compact),
+              ],
+            ])),
+            const Divider(indent: 12, endIndent: 12),
+            Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
+              borderRadius: BorderRadius.circular(Corners.control), onTap: _account,
+              child: Padding(padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10, vertical: 10), child: Row(
+                mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
+                _Initial(widget.app.userName),
+                if (!compact) ...[
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(widget.app.userName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    Row(children: [
+                      Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: widget.app.isDemo ? muted : offline ? errorColor : successColor)),
+                      const SizedBox(width: 6),
+                      Flexible(child: Text(widget.app.isDemo ? 'Demo' : offline ? 'Server tidak terjangkau' : '${_roleLabel(widget.app.role)} · terhubung',
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: muted))),
+                    ]),
+                  ])),
+                  Icon(Icons.unfold_more, size: 16, color: muted),
+                ],
               ])),
-              Icon(Icons.unfold_more, size: 16, color: muted),
-            ],
-          ])),
-        ))),
-      ]),
+            ))),
+          ]),
+        ),
+      ),
     );
   }
 
@@ -404,10 +413,10 @@ class _MainScreenState extends State<MainScreen> {
 
     if (wide) {
       return Scaffold(body: SafeArea(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _sidebar(widget.app.isDemo ? primaryMenus : menus),
+        SidebarArea(child: _sidebar(widget.app.isDemo ? primaryMenus : menus)),
         const VerticalDivider(width: 1),
         Expanded(child: Column(children: [
-          _desktopHeader(),
+          HeaderArea(child: _desktopHeader()),
           if (updateBanner != null) updateBanner,
           if (demoBanner != null) demoBanner,
           Expanded(child: workspace),

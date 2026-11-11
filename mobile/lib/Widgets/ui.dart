@@ -9,6 +9,22 @@ void showError(BuildContext context, Object error) {
   showNotice(context, errorText(error), kind: NoticeKind.error);
 }
 
+/// Marker widget to identify when focus is inside the application sidebar.
+class SidebarArea extends StatelessWidget {
+  const SidebarArea({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => child;
+}
+
+/// Marker widget to identify when focus is inside the application desktop header.
+class HeaderArea extends StatelessWidget {
+  const HeaderArea({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => child;
+}
+
 /// A status mark inside a row or beside a value: a pale tint with dark text of the same
 /// hue and subtle matching border. [color] picks the pair (success, error, warning); anything else is neutral.
 class Pill extends StatelessWidget {

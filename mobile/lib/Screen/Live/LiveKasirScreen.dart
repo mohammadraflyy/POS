@@ -94,13 +94,15 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   }
 
   bool get isOutsideCatalog {
-    if (searchFocus.hasFocus || qtyFocus.hasFocus) return true;
     final primary = FocusManager.instance.primaryFocus;
     final context = primary?.context;
     if (context != null) {
+      if (context.findAncestorWidgetOfExactType<SidebarArea>() != null) return true;
+      if (context.findAncestorWidgetOfExactType<HeaderArea>() != null) return true;
       if (context.findAncestorWidgetOfExactType<LiveCartPanel>() != null) return true;
       if (context.findAncestorWidgetOfExactType<EditableText>() != null) return true;
     }
+    if (searchFocus.hasFocus || qtyFocus.hasFocus) return true;
     return false;
   }
   /// The quantity typed in Jumlah; a blank or unreadable entry means 1.
@@ -258,12 +260,33 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       action = pay;
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
-    } else if (!isOutsideCatalog && key == LogicalKeyboardKey.arrowDown) {
-      action = () => moveSelection(1);
-    } else if (!isOutsideCatalog && key == LogicalKeyboardKey.arrowUp) {
-      action = () => moveSelection(-1);
-    } else if (!isOutsideCatalog && key == LogicalKeyboardKey.enter) {
-      action = pickSelected;
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      final primaryCtx = FocusManager.instance.primaryFocus?.context;
+      if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
+        return false;
+      }
+      if (searchFocus.hasFocus) {
+        searchFocus.unfocus();
+        action = () => moveSelection(0);
+      } else if (!isOutsideCatalog) {
+        action = () => moveSelection(1);
+      }
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      final primaryCtx = FocusManager.instance.primaryFocus?.context;
+      if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
+        return false;
+      }
+      if (!isOutsideCatalog) {
+        action = () => moveSelection(-1);
+      }
+    } else if (key == LogicalKeyboardKey.enter) {
+      final primaryCtx = FocusManager.instance.primaryFocus?.context;
+      if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
+        return false;
+      }
+      if (!isOutsideCatalog) {
+        action = pickSelected;
+      }
     } else if (alt && key == LogicalKeyboardKey.keyH) {
       action = () {
         if (widget.store.items.isNotEmpty) {
