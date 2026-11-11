@@ -39,12 +39,14 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   };
   Timer? timer;
   List<LiveProduct> products = [];
+  int selectedIndex = 0;
+  final catalogScroll = ScrollController();
   bool loading = true;
   String? error;
   int page = 1, lastPage = 1, serial = 0, seenCatalogRevision = 0;
   @override void initState() { super.initState(); seenCatalogRevision = widget.store.catalogRevision; widget.store.addListener(watchStock); HardwareKeyboard.instance.addHandler(handleKey); load(); }
   void watchStock() { if (mounted && seenCatalogRevision != widget.store.catalogRevision) { seenCatalogRevision = widget.store.catalogRevision; load(target: page); } }
-  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); widget.store.removeListener(watchStock); timer?.cancel(); search.dispose(); searchFocus.dispose(); qty.dispose(); qtyFocus.dispose(); super.dispose(); }
+  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); widget.store.removeListener(watchStock); timer?.cancel(); search.dispose(); searchFocus.dispose(); qty.dispose(); qtyFocus.dispose(); catalogScroll.dispose(); super.dispose(); }
   /// The quantity typed in Jumlah; a blank or unreadable entry means 1.
   num get enteredQty {
     try { final value = inputQty(qty.text.trim().isEmpty ? '1' : qty.text); return value > 0 ? value : 1; }
@@ -104,14 +106,63 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       showError(context, e);
     }
   }
-  /// Enter in the search box: a barcode scanner types the code then Enter, so a single
-  /// match goes straight into the cart and the box clears for the next scan.
+  void moveSelection(int delta) {
+    if (products.isEmpty) return;
+    setState(() {
+      selectedIndex = (selectedIndex + delta).clamp(0, products.length - 1);
+    });
+    if (catalogScroll.hasClients) {
+      final target = selectedIndex * 62.0;
+      final view = catalogScroll.position.viewportDimension;
+      final offset = catalogScroll.offset;
+      if (target < offset) {
+        catalogScroll.jumpTo(target);
+      } else if (target + 62 > offset + view) {
+        catalogScroll.jumpTo(target + 62 - view);
+      }
+    }
+  }
+
+  void pickSelected() {
+    if (products.isEmpty || !widget.store.editable) return;
+    final idx = selectedIndex.clamp(0, products.length - 1);
+    final p = products[idx];
+    addOne(p);
+    search.clear();
+    searchFocus.requestFocus();
+    setState(() => selectedIndex = 0);
+  }
+
+  /// Enter in the search box:
+  /// - If empty: drops focus (blur) so the next 'End' shortcut pays without mouse, like the old desktop app
+  /// - If exact barcode/code match: puts that product in the cart immediately
+  /// - If results exist: picks the currently selected/highlighted product
+  /// - If nothing found: opens the product palette dialog
   Future<void> submitSearch() async {
     timer?.cancel();
-    await load();
-    if (!mounted || products.length != 1 || !widget.store.editable) return;
-    addOne(products.single);
-    search.clear(); searchFocus.requestFocus();
+    final text = search.text.trim();
+    if (text.isEmpty) {
+      searchFocus.unfocus();
+      return;
+    }
+    if (loading) await load();
+    if (!mounted || !widget.store.editable) return;
+
+    final exact = products.where((p) => p.barcode == text || p.code.toLowerCase() == text.toLowerCase()).toList();
+    if (exact.length == 1) {
+      addOne(exact.single);
+      search.clear();
+      searchFocus.requestFocus();
+      setState(() => selectedIndex = 0);
+      return;
+    }
+
+    if (products.isNotEmpty) {
+      pickSelected();
+      return;
+    }
+
+    openPalette(initialQuery: text);
   }
   /// F3: change the quantity of the line at the top of the cart, as on the desktop till.
   Future<void> editTopLine() async {
@@ -139,7 +190,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     if (key == LogicalKeyboardKey.pageUp) {
       action = () { qtyFocus.requestFocus(); qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length); };
     } else if (key == LogicalKeyboardKey.slash && !typing) {
-      action = openPalette;
+      action = () => openPalette();
     } else if (alt && key == LogicalKeyboardKey.keyP) {
       action = pickCustomer;
     } else if (key == LogicalKeyboardKey.f1 || key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown) {
@@ -148,6 +199,12 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       action = pay;
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
+    } else if (!typing && key == LogicalKeyboardKey.arrowDown) {
+      action = () => moveSelection(1);
+    } else if (!typing && key == LogicalKeyboardKey.arrowUp) {
+      action = () => moveSelection(-1);
+    } else if (!typing && key == LogicalKeyboardKey.enter) {
+      action = pickSelected;
     } else if (alt && key == LogicalKeyboardKey.keyH) {
       action = () {
         if (widget.store.items.isNotEmpty) {
@@ -189,10 +246,11 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
 
   /// The desktop's product palette (/): every product in every unit it is sold in, with
   /// price and stock; the pick goes in at the Jumlah typed.
-  Future<void> openPalette() async {
+  Future<void> openPalette({String initialQuery = ''}) async {
     if (!widget.store.editable) return;
     final picked = await showKeyboardPicker<(LiveProduct, LiveUnit)>(context,
       title: 'Cari barang', hint: 'Nama, kode, atau barcode', description: 'Masuk ke keranjang sebanyak ${quantityText(enteredQty)}',
+      initialQuery: initialQuery,
       emptyText: 'Barang tidak ditemukan.',
       load: (q) async {
         final rows = jsonRows(await widget.store.api.catalog(q, 1)).map(LiveProduct.fromJson);
@@ -237,7 +295,12 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       final data = await widget.store.api.catalog(search.text.trim(), target);
       final rows = jsonRows(data).map(LiveProduct.fromJson).toList();
       if (!mounted || request != serial) return;
-      setState(() { products = rows; page = (number(data['currentPage']) ?? target).toInt(); lastPage = (number(data['lastPage']) ?? target).toInt(); });
+      setState(() {
+        products = rows;
+        page = (number(data['currentPage']) ?? target).toInt();
+        lastPage = (number(data['lastPage']) ?? target).toInt();
+        selectedIndex = products.isEmpty ? 0 : selectedIndex.clamp(0, products.length - 1);
+      });
     } catch (e) { if (mounted && request == serial) { setState(() => error = e.toString()); showError(context, e); } }
     finally { if (mounted && request == serial) setState(() => loading = false); }
   }
@@ -269,11 +332,46 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           onTap: () => qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length),
           decoration: const InputDecoration(prefixText: '× ', hintText: '1', helperText: null, labelText: 'Jumlah'))),
         const SizedBox(width: Space.sm),
-        Expanded(child: TextField(controller: search, textInputAction: TextInputAction.search, onChanged: (_) {
-          serial++; timer?.cancel(); setState(() { loading = true; error = null; });
-          timer = Timer(const Duration(milliseconds: 350), () => load());
-        }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(),
-          decoration: InputDecoration(hintText: isDesktop ? 'Cari nama, kode, atau scan barcode' : 'Cari barang', prefixIcon: const Icon(Icons.search, size: 20)))),
+        Expanded(child: Focus(
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+              moveSelection(1);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+              moveSelection(-1);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.pageDown) {
+              moveSelection(5);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.pageUp) {
+              moveSelection(-5);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.slash && search.text.isEmpty) {
+              openPalette();
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+              submitSearch();
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.escape) {
+              search.clear();
+              searchFocus.unfocus();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: TextField(controller: search, textInputAction: TextInputAction.search, onChanged: (_) {
+            serial++; timer?.cancel(); setState(() { loading = true; error = null; selectedIndex = 0; });
+            timer = Timer(const Duration(milliseconds: 350), () => load());
+          }, focusNode: searchFocus, autofocus: isDesktop, onSubmitted: (_) => submitSearch(),
+            decoration: InputDecoration(hintText: isDesktop ? 'Cari nama, kode, atau scan barcode' : 'Cari barang', prefixIcon: const Icon(Icons.search, size: 20))),
+        )),
         const SizedBox(width: Space.xs),
         IconButton.filled(
           onPressed: scan,
@@ -290,7 +388,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
       ]),
     );
-    final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+H tahan/ganti antrean · Alt+T antrean baru · Alt+K kosongkan',
+    final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('↑↓ pilih barang · Enter ambil · PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+H antrean · Alt+T antrean baru · Alt+K kosongkan',
       style: TextStyle(color: muted, fontSize: 12))) : const SizedBox.shrink();
     final queueTabs = widget.store.queues.length > 1 ? Container(
       padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.sm, Space.xs),
@@ -339,17 +437,24 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         ),
       ),
     ) : null;
-    final list = CustomScrollView(slivers: [
+    final list = CustomScrollView(controller: catalogScroll, slivers: [
       if (loading) const SliverToBoxAdapter(child: LinearProgressIndicator(minHeight: 2)),
       if (error != null) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: EmptyPanel(icon: Icons.wifi_off, title: 'Katalog belum dimuat', message: error!, action: OutlinedButton(onPressed: () => load(), child: const Text('Coba lagi')))))
-      else if (products.isEmpty && !loading) SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(Space.lg), child: Text('Tidak ada barang yang cocok. Coba kata lain atau scan barcodenya.', style: TextStyle(color: muted))))
+      else if (products.isEmpty && !loading) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: Text('Tidak ada barang yang cocok. Coba kata lain atau scan barcodenya.', style: TextStyle(color: muted))))
       else SliverList(delegate: SliverChildBuilderDelegate((context, index) {
         final p = products[index];
-        return ProductRow(name: p.name, code: p.code, stock: quantityText(p.stock),
-          price: rupiah(p.units.first.price), unit: p.units.first.name,
+        final isSelected = isDesktop && index == selectedIndex;
+        return ProductRow(
+          name: p.name,
+          code: p.code,
+          stock: quantityText(p.stock),
+          price: rupiah(p.units.first.price),
+          unit: p.units.first.name,
           inCart: widget.store.items.any((item) => item.product.id == p.id),
-          onConfigure: !loading && widget.store.editable ? () => configure(p) : null,
-          onAdd: loading || !widget.store.editable ? null : () => addOne(p));
+          selected: isSelected,
+          onConfigure: !loading && widget.store.editable ? () { setState(() => selectedIndex = index); configure(p); } : null,
+          onAdd: loading || !widget.store.editable ? null : () { setState(() => selectedIndex = index); addOne(p); },
+        );
       }, childCount: products.length)),
       if (lastPage > 1) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Row(children: [
         Text('Halaman $page dari $lastPage', style: TextStyle(color: muted, fontSize: 13)),

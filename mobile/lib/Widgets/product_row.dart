@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import 'admin.dart' show isDesktop;
 
 /// One catalog line on the till: rounded avatar initials, name and code on the left,
 /// tabular digits and unit on the right, stock indicator, and a tactile add button.
@@ -16,11 +17,12 @@ class ProductRow extends StatelessWidget {
     required this.onAdd,
     this.inCart = false,
     this.available = true,
+    this.selected = false,
   });
 
   final String name, code, stock, price, unit;
   final VoidCallback? onConfigure, onAdd;
-  final bool inCart, available;
+  final bool inCart, available, selected;
 
   String _initials(String text) {
     final words = text.trim().split(RegExp(r'\s+'));
@@ -37,18 +39,24 @@ class ProductRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final rowBg = selected
+        ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFE0F2FE))
+        : (inCart ? (isDark ? raised.withValues(alpha: 0.5) : const Color(0xFFF8FAFC)) : surface);
+    final indicatorColor = selected
+        ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7))
+        : (inCart ? primaryInk : Colors.transparent);
     final avatarBg = isDark ? raised : const Color(0xFFF1F5F9);
     final avatarFg = isDark ? ink : const Color(0xFF475569);
 
     return Material(
-      color: inCart ? (isDark ? raised.withValues(alpha: 0.5) : const Color(0xFFF8FAFC)) : surface,
+      color: rowBg,
       child: InkWell(
         onTap: onConfigure,
         child: Container(
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(color: ruleColor),
-              left: BorderSide(color: inCart ? primaryInk : Colors.transparent, width: 3.5),
+              bottom: BorderSide(color: selected ? indicatorColor.withValues(alpha: 0.4) : ruleColor),
+              left: BorderSide(color: indicatorColor, width: selected ? 4.0 : 3.5),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: 11),
@@ -144,12 +152,42 @@ class ProductRow extends StatelessWidget {
               ),
               const SizedBox(width: Space.xs),
 
+              // Keyboard Enter Hint when selected on Desktop
+              if (selected && isDesktop) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  margin: const EdgeInsets.only(right: Space.xs),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFFBAE6FD),
+                    borderRadius: BorderRadius.circular(Corners.control),
+                    border: Border.all(color: indicatorColor.withValues(alpha: 0.6)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.keyboard_return, size: 12, color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1)),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Enter',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               // Tactile Add Button (+) matching mockup
               IconButton(
                 tooltip: 'Tambah $name',
                 onPressed: available ? onAdd : null,
                 style: IconButton.styleFrom(
-                  backgroundColor: available ? primaryInk : (isDark ? raised : const Color(0xFFE2E8F0)),
+                  backgroundColor: available
+                      ? (selected ? (isDark ? const Color(0xFF0284C7) : primaryInk) : primaryInk)
+                      : (isDark ? raised : const Color(0xFFE2E8F0)),
                   foregroundColor: available ? onPrimary : muted,
                   disabledBackgroundColor: isDark ? raised : const Color(0xFFF1F5F9),
                   disabledForegroundColor: muted,

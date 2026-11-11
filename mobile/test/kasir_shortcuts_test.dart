@@ -158,4 +158,29 @@ void main() {
     expect(tester.widget<TextField>(qtyField).focusNode!.hasFocus, isTrue);
     await finish(tester);
   });
+
+  testWidgets('arrow keys move selection in catalog and Enter picks product into cart', (tester) async {
+    await openTill(tester);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+
+    // With focus outside text field, Enter adds the selected product
+    final initialQty = store.items.single.quantity;
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    expect(store.items.single.quantity, initialQty + 1);
+
+    // Typing in search then pressing Enter picks the selected match
+    await tester.tap(find.byWidget(searchField(tester)));
+    await tester.enterText(find.byWidget(searchField(tester)), 'Kopi');
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    expect(store.items.single.quantity, initialQty + 2);
+
+    await finish(tester);
+  });
 }

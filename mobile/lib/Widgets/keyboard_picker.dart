@@ -21,15 +21,16 @@ Future<T?> showKeyboardPicker<T>(BuildContext context, {
   required String title,
   required String hint,
   String? description,
+  String initialQuery = '',
   required Future<List<PickerOption<T>>> Function(String query) load,
   PickerOption<T>? Function(String query, List<PickerOption<T>> results)? extra,
   String emptyText = 'Tidak ada yang cocok.',
 }) => showDialog<T>(context: context, builder: (_) => _KeyboardPicker<T>(
-  title: title, hint: hint, description: description, load: load, extra: extra, emptyText: emptyText));
+  title: title, hint: hint, description: description, initialQuery: initialQuery, load: load, extra: extra, emptyText: emptyText));
 
 class _KeyboardPicker<T> extends StatefulWidget {
-  const _KeyboardPicker({required this.title, required this.hint, required this.description, required this.load, required this.extra, required this.emptyText});
-  final String title, hint, emptyText;
+  const _KeyboardPicker({required this.title, required this.hint, required this.description, this.initialQuery = '', required this.load, required this.extra, required this.emptyText});
+  final String title, hint, emptyText, initialQuery;
   final String? description;
   final Future<List<PickerOption<T>>> Function(String query) load;
   final PickerOption<T>? Function(String query, List<PickerOption<T>> results)? extra;
@@ -37,7 +38,7 @@ class _KeyboardPicker<T> extends StatefulWidget {
 }
 
 class _KeyboardPickerState<T> extends State<_KeyboardPicker<T>> {
-  final query = TextEditingController();
+  late final query = TextEditingController(text: widget.initialQuery);
   final scroll = ScrollController();
   List<PickerOption<T>> options = [];
   int selected = 0, serial = 0;
@@ -45,7 +46,13 @@ class _KeyboardPickerState<T> extends State<_KeyboardPicker<T>> {
   String? error;
   Timer? timer;
 
-  @override void initState() { super.initState(); search(); }
+  @override void initState() {
+    super.initState();
+    if (widget.initialQuery.isNotEmpty) {
+      query.selection = TextSelection(baseOffset: 0, extentOffset: query.text.length);
+    }
+    search();
+  }
   @override void dispose() { timer?.cancel(); query.dispose(); scroll.dispose(); super.dispose(); }
 
   Future<void> search() async {
@@ -100,10 +107,24 @@ class _KeyboardPickerState<T> extends State<_KeyboardPicker<T>> {
           Text(widget.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
           if (widget.description != null) Padding(padding: const EdgeInsets.only(top: 2), child: Text(widget.description!, style: TextStyle(color: muted, fontSize: 13))),
           const SizedBox(height: Space.md),
-          TextField(controller: query, autofocus: true, textInputAction: TextInputAction.go,
-            onChanged: (_) { timer?.cancel(); timer = Timer(const Duration(milliseconds: 250), search); },
-            onSubmitted: (_) async { timer?.cancel(); if (loading) await search(); pick(); },
-            decoration: InputDecoration(hintText: widget.hint, prefixIcon: const Icon(Icons.search, size: 20))),
+          Focus(
+            onKeyEvent: (node, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.arrowDown || event.logicalKey == LogicalKeyboardKey.pageDown) {
+                move(1);
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.arrowUp || event.logicalKey == LogicalKeyboardKey.pageUp) {
+                move(-1);
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: TextField(controller: query, autofocus: true, textInputAction: TextInputAction.go,
+              onChanged: (_) { timer?.cancel(); timer = Timer(const Duration(milliseconds: 250), search); },
+              onSubmitted: (_) async { timer?.cancel(); if (loading) await search(); pick(); },
+              decoration: InputDecoration(hintText: widget.hint, prefixIcon: const Icon(Icons.search, size: 20))),
+          ),
         ])),
         if (loading) const LinearProgressIndicator(minHeight: 2) else const Divider(),
         Flexible(child: error != null
