@@ -381,11 +381,36 @@ class _DiscountDialog extends StatefulWidget {
   @override State<_DiscountDialog> createState() => _DiscountDialogState();
 }
 class _DiscountDialogState extends State<_DiscountDialog> {
-  late final controller = TextEditingController(text: widget.initial.toString());
+  late final controller = TextEditingController(text: widget.initial == 0 ? '' : widget.initial.toString());
   String? error;
   @override void dispose() { controller.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) => AlertDialog(title: const Text('Diskon nota'), content: TextField(controller: controller, keyboardType: TextInputType.text, decoration: InputDecoration(labelText: 'Rupiah atau %', helperText: 'Contoh: 5000 atau 10%', errorText: error)),
-    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')), FilledButton(onPressed: () {
-      try { Navigator.pop(context, inputDiscount(controller.text, baseAmount: widget.subtotal)); } catch (_) { setState(() => error = 'Masukkan nominal rupiah atau persen (0-100%) yang valid.'); showError(context, error!); }
-    }, child: const Text('Terapkan'))]);
+
+  void _apply() {
+    if (controller.text.trim().isEmpty) {
+      Navigator.pop(context, 0);
+      return;
+    }
+    try {
+      Navigator.pop(context, inputDiscount(controller.text, baseAmount: widget.subtotal));
+    } catch (_) {
+      setState(() => error = 'Masukkan nominal rupiah atau persen (0-100%) yang valid.');
+      showError(context, error!);
+    }
+  }
+
+  @override Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Diskon nota'),
+    content: TextField(
+      controller: controller,
+      autofocus: true,
+      keyboardType: TextInputType.text,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _apply(),
+      decoration: InputDecoration(labelText: 'Rupiah atau %', helperText: 'Contoh: 5000 atau 10%', errorText: error),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+      FilledButton(onPressed: _apply, child: const Text('Terapkan')),
+    ],
+  );
 }

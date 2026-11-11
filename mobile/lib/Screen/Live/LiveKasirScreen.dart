@@ -305,7 +305,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     finally { if (mounted && request == serial) setState(() => loading = false); }
   }
   Future<void> configure(LiveProduct p) async {
-    final item = await editLiveItem(context, p);
+    final item = await editLiveItem(context, p, defaultQuantity: enteredQty);
     if (!mounted || item == null) return;
     try { widget.store.put(item); } catch (e) { showError(context, e); }
   }
@@ -452,7 +452,14 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           unit: p.units.first.name,
           inCart: widget.store.items.any((item) => item.product.id == p.id),
           selected: isSelected,
-          onConfigure: !loading && widget.store.editable ? () { setState(() => selectedIndex = index); configure(p); } : null,
+          onConfigure: !loading && widget.store.editable ? () {
+            setState(() => selectedIndex = index);
+            if (isDesktop) {
+              addOne(p);
+            } else {
+              configure(p);
+            }
+          } : null,
           onAdd: loading || !widget.store.editable ? null : () { setState(() => selectedIndex = index); addOne(p); },
         );
       }, childCount: products.length)),

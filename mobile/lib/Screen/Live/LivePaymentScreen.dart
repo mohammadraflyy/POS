@@ -66,6 +66,7 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
   String method = 'tunai';
   final customer = TextEditingController(), paid = TextEditingController();
   final charge = TextEditingController(), note = TextEditingController();
+  final customerFocus = FocusNode(), paidFocus = FocusNode();
   List<String> names = [];
   String? error, customerError;
   bool sending = false;
@@ -102,23 +103,48 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
     widget.store.setDetails(date: DateTime(day.year, day.month, day.day, time?.hour ?? current.hour, time?.minute ?? current.minute));
   }
 
-  /// The desktop's payment keys: Alt+T/B/Q/R pick the method, Alt+S saves, Esc goes back
-  /// to the till. Only while this screen is in front.
+  /// The desktop's payment keys: Alt+T/B/Q/R pick the method, Alt+U sets exact cash (uang pas),
+  /// Alt+S or Enter saves, Esc goes back to the till.
   bool handleKey(KeyEvent event) {
     if (event is! KeyDownEvent || !mounted || sending || ModalRoute.of(context)?.isCurrent == false) return false;
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.escape) { Navigator.of(context).maybePop(); return true; }
-    if (!HardwareKeyboard.instance.isAltPressed) return false;
-    final picked = {LogicalKeyboardKey.keyT: 'tunai', LogicalKeyboardKey.keyB: 'bon', LogicalKeyboardKey.keyQ: 'qris', LogicalKeyboardKey.keyR: 'transfer'}[key];
-    if (picked != null) { setState(() => method = picked); return true; }
-    if (key == LogicalKeyboardKey.keyS) { if (widget.store.canCheckout) submit(); return true; }
+    final alt = HardwareKeyboard.instance.isAltPressed;
+    if (alt) {
+      final picked = {
+        LogicalKeyboardKey.keyT: 'tunai',
+        LogicalKeyboardKey.keyB: 'bon',
+        LogicalKeyboardKey.keyQ: 'qris',
+        LogicalKeyboardKey.keyR: 'transfer',
+      }[key];
+      if (picked != null) {
+        setState(() => method = picked);
+        return true;
+      }
+      if (key == LogicalKeyboardKey.keyU && _total != null) {
+        setState(() => paid.text = _plain(_total!));
+        paidFocus.requestFocus();
+        paid.selection = TextSelection(baseOffset: 0, extentOffset: paid.text.length);
+        return true;
+      }
+      if (key == LogicalKeyboardKey.keyS) {
+        if (widget.store.canCheckout) submit();
+        return true;
+      }
+    }
+    // Enter / End anywhere when not inside an active text input:
+    final typing = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() != null;
+    if (!typing && (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter || key == LogicalKeyboardKey.end)) {
+      if (widget.store.canCheckout) submit();
+      return true;
+    }
     return false;
   }
   Future<void> loadCustomers() async {
     try { final result = await widget.store.api.customers(); if (mounted) setState(() { names = result; customerError = null; }); }
     catch (e) { if (mounted) { setState(() => customerError = e.toString()); showError(context, e); } }
   }
-  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); customer.dispose(); paid.dispose(); charge.dispose(); note.dispose(); super.dispose(); }
+  @override void dispose() { HardwareKeyboard.instance.removeHandler(handleKey); customer.dispose(); paid.dispose(); charge.dispose(); note.dispose(); customerFocus.dispose(); paidFocus.dispose(); super.dispose(); }
   Future<void> submit() async {
     if (sending) return;
     setState(() { sending = true; error = null; });
@@ -320,29 +346,33 @@ class _PaymentDiscountDialogState extends State<_PaymentDiscountDialog> {
   late final controller = TextEditingController(text: widget.initial == 0 ? '' : widget.initial.toString());
   String? error;
   @override void dispose() { controller.dispose(); super.dispose(); }
+  void _apply() {
+    if (controller.text.trim().isEmpty) {
+      Navigator.pop(context, 0);
+      return;
+    }
+    try {
+      Navigator.pop(context, inputDiscount(controller.text, baseAmount: widget.subtotal));
+    } catch (_) {
+      setState(() => error = 'Masukkan nominal rupiah atau persen (0-100%) yang valid.');
+      showError(context, error!);
+    }
+  }
+
   @override Widget build(BuildContext context) => AlertDialog(
     title: const Text('Diskon Nota'),
     content: TextField(
       controller: controller,
       autofocus: true,
       keyboardType: TextInputType.text,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _apply(),
       decoration: InputDecoration(labelText: 'Rupiah atau %', helperText: 'Contoh: 5000 atau 10%', errorText: error),
     ),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
       FilledButton(
-        onPressed: () {
-          if (controller.text.trim().isEmpty) {
-            Navigator.pop(context, 0);
-            return;
-          }
-          try {
-            Navigator.pop(context, inputDiscount(controller.text, baseAmount: widget.subtotal));
-          } catch (_) {
-            setState(() => error = 'Masukkan nominal rupiah atau persen (0-100%) yang valid.');
-            showError(context, error!);
-          }
-        },
+        onPressed: _apply,
         child: const Text('Terapkan'),
       ),
     ],

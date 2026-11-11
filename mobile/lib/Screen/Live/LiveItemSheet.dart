@@ -3,21 +3,25 @@ import '../../Widgets/ui.dart';
 import '../../models/live_models.dart';
 import '../../core/theme.dart';
 import '../../core/format.dart';
-Future<LiveCartItem?> editLiveItem(BuildContext context, LiveProduct product, {LiveCartItem? existing}) =>
+Future<LiveCartItem?> editLiveItem(BuildContext context, LiveProduct product, {LiveCartItem? existing, num? defaultQuantity}) =>
   showModalBottomSheet<LiveCartItem>(context: context, isScrollControlled: true, showDragHandle: true,
-    builder: (_) => LiveItemSheet(product: product, existing: existing));
+    builder: (_) => LiveItemSheet(product: product, existing: existing, defaultQuantity: defaultQuantity));
 class LiveItemSheet extends StatefulWidget {
-  const LiveItemSheet({super.key, required this.product, this.existing});
+  const LiveItemSheet({super.key, required this.product, this.existing, this.defaultQuantity});
   final LiveProduct product;
   final LiveCartItem? existing;
+  final num? defaultQuantity;
   @override State<LiveItemSheet> createState() => _LiveItemSheetState();
 }
 class _LiveItemSheetState extends State<LiveItemSheet> {
   late LiveUnit unit;
   late TextEditingController quantity, manual, discount;
   String? error;
-  @override void initState() { super.initState(); unit = widget.existing?.unit ?? widget.product.units.first;
-    quantity = TextEditingController(text: widget.existing?.quantity.toString() ?? '1');
+  @override void initState() {
+    super.initState();
+    unit = widget.existing?.unit ?? widget.product.units.first;
+    final q = widget.existing?.quantity ?? widget.defaultQuantity ?? 1;
+    quantity = TextEditingController(text: q == q.roundToDouble() ? q.toInt().toString() : q.toString());
     manual = TextEditingController(text: widget.existing?.manualPrice?.toString() ?? '');
     discount = TextEditingController(text: widget.existing?.discount?.toString() ?? '');
   }
@@ -43,9 +47,9 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
           if (u != null && u.id != unit.id) manual.clear();
           if (u != null) unit = u;
         })),
-      const SizedBox(height: Space.lg), TextField(controller: quantity, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Jumlah', helperText: 'Boleh pecahan, misalnya 0,25')),
-      const SizedBox(height: Space.lg), TextField(controller: manual, textInputAction: TextInputAction.next, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Harga manual (Rp, opsional)', helperText: 'Kosong untuk harga otomatis dari PC')),
-      const SizedBox(height: Space.lg), TextField(controller: discount, keyboardType: TextInputType.text, decoration: const InputDecoration(labelText: 'Diskon baris (Rp atau %, opsional)', helperText: 'Contoh: 2000 atau 10%')),
+      const SizedBox(height: Space.lg), TextField(controller: quantity, textInputAction: TextInputAction.done, onSubmitted: (_) => save(), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Jumlah', helperText: 'Boleh pecahan, misalnya 0,25')),
+      const SizedBox(height: Space.lg), TextField(controller: manual, textInputAction: TextInputAction.done, onSubmitted: (_) => save(), keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Harga manual (Rp, opsional)', helperText: 'Kosong untuk harga otomatis dari PC')),
+      const SizedBox(height: Space.lg), TextField(controller: discount, textInputAction: TextInputAction.done, onSubmitted: (_) => save(), keyboardType: TextInputType.text, decoration: const InputDecoration(labelText: 'Diskon baris (Rp atau %, opsional)', helperText: 'Contoh: 2000 atau 10%')),
       if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: TextStyle(color: errorColor))),
       const SizedBox(height: Space.lg), SizedBox(width: double.infinity, child: FilledButton(onPressed: save, child: const Text('Simpan ke keranjang'))),
     ])));

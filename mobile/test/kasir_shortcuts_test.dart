@@ -8,6 +8,7 @@ import '../lib/services/mutation_guard.dart';
 import '../lib/state/live_store.dart';
 import '../lib/Screen/Live/LiveKasirScreen.dart';
 import '../lib/Screen/Live/LivePaymentScreen.dart';
+import '../lib/Widgets/product_row.dart';
 import 'live_store_test.dart' show MemoryPending;
 
 /// The till's search box (Jumlah sits before it).
@@ -28,6 +29,8 @@ void main() {
         'units': [{'productUnitId': 7, 'satuan': 'RENTENG', 'konversi': 10, 'hargaJual': 14000}]}], 'currentPage': 1, 'lastPage': 1};
       if (path == '/v1/customers') return {'names': <String>['Bu Siti', 'Pak Budi']};
       if (path == '/v1/carts/price') return {'lines': [{'stokCukup': true, 'hargaJual': 1500}], 'subtotal': 1500, 'diskon': 0, 'total': 1500};
+      if (path == '/v1/sales') return {'saleId': 41, 'total': 1500, 'printed': false, 'printSkipped': true};
+      if (path == '/v1/sales/41/print') return {'printed': true};
       throw StateError('Unexpected request: $path');
     }), guard);
     await tester.pumpWidget(MaterialApp(theme: buildTheme(), home: Scaffold(body: LiveKasirScreen(store: store))));
@@ -181,6 +184,59 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
     expect(store.items.single.quantity, initialQty + 2);
 
+    await finish(tester);
+  });
+
+  testWidgets('clicking product row on desktop adds with entered quantity directly without modal', (tester) async {
+    await openTill(tester);
+    final qtyField = find.widgetWithText(TextField, 'Jumlah');
+    await tester.enterText(qtyField, '5');
+    await tester.pump();
+
+    // Clicking anywhere on the product row adds directly
+    await tester.tap(find.byType(ProductRow).first);
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+
+    // 1 from initial setup + 5 from click = 6
+    expect(store.items.single.quantity, 6);
+    expect(tester.widget<TextField>(qtyField).controller!.text, '1');
+    await finish(tester);
+  });
+
+  testWidgets('fluid payment with keyboard: Alt+U for uang pas then Alt+S, then Enter prints receipt', (tester) async {
+    await openTill(tester);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+
+    // End opens payment
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pumpAndSettle();
+    expect(find.byType(LivePaymentScreen), findsOneWidget);
+
+    // Alt+U fills uang pas
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyU);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump();
+
+    final paidField = find.widgetWithText(TextField, 'Uang diterima (Rp)');
+    expect(tester.widget<TextField>(paidField).controller!.text, '1500');
+
+    // Alt+S saves the transaction
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cetak struk #41?'), findsOneWidget);
+
+    // Enter immediately triggers Cetak
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(store.items, isEmpty);
     await finish(tester);
   });
 }
