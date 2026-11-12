@@ -177,123 +177,41 @@ class KpiStrip extends StatelessWidget {
   const KpiStrip(this.items, {super.key});
   final List<Kpi> items;
 
-  Widget _card(BuildContext context, Kpi kpi) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final topStripeColor = kpi.color ?? (
-      kpi.lead ? const Color(0xFF0EA5E9) // Sky 500
-      : kpi.label.toLowerCase().contains('laba') ? const Color(0xFF10B981) // Emerald 500
-      : kpi.label.toLowerCase().contains('piutang') ? const Color(0xFFF59E0B) // Amber 500
-      : const Color(0xFF94A3B8) // Slate 400
-    );
-
-    return Container(
-      decoration: BoxDecoration(
-        color: surface,
-        border: Border.all(color: lineColor),
-        borderRadius: BorderRadius.circular(Corners.panel),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 3.5,
-            child: ColoredBox(color: topStripeColor),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Space.lg, 18, Space.lg, 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  kpi.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 8),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    kpi.value,
-                    style: (kpi.lead ? moneyStyle : amountStyle).copyWith(
-                      fontSize: kpi.lead ? 26 : 22,
-                      fontWeight: FontWeight.bold,
-                      color: kpi.color ?? ink,
-                      height: 1.15,
-                    ),
-                  ),
-                ),
-                if (kpi.caption != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    kpi.caption!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: kpi.caption!.contains('+') || kpi.caption!.toLowerCase().contains('untung')
-                          ? successColor
-                          : muted,
-                      fontSize: 12,
-                      fontWeight: kpi.caption!.contains('+') ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _cell(Kpi kpi) => Padding(
+    padding: const EdgeInsets.fromLTRB(Space.lg, 18, Space.lg, 18),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Text(kpi.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
+      const SizedBox(height: 6),
+      FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+        child: Text(kpi.value, style: (kpi.lead ? moneyStyle : amountStyle).copyWith(fontSize: kpi.lead ? 30 : 22, color: kpi.color ?? ink, height: 1.15))),
+      if (kpi.caption != null) ...[
+        const SizedBox(height: 4),
+        Text(kpi.caption!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12)),
+      ],
+    ]),
+  );
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
-    final narrow = box.maxWidth < 640;
-    if (!narrow) {
-      return IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var i = 0; i < items.length; i++) ...[
-              if (i > 0) const SizedBox(width: Space.md),
-              Expanded(flex: items[i].lead ? 4 : 3, child: _card(context, items[i])),
+    // one panel cut by hairlines, like the dashboard: up to four figures on a line on a PC,
+    // three a line beyond that so none gets squeezed, two on a phone
+    final perRow = box.maxWidth < 640 ? 2 : items.length > 4 ? 3 : items.length;
+    final oneLine = perRow == items.length;
+    return Container(
+      decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var i = 0; i < items.length; i += perRow) ...[
+          if (i > 0) const Divider(height: 1),
+          IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var j = i; j < i + perRow && j < items.length; j++) ...[
+              if (j > i) const VerticalDivider(width: 1),
+              Expanded(flex: oneLine && items[j].lead ? 4 : 3, child: _cell(items[j])),
             ],
-          ],
-        ),
-      );
-    }
-    final rows = <Widget>[];
-    for (var i = 0; i < items.length; i += 2) {
-      final pair = items.skip(i).take(2).toList();
-      if (i > 0) rows.add(const SizedBox(height: Space.md));
-      rows.add(
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(child: _card(context, pair[0])),
-              if (pair.length == 2) ...[
-                const SizedBox(width: Space.md),
-                Expanded(child: _card(context, pair[1])),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-    return Column(children: rows);
+          ])),
+        ],
+      ]),
+    );
   });
 }
 

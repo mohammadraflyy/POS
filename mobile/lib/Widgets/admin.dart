@@ -269,13 +269,16 @@ class DataView<T> extends StatelessWidget {
                   Text(headline.cell(row), style: amountStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w600))],
               ]),
               // label above value, two-ish to a line: scans faster than one long "a · b · c" sentence
-              if (details.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: Space.lg, runSpacing: 6, children: [
-                for (final col in details) Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(col.label, style: TextStyle(color: muted, fontSize: 11)),
-                  Text(col.cell(row), style: TextStyle(color: secondaryInk, fontSize: 13)),
-                ]),
+              // the actions sit beside the details, not on a row of their own under every card
+              if (details.isNotEmpty || actions != null) Padding(padding: const EdgeInsets.only(top: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Expanded(flex: 2, child: Wrap(spacing: Space.lg, runSpacing: 6, children: [
+                  for (final col in details) Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(col.label, style: TextStyle(color: muted, fontSize: 11)),
+                    Text(col.cell(row), style: TextStyle(color: secondaryInk, fontSize: 13)),
+                  ]),
+                ])),
+                if (actions != null) Flexible(child: Wrap(alignment: WrapAlignment.end, spacing: Space.xs, crossAxisAlignment: WrapCrossAlignment.center, children: actions!(row))),
               ])),
-              if (actions != null) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: Space.xs, children: actions!(row))),
             ]))))]));
       }
       return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),

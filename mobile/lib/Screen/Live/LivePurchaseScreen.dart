@@ -292,7 +292,7 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
       const SizedBox(height: Space.lg), TextField(controller: note, enabled: enabled, decoration: const InputDecoration(labelText: 'Catatan (opsional)')),
       const SizedBox(height: 16), Text('Jumlah akhir dihitung oleh PC saat penyimpanan.', style: TextStyle(color: muted, fontSize: 13)),
       if (error != null) Text(error!, style: TextStyle(color: errorColor)), if (success != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(success!, style: TextStyle(color: successColor))),
-      const SizedBox(height: Space.lg), FilledButton.icon(onPressed: enabled && items.isNotEmpty && widget.guard.ready ? save : null, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Menyimpan…' : widget.editing == null ? 'Simpan pembelian ke PC' : 'Simpan perubahan')),
+      const SizedBox(height: Space.lg), FilledButton.icon(onPressed: enabled && items.isNotEmpty && widget.guard.ready ? save : null, icon: const Icon(Icons.save_outlined), label: Text(saving ? 'Menyimpan…' : items.isEmpty ? 'Tambah barang dulu untuk menyimpan' : widget.editing == null ? 'Simpan pembelian ke PC' : 'Simpan perubahan')),
     ]);
   });
 }

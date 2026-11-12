@@ -207,7 +207,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       ]));
 
     final best = SectionCard(title: 'Paling laku hari ini', padded: false,
-      trailing: const Text('nilai nota'),
+      trailing: const Text('penjualan'),
       child: topProducts.isEmpty
         ? Padding(padding: EdgeInsets.fromLTRB(Space.lg, 0, Space.lg, Space.lg), child: Text('Belum ada barang terjual hari ini.', style: TextStyle(color: muted)))
         : Column(children: [for (final (i, r) in topProducts.indexed) LedgerRow(first: i == 0, label: text(r['namaItem']),
@@ -225,21 +225,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           )]));
 
     return ScreenBody(onRefresh: load, children: [
+      // the page refreshes itself; a phone pulls to refresh, so only a desktop gets the icon
       ScreenHeader('Hari ini', finding, actions: [
-        // live already, so reloading is a small icon (and pull-to-refresh on a phone), not a big button
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(color: pillPositiveBg, borderRadius: BorderRadius.circular(16)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(color: pillPositiveInk, shape: BoxShape.circle)),
-              const SizedBox(width: 6),
-              Text('Realtime', style: TextStyle(color: pillPositiveInk, fontSize: 12, fontWeight: FontWeight.w600)),
-            ]),
-          ),
-          const SizedBox(width: 4),
-          IconButton(onPressed: () => load(), tooltip: 'Muat ulang', icon: const Icon(Icons.refresh_rounded, size: 20)),
-        ]),
+        if (MediaQuery.sizeOf(context).width >= 600)
+          IconButton(onPressed: () => load(), tooltip: 'Muat ulang (data juga diperbarui otomatis)', icon: const Icon(Icons.refresh_rounded, size: 20)),
       ]),
       LoadSwitch(loading: loading, error: error, onRetry: load, child: LayoutBuilder(builder: (context, box) {
         final wide = box.maxWidth >= 900;
@@ -287,54 +276,23 @@ class _MoneyFigures extends StatelessWidget {
   final num masuk, laba, piutang;
   final int notes;
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
-    Widget cell(String label, String value, {String? caption, bool lead = false, Color? color, Widget? badge, Color? stripeColor}) => Stack(
-      children: [
-        if (stripeColor != null)
-          Positioned(top: 0, left: 0, right: 0, height: 3.5, child: ColoredBox(color: stripeColor)),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Space.lg, 18, Space.lg, 18),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text(label, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500))),
-              if (badge != null) badge,
-            ]),
-            const SizedBox(height: 6),
-            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
-              child: Text(value, style: (lead ? moneyStyle : amountStyle).copyWith(fontSize: lead ? 30 : 22, color: color ?? ink, height: 1.15))),
-            if (caption != null) ...[const SizedBox(height: 4), Text(caption, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
-          ]),
-        ),
-      ],
+    // plain figures: the number is the message, colour only on a loss or open bon -
+    // no stripes or badges repeating what the number already says
+    Widget cell(String label, String value, {String? caption, bool lead = false, Color? color}) => Padding(
+      padding: const EdgeInsets.fromLTRB(Space.lg, 18, Space.lg, 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 6),
+        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
+          child: Text(value, style: (lead ? moneyStyle : amountStyle).copyWith(fontSize: lead ? 30 : 22, color: color ?? ink, height: 1.15))),
+        if (caption != null) ...[const SizedBox(height: 4), Text(caption, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: muted, fontSize: 12))],
+      ]),
     );
-    final lead = cell('Uang masuk', rupiah(masuk), caption: 'tunai + QRIS + transfer', lead: true, stripeColor: const Color(0xFF0EA5E9));
+    final lead = cell('Uang masuk', rupiah(masuk), caption: 'tunai + QRIS + transfer', lead: true);
     final rest = [
-      cell(
-        'Laba kotor',
-        rupiah(laba),
-        caption: laba > 0 ? 'surplus keuntungan hari ini' : laba < 0 ? 'mengalami rugi operasional' : 'belum ada laba',
-        color: laba > 0 ? successColor : laba < 0 ? errorColor : ink,
-        stripeColor: const Color(0xFF10B981),
-        badge: laba > 0
-            ? const TrendBadge(value: 'Untung', isUp: true)
-            : laba < 0
-                ? const TrendBadge(value: 'Minus', isNegative: true)
-                : null,
-      ),
-      cell(
-        'Nota',
-        '$notes',
-        caption: notes == 0 ? 'belum ada penjualan' : 'selesai hari ini',
-        stripeColor: const Color(0xFF94A3B8),
-        badge: notes > 0 ? Pill('$notes nota', color: successColor) : null,
-      ),
-      cell(
-        'Piutang bon',
-        rupiah(piutang),
-        caption: piutang > 0 ? 'tagihan belum lunas' : 'semua bon telah lunas',
-        color: piutang > 0 ? warningColor : ink,
-        stripeColor: const Color(0xFFF59E0B),
-        badge: piutang > 0 ? Pill('Tertunda', color: warningColor) : Pill('Lunas', color: successColor),
-      ),
+      cell('Laba kotor', rupiah(laba), caption: laba < 0 ? 'rugi hari ini' : null, color: laba < 0 ? errorColor : null),
+      cell('Nota', '$notes', caption: notes == 0 ? 'belum ada penjualan' : null),
+      cell('Piutang bon', rupiah(piutang), caption: piutang > 0 ? 'belum lunas' : 'semua lunas', color: piutang > 0 ? warningColor : null),
     ];
     if (box.maxWidth < 600) {
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

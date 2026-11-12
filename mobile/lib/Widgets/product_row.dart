@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
-import 'admin.dart' show isDesktop;
 
-/// One catalog line on the till: rounded avatar initials, name and code on the left,
+/// One catalog line on the till: name and code on the left,
 /// tabular digits and unit on the right, stock indicator, and a tactile add button.
 /// An item already in the cart shows a distinct 3px left indicator bar.
 class ProductRow extends StatelessWidget {
@@ -24,16 +23,11 @@ class ProductRow extends StatelessWidget {
   final VoidCallback? onConfigure, onAdd;
   final bool inCart, available, selected;
 
-  String _initials(String text) {
-    final words = text.trim().split(RegExp(r'\s+'));
-    if (words.isEmpty || words.first.isEmpty) return '?';
-    if (words.length == 1) {
-      final s = words.first;
-      return s.length >= 2 ? s.substring(0, 2).toUpperCase() : s.toUpperCase();
-    }
-    final first = words[0][0];
-    final second = words[1].isNotEmpty ? words[1][0] : '';
-    return '$first$second'.toUpperCase();
+  /// At or under 5, the same line the product list calls "Stok menipis". [stock] is already
+  /// formatted id-ID ("259,5", "1.200").
+  bool get _low {
+    final value = double.tryParse(stock.replaceAll('.', '').replaceAll(',', '.'));
+    return value != null && value <= 5;
   }
 
   @override
@@ -42,8 +36,6 @@ class ProductRow extends StatelessWidget {
     final rowBg = selected
         ? (isDark ? const Color(0xFF0C4A6E).withValues(alpha: 0.35) : const Color(0xFFF0F9FF))
         : surface;
-    final avatarBg = isDark ? raised : const Color(0xFFF1F5F9);
-    final avatarFg = isDark ? ink : const Color(0xFF475569);
 
     return Material(
       color: rowBg,
@@ -65,30 +57,6 @@ class ProductRow extends StatelessWidget {
             child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Product Initials Avatar Box (Mockup fidelity)
-              if (MediaQuery.textScalerOf(context).scale(14) <= 20) ...[
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: avatarBg,
-                    border: Border.all(color: lineColor),
-                    borderRadius: BorderRadius.circular(Corners.control),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    _initials(name),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: avatarFg,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: Space.sm),
-              ],
-
               // Title & Code
               Expanded(
                 child: Column(
@@ -154,14 +122,11 @@ class ProductRow extends StatelessWidget {
                       available ? 'stok $stock' : 'stok habis',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      // colour only what needs a look: a green "stok" on every line said nothing
                       style: TextStyle(
-                        color: !available
-                            ? errorColor
-                            : (stock == '0' || stock == '1' || stock == '2' || stock == '3')
-                                ? warningColor
-                                : successColor,
+                        color: !available ? errorColor : _low ? warningColor : muted,
                         fontSize: 11,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: !available || _low ? FontWeight.w600 : FontWeight.w400,
                       ),
                     ),
                   ],

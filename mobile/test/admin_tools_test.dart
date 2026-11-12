@@ -120,6 +120,9 @@ void main() {
     });
     await show(tester, RekapScreen(api: store.api));
 
+    // the shop's total stock value is a card beside the period figures
+    expect(find.text('Nilai stok toko'), findsOneWidget);
+    expect(find.text('saat ini · 30 produk, harga pokok'), findsOneWidget);
     expect(find.text('Barang 25'), findsOneWidget);
     expect(find.text('Barang 26'), findsNothing);
     expect(find.text('Halaman 1 dari 2'), findsOneWidget);

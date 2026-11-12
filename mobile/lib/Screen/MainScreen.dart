@@ -43,6 +43,7 @@ class _MainScreenState extends State<MainScreen> {
   bool _railOnly = false;
   /// The active sidebar row, so a keyboard menu change can scroll it into view.
   final _activeNavKey = GlobalKey();
+  final _navScroll = ScrollController();
   String? _shopName;
   AppUpdateInfo? _availableUpdate;
   bool _dismissedUpdate = false;
@@ -65,6 +66,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void dispose() {
     _updateCheckTimer?.cancel();
+    _navScroll.dispose();
     HardwareKeyboard.instance.removeHandler(_handleKey);
     super.dispose();
   }
@@ -214,27 +216,23 @@ class _MainScreenState extends State<MainScreen> {
     final info = menuInfo[menu]!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // High-contrast active state (WCAG AAA):
-    // Light mode: solid dark slate-900 pill with pure white text and icon.
-    // Dark mode: elevated slate-800 pill with sky-blue border, sky-blue icon, and pure white text.
-    final activeBg = isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A);
-    final activeFg = Colors.white;
-    final activeIconColor = isDark ? const Color(0xFF38BDF8) : Colors.white;
+    // Active row: a soft tint and a short accent bar, not a solid block - the page's own
+    // primary button should be the loudest thing on screen, not the menu.
+    final activeBg = isDark ? const Color(0x2638BDF8) : const Color(0xFFE2E8F0);
+    final activeFg = ink;
+    final activeIconColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A);
 
     final row = Material(
       color: selected ? activeBg : Colors.transparent,
       borderRadius: BorderRadius.circular(Corners.control),
-      elevation: selected ? 1.5 : 0,
-      child: Container(
-        decoration: selected && isDark ? BoxDecoration(
-          border: Border.all(color: const Color(0xFF38BDF8), width: 1.5),
-          borderRadius: BorderRadius.circular(Corners.control),
-        ) : null,
-        child: InkWell(
+      child: Stack(children: [
+        if (selected && !compact) Positioned(left: 0, top: 10, bottom: 10,
+          child: Container(width: 3, decoration: BoxDecoration(color: activeIconColor, borderRadius: BorderRadius.circular(2)))),
+        InkWell(
           borderRadius: BorderRadius.circular(Corners.control),
           onTap: () => _open(menu),
           child: SizedBox(
-            height: 40,
+            height: 36,
             child: Row(
               mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
@@ -254,7 +252,7 @@ class _MainScreenState extends State<MainScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         color: selected ? activeFg : (isDark ? secondaryInk : const Color(0xFF334155)),
-                        fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                       ),
                     ),
                   ),
@@ -263,11 +261,11 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
         ),
-      ),
+      ]),
     );
     return Padding(
       key: selected ? _activeNavKey : null,
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : Space.sm, vertical: 2.5),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : Space.sm, vertical: 2),
       child: Semantics(
         selected: selected,
         button: true,
@@ -278,102 +276,40 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _desktopHeader() {
+    // The shop and the signed-in user already sit in the sidebar; the bar names the page and
+    // says only whether the PC answers. The address is for whoever is fixing it: a tooltip.
     final offline = widget.app.notice != null;
     final isDemo = widget.app.isDemo;
-    final shopTitle = widget.app.shopName ?? _shopName ?? 'POS Kasir Toko';
-    final userRole = _roleLabel(widget.app.role);
-    final userName = widget.app.userName.isEmpty ? 'Kasir' : widget.app.userName;
-    final addressText = widget.app.address != null ? ' (${widget.app.address!.host}:${widget.app.address!.port})' : '';
+    final address = widget.app.address == null ? '' : ' (${widget.app.address!.host}:${widget.app.address!.port})';
+    final statusColor = isDemo ? warningColor : (offline ? errorColor : successColor);
 
     return Container(
-      height: 52,
+      height: 48,
       padding: const EdgeInsets.symmetric(horizontal: Space.lg),
       decoration: BoxDecoration(
         color: surface,
         border: Border(bottom: BorderSide(color: ruleColor)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Expanded(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isDemo ? warningColor : (offline ? errorColor : successColor),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    shopTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                ),
-                const SizedBox(width: Space.sm),
-                Text('|', style: TextStyle(color: lineColor)),
-                const SizedBox(width: Space.sm),
-                Flexible(
-                  child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: 'Kasir: ', style: TextStyle(color: muted, fontSize: 13)),
-                      TextSpan(
-                        text: '$userName ($userRole)',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                      ),
-                    ]),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
+            child: Text(menuInfo[_menu]!.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
           ),
           const SizedBox(width: Space.md),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: isDemo ? pillWarningBg : (offline ? pillNegativeBg : pillPositiveBg),
-                  borderRadius: BorderRadius.circular(Corners.chip),
-                  border: Border.all(
-                    color: (isDemo ? pillWarningInk : (offline ? pillNegativeInk : pillPositiveInk)).withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isDemo ? warningColor : (offline ? errorColor : successColor),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      isDemo ? 'Mode Demo' : (offline ? 'Server Terputus' : 'Server Terhubung$addressText'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: isDemo ? pillWarningInk : (offline ? pillNegativeInk : pillPositiveInk),
-                      ),
-                    ),
-                  ],
-                ),
+              Tooltip(
+                message: isDemo ? 'Data contoh, tidak dikirim ke toko' : offline ? 'PC toko tidak menjawab$address' : 'Server PC toko$address',
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor)),
+                  const SizedBox(width: 6),
+                  Text(isDemo ? 'Mode Demo' : (offline ? 'Terputus' : 'Terhubung'),
+                    style: TextStyle(fontSize: 13, color: offline && !isDemo ? errorColor : muted)),
+                ]),
               ),
-              const SizedBox(width: Space.sm),
+              const SizedBox(width: Space.md),
               Tooltip(
                 message: 'Kunci Kasir (Ctrl+L)',
                 child: OutlinedButton.icon(
@@ -419,12 +355,13 @@ class _MainScreenState extends State<MainScreen> {
       color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       child: Column(children: [
         _brand(compact: compact),
-        Expanded(child: ListView(padding: const EdgeInsets.only(bottom: Space.md), children: [
+        // tighter rows so nearly every menu fits a 900px-tall screen; below that the list scrolls
+        Expanded(child: Scrollbar(controller: _navScroll, child: ListView(controller: _navScroll, padding: const EdgeInsets.only(bottom: Space.md), children: [
           for (final (index, group) in groups.entries.indexed) ...[
             if (compact)
               Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: index == 0 ? 0 : 10), child: index == 0 ? const SizedBox() : const Divider())
             else
-              Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 20, Space.md, 8),
+              Padding(padding: EdgeInsets.fromLTRB(20, index == 0 ? 4 : 14, Space.md, 6),
                 child: Text(
                   group.key.toUpperCase(),
                   style: TextStyle(
@@ -436,7 +373,7 @@ class _MainScreenState extends State<MainScreen> {
                 )),
             for (final menu in group.value) _navRow(menu, compact: compact),
           ],
-        ])),
+        ]))),
         const Divider(indent: 12, endIndent: 12),
         Padding(padding: const EdgeInsets.all(Space.sm), child: Material(color: Colors.transparent, child: InkWell(
           borderRadius: BorderRadius.circular(Corners.control), onTap: _account,

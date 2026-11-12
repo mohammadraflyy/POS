@@ -241,11 +241,7 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
             spacing: Space.xs,
             runSpacing: Space.xs,
             children: [
-              ActionChip(
-                avatar: const Icon(Icons.check, size: 14),
-                label: const Text('Uang Pas'),
-                onPressed: sending ? null : () => setState(() => paid.text = _plain(total)),
-              ),
+              // "Uang pas" is the button beside the field; the chips are only the round notes
               for (final opt in _quickCashOptions(total))
                 ActionChip(
                   label: Text(rupiah(opt)),
@@ -273,6 +269,10 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
         decoration: InputDecoration(labelText: editing == null ? 'Keterangan' : 'Keterangan / alasan perubahan', hintText: editing == null ? 'Opsional' : 'Contoh: salah input jumlah')),
     ]);
 
+    final narrow = MediaQuery.sizeOf(context).width < 860;
+    final saveButton = SizedBox(height: 44, child: FilledButton.icon(onPressed: sending || !store.canCheckout ? null : submit,
+      icon: sending ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : const Icon(Icons.check, size: 18),
+      label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  End' : ''}')));
     final lineDisc = store.price?.lineDiscountTotal ?? 0;
     final modal = store.price?.estimatedModal;
     final laba = modal != null && total != null ? total - modal : null;
@@ -314,14 +314,23 @@ class _LivePaymentScreenState extends State<LivePaymentScreen> {
       if (change != null) SummaryRow(change < 0 ? 'Kurang' : 'Kembalian', rupiah(change.abs()), color: change < 0 ? errorColor : ink),
       if (method == 'bon' && total != null) SummaryRow('Sisa bon', rupiah((total - (paidNow ?? 0)).clamp(0, double.infinity))),
       if (error != null) Padding(padding: const EdgeInsets.only(top: Space.md), child: Text(error!, style: TextStyle(color: errorColor))),
-      const SizedBox(height: Space.lg),
-      SizedBox(height: 44, child: FilledButton.icon(onPressed: sending || !store.canCheckout ? null : submit,
-        icon: sending ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : const Icon(Icons.check, size: 18),
-        label: Text(sending ? 'Menyimpan…' : '${editing == null ? 'Simpan transaksi' : 'Simpan perubahan'}${isDesktop ? '  ·  End' : ''}'))),
+      if (!narrow) ...[const SizedBox(height: Space.lg), saveButton],
     ]));
 
     return PopScope(canPop: !sending, child: Scaffold(
       appBar: AppBar(title: Text(editing == null ? 'Pembayaran' : 'Ubah nota #$editing')),
+      // on a phone the save button rides along at the bottom, with the change beside it,
+      // instead of waiting below the note fields
+      bottomNavigationBar: !narrow ? null : SafeArea(child: Container(
+        padding: const EdgeInsets.fromLTRB(Space.lg, Space.sm, Space.lg, Space.sm),
+        decoration: BoxDecoration(color: surface, border: Border(top: BorderSide(color: ruleColor))),
+        child: Row(children: [
+          if (change != null) Padding(padding: const EdgeInsets.only(right: Space.md), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(change < 0 ? 'Kurang' : 'Kembalian', style: TextStyle(color: muted, fontSize: 12)),
+            Text(rupiah(change.abs()), style: amountStyle.copyWith(fontSize: 16, fontWeight: FontWeight.w600, color: change < 0 ? errorColor : ink)),
+          ])),
+          Expanded(child: saveButton),
+        ]))),
       body: SafeArea(child: LayoutBuilder(builder: (context, box) {
         if (box.maxWidth < 860) {
           return ListView(padding: const EdgeInsets.all(Space.lg), children: [

@@ -103,7 +103,8 @@ class _LiveWorkspaceState extends State<LiveWorkspace> with SingleTickerProvider
       Menu.pembelian => DefaultTabController(length: 2, child: Column(children: [
         const PageTabs(tabs: ['Catat pembelian', 'Daftar pembelian']),
         Expanded(child: TabBarView(children: [
-          WorkArea(child: LivePurchaseScreen(api: api, guard: guard, onSaved: store.stockChanged, active: widget.menu == Menu.pembelian)),
+          // a form, not a table: a money field 1100px wide reads as broken
+          WorkArea(maxWidth: 820, child: LivePurchaseScreen(api: api, guard: guard, onSaved: store.stockChanged, active: widget.menu == Menu.pembelian)),
           PurchaseListScreen(api: api, onChanged: store.stockChanged, guard: guard),
         ])),
       ])),

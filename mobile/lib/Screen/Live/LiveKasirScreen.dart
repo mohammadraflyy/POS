@@ -483,8 +483,11 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control)),
           ),
         ),
-        const SizedBox(width: Space.xs),
-        IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
+        // a phone pulls the list down instead, leaving the width to the search box
+        if (isDesktop) ...[
+          const SizedBox(width: Space.xs),
+          IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
+        ],
       ]),
     );
     final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageDown/PageUp pindah panel · ↑↓ pilih · Ctrl+↑↓ ganti menu · Enter ambil · ← jumlah · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+H antrean · Alt+T antrean baru · Alt+K kosongkan',
@@ -624,7 +627,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         }
         if (key == LogicalKeyboardKey.escape) { enterPanel(KasirPanel.search); return KeyEventResult.handled; }
         return KeyEventResult.ignored;
-      }, child: list),
+      }, child: isDesktop ? list : RefreshIndicator(onRefresh: () => load(target: page), child: list)),
     );
     if (!wide) {
       return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Column(children: [

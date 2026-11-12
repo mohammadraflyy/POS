@@ -163,11 +163,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
     } catch (e) { if (mounted) showError(context, e); }
   }
 
-  @override Widget build(BuildContext context) => ScreenBody(onRefresh: () => load(target: page), children: [
+  @override Widget build(BuildContext context) {
+    // a phone keeps one button in view and the rest behind ⋯, rather than a row cut off at the edge
+    final phone = MediaQuery.sizeOf(context).width < 600;
+    return ScreenBody(onRefresh: () => load(target: page), children: [
     ScreenHeader('Produk', '$total produk. Harga dan stok di sini yang dipakai kasir.', actions: [
       if (widget.isAdmin) FilledButton.icon(onPressed: create, icon: const Icon(Icons.add), label: const Text('Produk baru')),
-      if (widget.isAdmin) OutlinedButton.icon(onPressed: () => massInput(), icon: const Icon(Icons.table_rows_outlined, size: 18), label: const Text('Input massal')),
-      if (widget.isAdmin) OutlinedButton.icon(onPressed: efisiensiHarga, icon: const Icon(Icons.trending_up, size: 18), label: const Text('Efisiensi harga')),
+      if (widget.isAdmin && phone) PopupMenuButton<VoidCallback>(tooltip: 'Lainnya', icon: const Icon(Icons.more_horiz),
+        onSelected: (action) => action(),
+        itemBuilder: (_) => [
+          PopupMenuItem(value: () => massInput(), child: const Text('Input massal')),
+          PopupMenuItem(value: efisiensiHarga, child: const Text('Efisiensi harga')),
+        ]),
+      if (widget.isAdmin && !phone) OutlinedButton.icon(onPressed: () => massInput(), icon: const Icon(Icons.table_rows_outlined, size: 18), label: const Text('Input massal')),
+      if (widget.isAdmin && !phone) OutlinedButton.icon(onPressed: efisiensiHarga, icon: const Icon(Icons.trending_up, size: 18), label: const Text('Efisiensi harga')),
       if (widget.isAdmin && selectedIds.isNotEmpty) OutlinedButton.icon(onPressed: () => massInput(ticked: true), icon: const Icon(Icons.edit_outlined, size: 18), label: Text('Ubah massal (${selectedIds.length})')),
       if (widget.isAdmin && selectedIds.isNotEmpty) OutlinedButton.icon(onPressed: removeSelected,
         style: OutlinedButton.styleFrom(foregroundColor: errorColor), icon: const Icon(Icons.delete_outline), label: Text('Hapus terpilih (${selectedIds.length})')),
@@ -188,8 +197,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
         hint: isDesktop ? 'Cari nama, kode, atau barcode  ·  /' : 'Cari nama, kode, atau barcode',
         focusNode: searchFocus,
       )),
-      const SizedBox(width: Space.sm),
-      DropdownButton<int>(
+      if (!phone) const SizedBox(width: Space.sm),
+      if (!phone) DropdownButton<int>(
         value: pageSize,
         underline: const SizedBox.shrink(),
         items: const [
@@ -249,27 +258,35 @@ class _ProductsScreenState extends State<ProductsScreen> {
     if (loading) const LinearProgressIndicator(minHeight: 2),
     LoadSwitch(loading: false, error: error, onRetry: load, child: DataView<Map<String, dynamic>>(rows: rows,
       emptyTitle: 'Produk tidak ditemukan', emptyMessage: 'Coba kata pencarian lain.',
-      isSelected: widget.isAdmin ? (p) => selectedIds.contains(idNumber(p['id'])) : null,
-      onSelect: widget.isAdmin ? (p, on) => setState(() => on ? selectedIds.add(idNumber(p['id'])) : selectedIds.remove(idNumber(p['id']))) : null,
+      // ticking many products is desk work; on a phone a card is just tapped open
+      isSelected: widget.isAdmin && !phone ? (p) => selectedIds.contains(idNumber(p['id'])) : null,
+      onSelect: widget.isAdmin && !phone ? (p, on) => setState(() => on ? selectedIds.add(idNumber(p['id'])) : selectedIds.remove(idNumber(p['id']))) : null,
       onTap: (p) async { await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(api: widget.api, productId: idNumber(p['id']), isAdmin: widget.isAdmin))); if (mounted) load(target: page); },
       actions: widget.isAdmin ? (p) {
         final s = number(p['stok']) ?? 0;
         return [
           if (s <= 0) const Pill('Habis', color: Color(0xFFDC2626))
           else if (s <= 5) Pill('Sisa ${quantityText(s)}', color: Color(0xFFD97706)),
-          IconButton(tooltip: 'Ubah', onPressed: () => edit(p), icon: const Icon(Icons.edit_outlined, size: 20)),
-          IconButton(tooltip: 'Hapus', onPressed: () => remove(p), icon: const Icon(Icons.delete_outline, size: 20)),
+          if (!phone) IconButton(tooltip: 'Ubah', onPressed: () => edit(p), icon: const Icon(Icons.edit_outlined, size: 20)),
+          // delete sits behind ⋯ so a slip of the mouse beside "Ubah" cannot reach it
+          PopupMenuButton<String>(tooltip: 'Aksi lain', icon: const Icon(Icons.more_vert, size: 20),
+            onSelected: (choice) => choice == 'ubah' ? edit(p) : remove(p),
+            itemBuilder: (_) => [
+              if (phone) const PopupMenuItem(value: 'ubah', child: Text('Ubah')),
+              PopupMenuItem(value: 'hapus', child: Text('Hapus produk', style: TextStyle(color: errorColor))),
+            ]),
         ];
       } : null,
       actionsWidth: 180,
       columns: [
         DataCol('Produk', (p) => '${p['namaItem']}${p['isActive'] == false ? ' (nonaktif)' : ''}', flex: 4),
         DataCol('Kode', (p) => text(p['kodeItem']), flex: 2),
-        DataCol('Kategori', (p) => text(p['categoryName']), flex: 2),
+        DataCol('Kategori', (p) => text(p['categoryName']), flex: 3),
         DataCol('Satuan & grosir', (p) {
-          final u = (number(p['unitsCount']) ?? 1).toInt();
+          final u = (number(p['unitsCount']) ?? 0).toInt();
           final t = (number(p['priceTiersCount']) ?? 0).toInt();
-          return '$u satuan${t > 0 ? ' · $t grosir' : ''}';
+          final parts = [if (u > 0) '$u satuan', if (t > 0) '$t grosir'];
+          return parts.isEmpty ? '—' : parts.join(' · ');
         }, flex: 2, phone: false),
         DataCol('Stok', (p) {
           final s = number(p['stok']) ?? 0;
@@ -283,6 +300,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       ])),
     Pager(page: page, last: last, busy: loading, onPage: (p) => load(target: p)),
   ]);
+  }
 }
 
 class UnitsScreen extends StatefulWidget {

@@ -215,7 +215,19 @@ class _LiveCartPanelState extends State<LiveCartPanel> {
       if (store.items.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: Space.xl),
-          child: Text('Keranjang masih kosong. Scan barang atau pilih dari katalog.', style: TextStyle(color: muted)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Keranjang masih kosong. Scan barang atau pilih dari katalog.', style: TextStyle(color: muted)),
+            // an empty cart is the moment a new cashier has time to learn the keys
+            if (isDesktop) ...[
+              const SizedBox(height: Space.lg),
+              for (final (keys, label) in const [('F1 / F2', 'Cari barang'), ('/', 'Daftar semua barang'), ('F3', 'Ubah baris teratas'),
+                  ('PgUp / PgDn', 'Pindah panel'), ('Alt+P', 'Pilih pelanggan'), ('F4 / F12', 'Bayar')])
+                Padding(padding: const EdgeInsets.only(bottom: 6), child: Row(children: [
+                  SizedBox(width: 96, child: Text(keys, style: TextStyle(fontFamily: monoFamily, fontSize: 12, color: secondaryInk))),
+                  Expanded(child: Text(label, style: TextStyle(fontSize: 13, color: muted))),
+                ])),
+            ],
+          ]),
         )
       else
         for (var index = 0; index < store.items.length; index++)

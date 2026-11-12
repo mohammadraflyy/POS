@@ -317,6 +317,8 @@ class _RekapScreenState extends State<RekapScreen> {
           Kpi('Transaksi', text(summary['jumlahTransaksi'], '0')),
           Kpi('Piutang beredar', rupiah(summary['piutangBeredar']), caption: 'semua bon belum lunas',
             color: (number(summary['piutangBeredar']) ?? 0) > 0 ? warningColor : null),
+          // stock is what is on the shelf now, not a figure of the chosen period
+          if (stock.isNotEmpty) Kpi('Nilai stok toko', rupiah(stock['totalNilai']), caption: 'saat ini · ${stockRows.length} produk, harga pokok'),
         ]),
         if (rowsOf('labaPerHari').isNotEmpty) section('Laba per hari', WhitePanel(child: Builder(builder: (context) {
           // every day of the period up to today, on a time scale: a day with no sale is an empty slot, not a skipped one
