@@ -3,6 +3,7 @@ import '../../core/theme.dart';
 import '../../services/mobile_api.dart';
 import '../../state/app_state.dart';
 import '../../Widgets/ui.dart';
+import '../../Widgets/auth_layout.dart';
 import 'ScanScreen.dart';
 import '../../Widgets/admin.dart' show isDesktop;
 import '../../services/updater_service.dart';
@@ -57,10 +58,10 @@ class _PairingScreenState extends State<PairingScreen> {
     }
   }
   @override
-  Widget build(BuildContext context) => Scaffold(body: SafeArea(child: LayoutBuilder(builder: (context, box) {
-    final form = Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: SingleChildScrollView(
-      padding: const EdgeInsets.all(Space.xl), child: AutofillGroup(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [BrandMark(size: 28), SizedBox(width: Space.md), Text('Point of Sales', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500))]), const SizedBox(height: Space.xxl),
+  Widget build(BuildContext context) => AuthLayout(child: AutofillGroup(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // the wide layout's banner already carries the brand
+        if (MediaQuery.sizeOf(context).width < AuthLayout.splitWidth) ...[
+          const Row(children: [BrandMark(size: 28), SizedBox(width: Space.md), Text('Point of Sales', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500))]), const SizedBox(height: Space.xxl)],
         Text(_login ? 'Masuk ke toko' : 'Hubungkan ke toko', style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 12), Text(_login
           ? 'Masuk dengan akun toko. Di PC kasir, alamat server biasanya 127.0.0.1:48950.'
@@ -93,8 +94,5 @@ class _PairingScreenState extends State<PairingScreen> {
             label: const Text('Periksa pembaruan aplikasi', style: TextStyle(fontSize: 13)),
           ),
         ),
-      ])),
-    )));
-    return form;
-  })));
+      ])));
 }

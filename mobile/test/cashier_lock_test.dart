@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import '../lib/core/theme.dart';
 import '../lib/Screen/MainScreen.dart';
 import '../lib/Widgets/cashier_lock_dialog.dart';
+import '../lib/Widgets/auth_layout.dart' show AuthBanner;
+import '../lib/Screen/Pairing/PairingScreen.dart';
 import '../lib/Widgets/ui.dart' show SidebarArea;
 import '../lib/services/mobile_api.dart';
 import '../lib/state/app_state.dart';
@@ -181,8 +183,10 @@ void main() {
     expect(find.text('Akun & Perangkat'), findsNothing); // AccountPanel was not opened!
 
     // Unlock with password
-    final dialogInput = find.descendant(of: find.byType(Dialog), matching: find.byType(TextField));
-    await tester.enterText(dialogInput, 'secret123');
+    // full screen: the till behind the lock is hidden
+    expect(find.byType(SidebarArea), findsNothing);
+    final lockInput = find.descendant(of: find.byType(CashierLockDialog), matching: find.byType(TextField));
+    await tester.enterText(lockInput, 'secret123');
     await tester.tap(find.text('Buka Kunci Kasir'));
     await tester.pumpAndSettle();
 
@@ -195,6 +199,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Kasir Terkunci'), findsOneWidget);
+    // wide window: the lock uses the sign-in layout, banner on the left
+    expect(find.byType(AuthBanner), findsOneWidget);
+  });
+
+  testWidgets('Sign-in screen splits into banner and form on a wide window only', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final app = AppState(api: MobileApi(), storage: MemoryStorage());
+
+    tester.view.physicalSize = const Size(1280, 800);
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(Palette.light), home: PairingScreen(app: app)));
+    expect(find.byType(AuthBanner), findsOneWidget);
+    expect(tester.getCenter(find.byType(TextField).first).dx, greaterThan(640));
+
+    tester.view.physicalSize = const Size(600, 900);
+    await tester.pump();
+    expect(find.byType(AuthBanner), findsNothing);
   });
 
   testWidgets('Ctrl+Down and Ctrl+Up walk the sidebar menus from the keyboard', (tester) async {

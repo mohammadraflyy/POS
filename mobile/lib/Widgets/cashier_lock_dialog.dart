@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../services/mobile_api.dart';
 import '../state/app_state.dart';
+import 'auth_layout.dart';
 
-/// Shows a non-dismissible lock screen dialog that secures the cashier session.
-/// The dialog cannot be closed by tapping the barrier or pressing Back/Escape.
+/// Shows a full-screen lock, in the sign-in screen's layout, that secures the cashier session.
+/// It cannot be closed with Back/Escape.
 /// It requires entering the current user's password to unlock, or choosing
 /// "Ganti Akun / Keluar" to return to the sign-in screen.
 Future<bool?> showCashierLockDialog(
@@ -12,15 +13,17 @@ Future<bool?> showCashierLockDialog(
   required AppState app,
   required String shopName,
 }) {
-  return showDialog<bool>(
-    context: context,
-    barrierDismissible: false,
-    barrierColor: Colors.black.withValues(alpha: 0.72),
-    builder: (context) => PopScope(
+  // full screen and opaque: the till behind it stays hidden while the cashier is away
+  return Navigator.of(context).push<bool>(PageRouteBuilder(
+    opaque: true,
+    transitionDuration: Motion.enter,
+    reverseTransitionDuration: Motion.exit,
+    pageBuilder: (context, _, _) => PopScope(
       canPop: false,
       child: CashierLockDialog(app: app, shopName: shopName),
     ),
-  );
+    transitionsBuilder: (context, animation, _, child) => FadeTransition(opacity: animation, child: child),
+  ));
 }
 
 class CashierLockDialog extends StatefulWidget {
@@ -131,64 +134,33 @@ class _CashierLockDialogState extends State<CashierLockDialog> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final displayName = widget.app.userName.isEmpty ? 'Kasir' : widget.app.userName;
     final role = widget.app.role == 'admin' ? 'Admin' : 'Kasir';
-    final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final borderCol = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
     final userTileBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
 
-    return Dialog(
-      backgroundColor: cardBg,
-      elevation: 12,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Corners.dialog),
-        side: BorderSide(color: borderCol),
-      ),
-      insetPadding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xl),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Padding(
-          padding: const EdgeInsets.all(Space.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    return AuthLayout(
+      child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Center(
+              Align(
+                alignment: Alignment.centerLeft,
                 child: Container(
-                  width: 58,
-                  height: 58,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFFEFF6FF),
-                    border: Border.all(
-                      color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF3B82F6),
-                      width: 1.5,
-                    ),
+                    color: dataHueSoft,
+                    borderRadius: BorderRadius.circular(Corners.panel),
                   ),
-                  child: Icon(
-                    Icons.lock_rounded,
-                    size: 28,
-                    color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF2563EB),
-                  ),
+                  child: Icon(Icons.lock_rounded, size: 24, color: dataHue),
                 ),
               ),
-              const SizedBox(height: Space.md),
-              const Center(
-                child: Text(
-                  'Kasir Terkunci',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+              const SizedBox(height: Space.xl),
+              Text('Kasir Terkunci', style: Theme.of(context).textTheme.headlineLarge),
+              const SizedBox(height: 12),
+              Text(
+                'Sesi dikunci untuk keamanan saat kasir istirahat. Masukkan password untuk lanjut.',
+                style: TextStyle(color: muted),
               ),
-              const SizedBox(height: 4),
-              Center(
-                child: Text(
-                  'Sesi dikunci untuk keamanan saat kasir istirahat.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: muted),
-                ),
-              ),
-              const SizedBox(height: Space.lg),
+              const SizedBox(height: 24),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
@@ -322,8 +294,6 @@ class _CashierLockDialogState extends State<CashierLockDialog> {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 }
