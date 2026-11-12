@@ -29,7 +29,10 @@ class LiveWorkspace extends StatefulWidget {
   final List<Menu> menus;
   @override State<LiveWorkspace> createState() => _LiveWorkspaceState();
 }
-class _LiveWorkspaceState extends State<LiveWorkspace> {
+class _LiveWorkspaceState extends State<LiveWorkspace> with SingleTickerProviderStateMixin {
+  // a short fade-and-rise when the menu changes; the stack itself stays, so no screen loses its state
+  late final _menuIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 220), value: 1);
+  late final _menuCurve = CurvedAnimation(parent: _menuIn, curve: Curves.easeOutCubic);
   late final StoreApi api;
   late final MutationGuard guard;
   late final LiveStore store;
@@ -44,8 +47,12 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
       if (count > 0 && mounted) showNotice(context, 'Keranjang terakhir dipulihkan: $count barang.', kind: NoticeKind.info);
     });
   }
-  @override void didUpdateWidget(covariant LiveWorkspace oldWidget) { super.didUpdateWidget(oldWidget); _opened.add(widget.menu); }
-  @override void dispose() { store.dispose(); guard.dispose(); super.dispose(); }
+  @override void didUpdateWidget(covariant LiveWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _opened.add(widget.menu);
+    if (oldWidget.menu != widget.menu && !MediaQuery.disableAnimationsOf(context)) _menuIn.forward(from: 0);
+  }
+  @override void dispose() { _menuCurve.dispose(); _menuIn.dispose(); store.dispose(); guard.dispose(); super.dispose(); }
   Future<void> _review() async {
     final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
       title: const Text('Periksa hasil di PC'),
@@ -125,8 +132,10 @@ class _LiveWorkspaceState extends State<LiveWorkspace> {
         if (!guard.ready) TextButton(onPressed: guard.load, child: const Text('Coba lagi')),
         if (guard.pending != null && !guard.busy) TextButton(onPressed: _review, child: const Text('Periksa')),
       ])),
-    Expanded(child: IndexedStack(index: widget.menus.indexOf(widget.menu).clamp(0, widget.menus.length - 1), children: [
-      for (final menu in widget.menus) _opened.contains(menu) ? _screen(menu) : const SizedBox(),
-    ])),
+    Expanded(child: FadeTransition(opacity: _menuCurve, child: SlideTransition(
+      position: Tween(begin: const Offset(0, 0.012), end: Offset.zero).animate(_menuCurve),
+      child: IndexedStack(index: widget.menus.indexOf(widget.menu).clamp(0, widget.menus.length - 1), children: [
+        for (final menu in widget.menus) _opened.contains(menu) ? _screen(menu) : const SizedBox(),
+      ])))),
   ])))));
 }

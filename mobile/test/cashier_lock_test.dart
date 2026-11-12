@@ -219,6 +219,37 @@ void main() {
     expect(find.byType(AuthBanner), findsNothing);
   });
 
+  testWidgets('Ctrl+B slides the sidebar to a rail and back without squeezing its labels', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final app = await buildConnectedApp();
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(Palette.light), home: MainScreen(app: app)));
+    await tester.pumpAndSettle();
+    double width() => tester.getSize(find.byType(SidebarArea)).width;
+    Future<void> ctrlB() async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    }
+
+    expect(width(), 260);
+    await ctrlB();
+    await tester.pump(); // the frame that starts the slide
+    await tester.pump(const Duration(milliseconds: 60));
+    // mid-slide: somewhere between, and no overflow from labels in a narrow box
+    expect(width(), inExclusiveRange(64, 260));
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(width(), 64);
+    await ctrlB();
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(width(), 260);
+  });
+
   testWidgets('Ctrl+Down and Ctrl+Up walk the sidebar menus from the keyboard', (tester) async {
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1;

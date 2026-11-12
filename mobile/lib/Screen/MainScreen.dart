@@ -394,15 +394,28 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _sidebar(List<Menu> menus) {
-    final compact = _railOnly;
+  /// Ctrl+B slides the sidebar between rail and full width. The full layout is drawn at its own
+  /// 260px and clipped while the width moves, so labels are revealed, never squeezed; below
+  /// 160px the rail layout takes over.
+  Widget _sidebar(List<Menu> menus) => TweenAnimationBuilder<double>(
+    tween: Tween(end: _railOnly ? 64 : 260),
+    duration: Motion.duration(context, const Duration(milliseconds: 220)),
+    curve: Curves.easeOutCubic,
+    builder: (context, width, _) {
+      final compact = width < 160;
+      return SizedBox(width: width, child: ClipRect(child: OverflowBox(
+        alignment: Alignment.centerLeft, minWidth: compact ? width : 260, maxWidth: compact ? width : 260,
+        child: _sidebarContent(menus, compact: compact))));
+    },
+  );
+
+  Widget _sidebarContent(List<Menu> menus, {required bool compact}) {
     final groups = <String, List<Menu>>{};
     for (final menu in menus) { (groups[menuInfo[menu]!.group] ??= []).add(menu); }
     final offline = widget.app.notice != null;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      width: compact ? 64 : 260,
       color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       child: Column(children: [
         _brand(compact: compact),
