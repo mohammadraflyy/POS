@@ -424,4 +424,40 @@ void main() {
     expect(store.items, isEmpty);
     await finish(tester);
   });
+
+  testWidgets('Down from the search box enters the catalog even while a cart line is selected', (tester) async {
+    await openTill(tester);
+    store.selectCartIndex(0);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byWidget(searchField(tester)));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(store.selectedCartIndex, isNull);
+
+    // a second Down moves inside the catalog, it must not touch the cart
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(store.selectedCartIndex, isNull);
+    await finish(tester);
+  });
+
+  testWidgets('Down on the last cart line stays put, and Left from the top line returns to the search box', (tester) async {
+    await openTill(tester);
+    store.selectCartIndex(0);
+    await tester.pumpAndSettle();
+
+    for (var i = 0; i < 3; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+    }
+    expect(store.selectedCartIndex, 0);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(store.selectedCartIndex, isNull);
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
+    await finish(tester);
+  });
 }

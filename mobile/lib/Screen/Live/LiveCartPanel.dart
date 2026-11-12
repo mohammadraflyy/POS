@@ -394,8 +394,8 @@ class _CartLineState extends State<_CartLine> {
           final next = widget.index + 1;
           if (next < widget.store.items.length) {
             widget.store.selectCartIndex(next);
-            return KeyEventResult.handled;
           }
+          return KeyEventResult.handled;
         }
         if (key == LogicalKeyboardKey.arrowUp) {
           final prev = widget.index - 1;
@@ -410,9 +410,10 @@ class _CartLineState extends State<_CartLine> {
           }
         }
         if (key == LogicalKeyboardKey.arrowLeft) {
+          final fromTop = widget.index == 0;
           widget.store.selectCartIndex(null);
           _focusNode.unfocus();
-          widget.onExitTop?.call();
+          if (fromTop) widget.onExitTop?.call();
           return KeyEventResult.handled;
         }
         if (key == LogicalKeyboardKey.home) {

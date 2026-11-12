@@ -266,10 +266,11 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       }
     } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowDown) {
       final next = widget.store.selectedCartIndex! + 1;
+      // stay on the last line: a false here lets Flutter's focus traversal hop to another panel
       if (next < widget.store.items.length) {
         widget.store.selectCartIndex(next);
-        return true;
       }
+      return true;
     } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowUp) {
       final prev = widget.store.selectedCartIndex! - 1;
       if (prev >= 0) {
@@ -282,9 +283,15 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         return true;
       }
     } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowLeft) {
+      // mid-list Left goes to the catalog; from the top line it goes on to the search box
+      final fromTop = widget.store.selectedCartIndex == 0;
       widget.store.selectCartIndex(null);
-      searchFocus.requestFocus();
-      search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
+      if (fromTop || products.isEmpty) {
+        searchFocus.requestFocus();
+        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
+      } else {
+        setState(() {});
+      }
       return true;
     } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.home) {
       widget.store.selectCartIndex(0);
@@ -454,6 +461,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
             if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
               if (products.isNotEmpty) {
                 searchFocus.unfocus();
+                // a cart line still selected would take the next arrow press away from the catalog
+                widget.store.selectCartIndex(null);
                 setState(() => selectedIndex = 0);
                 return KeyEventResult.handled;
               }
