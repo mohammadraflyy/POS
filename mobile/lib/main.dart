@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'core/theme.dart';
 import 'Widgets/ui.dart';
 import 'state/app_state.dart';
@@ -14,7 +15,17 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await appTheme.load();
   palette = ThemeController.paletteFor(appTheme.value, WidgetsBinding.instance.platformDispatcher.platformBrightness);
+  _paintCaption();
   runApp(Platform.isWindows ? const LocalServerGate(child: MyApp()) : const MyApp());
+}
+
+/// Paints the Windows title bar in the header's colours, so title bar and header read as
+/// one strip (see windows/runner/flutter_window.cpp).
+void _paintCaption() {
+  if (!Platform.isWindows) return;
+  const MethodChannel('pos/window')
+      .invokeMethod('caption', {'background': surface.toARGB32(), 'text': ink.toARGB32(), 'dark': isDark})
+      .catchError((_) => null); // older runner or a test host: keep the system title bar
 }
 class MyApp extends StatefulWidget {
   const MyApp({super.key, this.app});
@@ -41,6 +52,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final next = ThemeController.paletteFor(appTheme.value, WidgetsBinding.instance.platformDispatcher.platformBrightness);
     if (identical(next, palette)) return;
     palette = next;
+    _paintCaption();
     if (mounted) { setState(() {}); rebuildAll(context); }
   }
   @override

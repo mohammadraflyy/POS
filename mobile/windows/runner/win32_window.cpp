@@ -150,7 +150,8 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  // the till opens filling the screen; the restore size stays the one from main.cpp
+  return ShowWindow(window_handle_, SW_SHOWMAXIMIZED);
 }
 
 // static
