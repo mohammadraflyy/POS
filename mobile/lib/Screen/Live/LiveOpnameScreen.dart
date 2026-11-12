@@ -53,7 +53,18 @@ class _LiveOpnameScreenState extends State<LiveOpnameScreen> {
         style: IconButton.styleFrom(backgroundColor: primaryInk, foregroundColor: onPrimary, minimumSize: const Size(44, 44)))],
     ]),
     const SizedBox(height: 12), if (categoryError != null) TextButton(onPressed: loadCategories, child: const Text('Muat ulang kategori')),
-    Wrap(spacing: 8, runSpacing: 8, children: [for (final c in categories) FilterChip(label: Text((c['nama'] ?? c['name'] ?? '').toString()), selected: selected.contains(idNumber(c['id'])), onSelected: (value) { final id = idNumber(c['id']); if (value) { selected.add(id); } else { selected.remove(id); } load(); })]),
+    // one combobox instead of a chip per category, which wrapped into rows of buttons
+    // typing filters the list, so a long category list stays quick to pick from
+    if (categories.isNotEmpty) DropdownMenu<int?>(
+      initialSelection: selected.isEmpty ? null : selected.first,
+      expandedInsets: EdgeInsets.zero, enableFilter: true, requestFocusOnTap: true, menuHeight: 320,
+      label: const Text('Kategori'), hintText: 'Ketik untuk mencari kategori', leadingIcon: const Icon(Icons.category_outlined),
+      dropdownMenuEntries: [
+        // clears the filter; not "all", since no category and no search lists nothing
+        const DropdownMenuEntry(value: null, label: '— Hapus pilihan —'),
+        for (final c in categories) DropdownMenuEntry(value: idNumber(c['id']), label: (c['nama'] ?? c['name'] ?? '').toString()),
+      ],
+      onSelected: (id) { selected.clear(); if (id != null) selected.add(id); load(); }),
     const SizedBox(height: 16), if (loading) const Center(child: CircularProgressIndicator())
     else if (error != null) EmptyPanel(icon: Icons.wifi_off, title: 'Data belum dimuat', message: error!, action: TextButton(onPressed: load, child: const Text('Coba lagi')))
     else if (rows.isEmpty) const EmptyPanel(icon: Icons.manage_search, title: 'Pilih kategori atau cari produk', message: 'Produk aktif sesuai pencarian akan ditampilkan di sini.')

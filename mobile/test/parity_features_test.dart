@@ -226,7 +226,11 @@ void main() {
       });
 
       await show(tester, LiveOpnameScreen(api: api, guard: guard));
-      await tapText(tester, 'Minuman');
+      // the category is a searchable combobox: type part of the name, then pick the match
+      await tester.enterText(find.byType(DropdownMenu<int?>), 'minu');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Minuman').last);
+      await tester.pumpAndSettle();
       await tapText(tester, 'Air Mineral');
       await tester.enterText(find.widgetWithText(TextField, 'Total stok fisik'), '14');
       await tester.pump();
