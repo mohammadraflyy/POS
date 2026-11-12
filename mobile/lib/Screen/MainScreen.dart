@@ -25,6 +25,15 @@ class MainScreen extends StatefulWidget {
 
   /// The screen to open on; the till unless a caller (the screen gallery) asks otherwise.
   final Menu initialMenu;
+
+  /// The state's key handler changes menu on Ctrl+Up/Down; the same press still reaches the focus
+  /// tree, where Flutter's desktop defaults would scroll with it. The app's MaterialApp merges these
+  /// over its default shortcuts so the press is swallowed wherever focus rests, the route scope included.
+  static const menuShortcuts = <ShortcutActivator, Intent>{
+    SingleActivator(LogicalKeyboardKey.arrowUp, control: true): DoNothingAndStopPropagationIntent(),
+    SingleActivator(LogicalKeyboardKey.arrowDown, control: true): DoNothingAndStopPropagationIntent(),
+  };
+
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
@@ -32,6 +41,8 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   late Menu _menu = widget.initialMenu;
   bool _railOnly = false;
+  /// The active sidebar row, so a keyboard menu change can scroll it into view.
+  final _activeNavKey = GlobalKey();
   String? _shopName;
   AppUpdateInfo? _availableUpdate;
   bool _dismissedUpdate = false;
@@ -129,7 +140,31 @@ class _MainScreenState extends State<MainScreen> {
       _lockKasir();
       return true;
     }
+    // Ctrl+Up/Down: previous/next menu, in the sidebar's order, from any screen
+    if ((event.logicalKey == LogicalKeyboardKey.arrowUp || event.logicalKey == LogicalKeyboardKey.arrowDown) && HardwareKeyboard.instance.isControlPressed) {
+      final order = _sidebarOrder(widget.app.isDemo ? primaryMenus : menusFor(widget.app));
+      final at = order.indexOf(_menu);
+      final next = (at < 0 ? 0 : at) + (event.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1);
+      if (next >= 0 && next < order.length) {
+        _open(order[next]);
+        // a long menu list scrolls: bring the newly active row into view, as a click would see it
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final row = _activeNavKey.currentContext;
+          if (row != null && mounted) Scrollable.ensureVisible(row, duration: const Duration(milliseconds: 120), alignmentPolicy: event.logicalKey == LogicalKeyboardKey.arrowDown
+              ? ScrollPositionAlignmentPolicy.keepVisibleAtEnd
+              : ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+        });
+      }
+      return true;
+    }
     return false;
+  }
+
+  /// Menus as the sidebar lists them: grouped, groups in order of first appearance.
+  static List<Menu> _sidebarOrder(List<Menu> menus) {
+    final groups = <String, List<Menu>>{};
+    for (final menu in menus) { (groups[menuInfo[menu]!.group] ??= []).add(menu); }
+    return [for (final group in groups.values) ...group];
   }
 
   void _open(Menu menu) {
@@ -231,6 +266,7 @@ class _MainScreenState extends State<MainScreen> {
       ),
     );
     return Padding(
+      key: selected ? _activeNavKey : null,
       padding: EdgeInsets.symmetric(horizontal: compact ? 8 : Space.sm, vertical: 2.5),
       child: Semantics(
         selected: selected,
@@ -362,7 +398,6 @@ class _MainScreenState extends State<MainScreen> {
     final compact = _railOnly;
     final groups = <String, List<Menu>>{};
     for (final menu in menus) { (groups[menuInfo[menu]!.group] ??= []).add(menu); }
-    final allMenus = [for (final group in groups.values) ...group];
     final offline = widget.app.notice != null;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 

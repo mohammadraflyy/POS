@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../lib/core/theme.dart';
 import '../lib/Screen/MainScreen.dart';
 import '../lib/Widgets/cashier_lock_dialog.dart';
+import '../lib/Widgets/ui.dart' show SidebarArea;
 import '../lib/services/mobile_api.dart';
 import '../lib/state/app_state.dart';
 import 'session_test.dart' show MemoryStorage;
@@ -194,5 +195,61 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Kasir Terkunci'), findsOneWidget);
+  });
+
+  testWidgets('Ctrl+Down and Ctrl+Up walk the sidebar menus from the keyboard', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final app = await buildConnectedApp();
+    // the same shortcut table main.dart gives the app
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(Palette.light),
+      shortcuts: {...WidgetsApp.defaultShortcuts, ...MainScreen.menuShortcuts}, home: MainScreen(app: app)));
+    await tester.pumpAndSettle();
+
+    bool? selected(String title) => tester.widget<Semantics>(find.descendant(of: find.byType(SidebarArea),
+      matching: find.byWidgetPredicate((w) => w is Semantics && w.properties.label == title))).properties.selected;
+    Future<void> ctrl(LogicalKeyboardKey key) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(key);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+    }
+
+    expect(selected('Kasir'), isTrue);
+    await ctrl(LogicalKeyboardKey.arrowDown);
+    expect(selected('Riwayat'), isTrue);
+    expect(selected('Kasir'), isFalse);
+    await ctrl(LogicalKeyboardKey.arrowUp);
+    expect(selected('Kasir'), isTrue);
+  });
+
+  testWidgets('Ctrl+Down to the bottom of a long sidebar scrolls the active menu into view', (tester) async {
+    // short enough that the sidebar's menu list has to scroll
+    tester.view.physicalSize = const Size(1280, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final app = await buildConnectedApp();
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(Palette.light),
+      shortcuts: {...WidgetsApp.defaultShortcuts, ...MainScreen.menuShortcuts}, home: MainScreen(app: app)));
+    await tester.pumpAndSettle();
+
+    final list = find.descendant(of: find.byType(SidebarArea), matching: find.byType(ListView));
+    final viewport = tester.getRect(list);
+    for (var i = 0; i < 20; i++) {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+    }
+    final active = find.descendant(of: list, matching: find.byWidgetPredicate((w) => w is Semantics && w.properties.selected == true));
+    // the list really moved: without the scroll the last menu sits below the fold
+    expect(Scrollable.of(tester.element(active)).position.pixels, greaterThan(0));
+    final row = tester.getRect(active);
+    expect(row.top, greaterThanOrEqualTo(viewport.top));
+    expect(row.bottom, lessThanOrEqualTo(viewport.bottom));
   });
 }

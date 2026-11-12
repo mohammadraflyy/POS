@@ -56,6 +56,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // Recreate Navigator on mode changes: a revoked session cannot leave a detail route visible.
     key: ValueKey(app.initializing ? 'loading' : app.mode.name),
     title: 'Point of Sales', debugShowCheckedModeBanner: false, theme: buildTheme(palette),
+    shortcuts: {...WidgetsApp.defaultShortcuts, ...MainScreen.menuShortcuts},
     home: NoticeListener(message: app.initializing ? null : app.notice,
       child: app.initializing ? const SplashScreen() : app.mode == AppMode.pairing
         ? PairingScreen(app: app) : MainScreen(app: app)),
