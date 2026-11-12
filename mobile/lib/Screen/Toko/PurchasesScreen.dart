@@ -21,6 +21,7 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
   DateTimeRange? range;
   int page = 1, last = 1;
   num grandTotal = 0;
+  int totalPurchasesCount = 0;
   bool loading = true;
   String? error;
   @override void initState() { super.initState(); load(); }
@@ -28,7 +29,13 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
     setState(() { loading = true; error = null; });
     try {
       final data = await widget.api.purchases(target, dari: range == null ? null : isoDate(range!.start), sampai: range == null ? null : isoDate(range!.end));
-      if (mounted) setState(() { rows = jsonRows(data); page = (number(data['currentPage']) ?? target).toInt(); last = (number(data['lastPage']) ?? 1).toInt(); grandTotal = number(data['totalKeseluruhan']) ?? 0; });
+      if (mounted) setState(() {
+        rows = jsonRows(data);
+        page = (number(data['currentPage']) ?? target).toInt();
+        last = (number(data['lastPage']) ?? 1).toInt();
+        grandTotal = number(data['totalKeseluruhan']) ?? 0;
+        totalPurchasesCount = (number(data['total']) ?? rows.length).toInt();
+      });
     } catch (e) { if (mounted) setState(() => error = e.toString()); }
     finally { if (mounted) setState(() => loading = false); }
   }
@@ -42,6 +49,11 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
         icon: const Icon(Icons.date_range), label: Text(range == null ? 'Semua tanggal' : rangeLabel(range!))),
       if (range != null) TextButton(onPressed: () { range = null; load(); }, child: const Text('Hapus filter')),
     ]),
+    KpiStrip([
+      Kpi('Total Keseluruhan', rupiah(grandTotal), lead: true, caption: range == null ? 'Semua riwayat pembelian' : 'Periode ${rangeLabel(range!)}', color: primaryInk),
+      Kpi('Jumlah Pembelian', '$totalPurchasesCount transaksi', caption: 'Faktur tercatat'),
+    ]),
+    const SizedBox(height: Space.md),
     if (loading) const LinearProgressIndicator(minHeight: 2),
     LoadSwitch(loading: false, error: error, onRetry: load, child: DataView<Map<String, dynamic>>(rows: rows, onTap: open,
       emptyTitle: 'Belum ada pembelian',
@@ -229,6 +241,11 @@ class _SupplierDebtScreenState extends State<SupplierDebtScreen> {
     final invoices = debts.where((d) => d['supplierId'] == supplierId).toList();
     return ScreenBody(onRefresh: load, children: [
       ScreenHeader('Hutang supplier', 'Total hutang ${rupiah(total)}. Pembayaran dialokasikan ke faktur terlama lebih dulu.'),
+      KpiStrip([
+        Kpi('Total Keseluruhan Hutang', rupiah(total), lead: true, caption: '${grouped.length} supplier dengan sisa hutang', color: warningColor),
+        Kpi('Faktur Belum Lunas', '${debts.length} faktur', caption: 'Total faktur pembelian aktif'),
+      ]),
+      const SizedBox(height: Space.md),
       LoadSwitch(loading: loading && debts.isEmpty, error: error, onRetry: load, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         DataView<MapEntry<int, ({String name, num sisa, int faktur})>>(rows: grouped.entries.toList(),
           emptyTitle: 'Tidak ada hutang supplier', emptyMessage: 'Semua faktur pembelian sudah lunas.',

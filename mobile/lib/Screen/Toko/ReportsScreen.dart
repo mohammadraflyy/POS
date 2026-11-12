@@ -30,6 +30,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   String search = '';
   int page = 1, last = 1;
   num totalJumlah = 0;
+  int totalCount = 0;
   bool loading = true;
   String? error;
   @override void initState() { super.initState(); load(); }
@@ -37,7 +38,13 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     setState(() { loading = true; error = null; });
     try {
       final data = await widget.api.expenses(from: isoDate(range.start), to: isoDate(range.end), q: search, page: target);
-      if (mounted) setState(() { rows = jsonRows(data); page = (number(data['currentPage']) ?? target).toInt(); last = (number(data['lastPage']) ?? 1).toInt(); totalJumlah = number(data['totalJumlah']) ?? 0; });
+      if (mounted) setState(() {
+        rows = jsonRows(data);
+        page = (number(data['currentPage']) ?? target).toInt();
+        last = (number(data['lastPage']) ?? 1).toInt();
+        totalJumlah = number(data['totalJumlah']) ?? 0;
+        totalCount = (number(data['total']) ?? rows.length).toInt();
+      });
     } catch (e) { if (mounted) setState(() => error = e.toString()); }
     finally { if (mounted) setState(() => loading = false); }
   }
@@ -80,6 +87,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       if (widget.isAdmin && isDesktop) OutlinedButton.icon(onPressed: export, icon: const Icon(Icons.download), label: const Text('Ekspor Excel')),
     ]),
     DateQuickChips(selected: range, onChanged: (r) { if (r != null) { range = r; load(); } }),
+    const SizedBox(height: Space.sm),
+    KpiStrip([
+      Kpi('Total Keseluruhan', rupiah(totalJumlah), lead: true, caption: 'Periode ${rangeLabel(range)}', color: errorColor),
+      Kpi('Jumlah Pengeluaran', '$totalCount transaksi', caption: 'Tercatat'),
+    ]),
     const SizedBox(height: Space.sm),
     if (categoryTotals.isNotEmpty) ...[
       Wrap(

@@ -274,6 +274,20 @@ class _LivePurchaseScreenState extends State<LivePurchaseScreen> {
             OutlinedButton.icon(onPressed: !enabled ? null : loadLowStockSuggestions, icon: const Icon(Icons.auto_awesome), label: const Text('Muat stok menipis')),
         ],
       ),
+      if (items.isNotEmpty) ...[
+        const SizedBox(height: Space.md),
+        WhitePanel(
+          padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Total Pembelian', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              Text(rupiah(items.fold<num>(0, (sum, i) => sum + (i.quantity * i.price))),
+                  style: amountStyle.copyWith(fontSize: 18, fontWeight: FontWeight.bold, color: primaryInk)),
+            ],
+          ),
+        ),
+      ],
       const SizedBox(height: Space.lg), TextField(controller: paid, enabled: enabled, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Uang muka (opsional, Rp)', helperText: 'Kosong = lunas. Isi 0 untuk utang penuh.')),
       const SizedBox(height: Space.lg), TextField(controller: note, enabled: enabled, decoration: const InputDecoration(labelText: 'Catatan (opsional)')),
       const SizedBox(height: 16), Text('Jumlah akhir dihitung oleh PC saat penyimpanan.', style: TextStyle(color: muted, fontSize: 13)),

@@ -188,9 +188,6 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     final idx = selectedIndex.clamp(0, lines.length - 1);
     final line = lines[idx];
     addOne(line.product, unit: line.unit);
-    search.clear();
-    searchFocus.requestFocus();
-    setState(() => selectedIndex = 0);
   }
 
   /// Enter in the search box:
@@ -219,12 +216,6 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         search.clear();
         searchFocus.requestFocus();
         setState(() => selectedIndex = 0);
-        return;
-      }
-
-      final lines = catalogLines;
-      if (lines.isNotEmpty) {
-        pickSelected();
         return;
       }
 
@@ -302,17 +293,18 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       widget.store.selectCartIndex(null);
       searchFocus.requestFocus();
       return true;
-    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowDown) {
-      if (catalogScroll.hasClients) {
-        final max = catalogScroll.position.maxScrollExtent;
-        final next = (catalogScroll.offset + 72.0).clamp(0.0, max);
-        catalogScroll.animateTo(next, duration: const Duration(milliseconds: 60), curve: Curves.easeOut);
+    } else if (!typing && !isOutsideCatalog && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowDown) {
+      if (catalogLines.isNotEmpty) {
+        moveSelection(1);
         return true;
       }
-    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowUp) {
-      if (catalogScroll.hasClients) {
-        final prev = (catalogScroll.offset - 72.0).clamp(0.0, catalogScroll.position.maxScrollExtent);
-        catalogScroll.animateTo(prev, duration: const Duration(milliseconds: 60), curve: Curves.easeOut);
+    } else if (!typing && !isOutsideCatalog && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowUp) {
+      if (selectedIndex > 0) {
+        moveSelection(-1);
+        return true;
+      } else {
+        searchFocus.requestFocus();
+        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
         return true;
       }
     } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowRight) {
@@ -631,13 +623,20 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         const SizedBox(width: Space.sm),
         TextButton(onPressed: widget.store.editable ? widget.store.cancelEdit : null, child: const Text('Batal ubah')),
       ]));
+    final catalogWidget = Shortcuts(
+      shortcuts: const {
+        SingleActivator(LogicalKeyboardKey.arrowUp): DoNothingAndStopPropagationTextIntent(),
+        SingleActivator(LogicalKeyboardKey.arrowDown): DoNothingAndStopPropagationTextIntent(),
+      },
+      child: list,
+    );
     if (!wide) {
       return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Column(children: [
         if (editBanner != null) Padding(padding: const EdgeInsets.fromLTRB(Space.md, Space.md, Space.md, 0), child: editBanner),
         if (queueTabs != null) queueTabs,
         Padding(padding: const EdgeInsets.fromLTRB(Space.lg, Space.md, Space.sm, Space.md), child: searchRow),
         const Divider(),
-        Expanded(child: ColoredBox(color: surface, child: list)),
+        Expanded(child: ColoredBox(color: surface, child: catalogWidget)),
         CartAction(count: widget.store.items.length,
           total: widget.store.pricing ? 'Menghitung…' : rupiah(widget.store.price?.total ?? 0),
           onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => Scaffold(
@@ -668,7 +667,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
             ],
           ),
         ),
-        Expanded(child: list),
+        Expanded(child: catalogWidget),
       ]));
     // the till is driven from the keyboard on a PC - see handleKey
     final cartWidth = box.maxWidth >= 1400 ? 420.0 : box.maxWidth >= 1200 ? 400.0 : 380.0;
