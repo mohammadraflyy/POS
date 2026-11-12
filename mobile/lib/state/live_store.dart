@@ -363,6 +363,7 @@ class LiveStore extends ChangeNotifier {
     if (!editable) throw const ApiFailure('Selesaikan pemeriksaan transaksi sebelumnya terlebih dahulu.');
     if (item.quantity <= 0 || !item.quantity.isFinite) throw const ApiFailure('Jumlah harus lebih dari 0.');
     final index = items.indexWhere((i) => i.key == item.key);
+    _checkStock([for (final i in items) if (i.key != item.key) i, item], item.product);
     // New items land at index 0 so F3 (editTopLine) always edits the most recently added item, matching desktop-node.
     if (index < 0) { items.insert(0, item); } else { items[index] = item; }
     _syncActiveQueue();
@@ -372,6 +373,8 @@ class LiveStore extends ChangeNotifier {
     if (!editable) throw const ApiFailure('Selesaikan pemeriksaan transaksi sebelumnya terlebih dahulu.');
     if (newItem.quantity <= 0 || !newItem.quantity.isFinite) throw const ApiFailure('Jumlah harus lebih dari 0.');
     if (oldItem.key == newItem.key) { put(newItem); return; }
+    // a duplicate key merges quantities, so counting both lines is exactly what the cart will hold
+    _checkStock([for (final i in items) if (i.key != oldItem.key) i, newItem], newItem.product);
     final oldIdx = items.indexWhere((i) => i.key == oldItem.key);
     final dupIdx = items.indexWhere((i) => i.key == newItem.key);
     if (dupIdx >= 0) {
@@ -394,6 +397,19 @@ class LiveStore extends ChangeNotifier {
     }
     _syncActiveQueue();
     reprice();
+  }
+  /// Refuses a cart that would sell more of [product] than its stock, counted in the base
+  /// unit across every satuan line, as the PC's pricing does. The PC still re-checks; this
+  /// keeps the line out of the cart instead of flagging it after. Editing a saved sale is
+  /// exempt: its own quantity is already off the stock.
+  void _checkStock(List<LiveCartItem> next, LiveProduct product) {
+    final stock = product.stock;
+    if (editingSaleId != null || stock == null) return;
+    final needed = next.where((i) => i.product.id == product.id)
+      .fold<num>(0, (sum, i) => sum + i.quantity * i.unit.conversionFactor);
+    if (needed > stock + 1e-9) {
+      throw ApiFailure('Stok ${product.name} tidak cukup. Sisa ${quantityText(stock)} ${product.units.first.name}.');
+    }
   }
   void selectCartIndex(int? index) {
     if (index == null || index < 0 || index >= items.length) {
