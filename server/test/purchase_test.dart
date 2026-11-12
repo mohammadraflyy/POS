@@ -290,6 +290,24 @@ void main() {
       expect(list['totalKeseluruhan'], 14000);
     });
 
+    test('searches purchases by supplier, item, note or invoice number, totals following the filter', () {
+      final db = seedDb();
+      final kopi = buy(db, [item()]);
+      final gula = buy(db, [item(productId: 2, hargaBeli: 1000000, qty: 1)], supplierId: null);
+      db.execute("UPDATE purchases SET catatan = 'titipan pak budi' WHERE id = ?", [gula]);
+
+      List<Object?> ids(String q) => [for (final r in listPurchases(db, search: q)['data'] as List) (r as Map)['id']];
+
+      expect(ids('sumber'), [kopi]);
+      expect(ids('gula'), [gula]);
+      expect(ids('budi'), [gula]);
+      expect(ids('#$kopi'), [kopi]);
+      expect(ids('$gula'), [gula]);
+      expect(ids('tidak ada'), isEmpty);
+      expect(listPurchases(db, search: 'gula')['totalKeseluruhan'], 10000);
+      expect(listPurchases(db, search: 'gula')['total'], 1);
+    });
+
     test('finds a product by exact barcode only', () {
       final db = seedDb();
       db.execute("UPDATE products SET barcode = '8991002101234' WHERE id = 1");

@@ -503,7 +503,7 @@ Map<String, Object?> getPurchaseDetail(Db db, int purchaseId) {
 const _defaultPageSize = 25;
 const _validPageSizes = [10, 25, 50, 100];
 
-Map<String, Object?> listPurchases(Db db, {int page = 1, int? pageSize, String? dari, String? sampai}) {
+Map<String, Object?> listPurchases(Db db, {int page = 1, int? pageSize, String? dari, String? sampai, String? search}) {
   final size = pageSize != null && _validPageSizes.contains(pageSize) ? pageSize : _defaultPageSize;
   final currentPage = page < 1 ? 1 : page;
   // tanggal is a plain YYYY-MM-DD string, so a lexical comparison is a correct range filter
@@ -520,8 +520,21 @@ Map<String, Object?> listPurchases(Db db, {int page = 1, int? pageSize, String? 
     params.add(sampai);
   }
 
+  // supplier, note, invoice number (with or without the #) or any item on the invoice
+  final query = search?.trim() ?? '';
+  if (query.isNotEmpty) {
+    conditions.add(
+      '(s.nama LIKE ? OR pu.catatan LIKE ? OR CAST(pu.id AS TEXT) = ? OR pu.id IN '
+      '(SELECT pi.purchase_id FROM purchase_items pi JOIN products p ON p.id = pi.product_id WHERE p.nama_item LIKE ?))',
+    );
+    params.addAll(['%$query%', '%$query%', query.replaceFirst('#', ''), '%$query%']);
+  }
+
   final where = conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
-  final totals = db.first('SELECT count(*) AS n, coalesce(sum(pu.total), 0) AS total FROM purchases pu $where', params)!;
+  final totals = db.first(
+    'SELECT count(*) AS n, coalesce(sum(pu.total), 0) AS total FROM purchases pu LEFT JOIN suppliers s ON s.id = pu.supplier_id $where',
+    params,
+  )!;
   final total = totals['n'] as int;
   final rows = db.select(
     'SELECT pu.id, pu.tanggal, pu.total, pu.dibayar, pu.catatan, s.nama AS supplier_name FROM purchases pu '

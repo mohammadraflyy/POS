@@ -19,6 +19,7 @@ class PurchaseListScreen extends StatefulWidget {
 class _PurchaseListScreenState extends State<PurchaseListScreen> {
   List<Map<String, dynamic>> rows = [];
   DateTimeRange? range;
+  String search = '';
   int page = 1, last = 1;
   num grandTotal = 0;
   int totalPurchasesCount = 0;
@@ -28,7 +29,7 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
   Future<void> load({int target = 1}) async {
     setState(() { loading = true; error = null; });
     try {
-      final data = await widget.api.purchases(target, dari: range == null ? null : isoDate(range!.start), sampai: range == null ? null : isoDate(range!.end));
+      final data = await widget.api.purchases(target, dari: range == null ? null : isoDate(range!.start), sampai: range == null ? null : isoDate(range!.end), q: search);
       if (mounted) setState(() {
         rows = jsonRows(data);
         page = (number(data['currentPage']) ?? target).toInt();
@@ -53,6 +54,8 @@ class _PurchaseListScreenState extends State<PurchaseListScreen> {
       Kpi('Total Keseluruhan', rupiah(grandTotal), lead: true, caption: range == null ? 'Semua riwayat pembelian' : 'Periode ${rangeLabel(range!)}', color: primaryInk),
       Kpi('Jumlah Pembelian', '$totalPurchasesCount transaksi', caption: 'Faktur tercatat'),
     ]),
+    const SizedBox(height: Space.md),
+    SearchBox(onChanged: (v) { search = v; load(); }, hint: 'Cari supplier, barang, catatan, atau no. faktur'),
     const SizedBox(height: Space.md),
     if (loading) const LinearProgressIndicator(minHeight: 2),
     LoadSwitch(loading: false, error: error, onRetry: load, child: DataView<Map<String, dynamic>>(rows: rows, onTap: open,

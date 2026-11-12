@@ -65,7 +65,7 @@ class StoreApi extends BusinessApi {
   Future<Object?> deactivateUnit(int id) => delete('/v1/units/$id');
 
   // --- purchases & supplier debt ---
-  Future<Map<String, dynamic>> purchases(int page, {String? dari, String? sampai}) => getObject('/v1/purchases', _q({'page': page, 'dari': dari, 'sampai': sampai}));
+  Future<Map<String, dynamic>> purchases(int page, {String? dari, String? sampai, String? q}) => getObject('/v1/purchases', _q({'page': page, 'dari': dari, 'sampai': sampai, 'q': q}));
   Future<Map<String, dynamic>> purchaseDetail(int id) => getObject('/v1/purchases/$id');
   Future<Object?> deletePurchase(int id) => delete('/v1/purchases/$id');
   Future<List<Map<String, dynamic>>> supplierDebts() => getRows('/v1/supplier-debts');

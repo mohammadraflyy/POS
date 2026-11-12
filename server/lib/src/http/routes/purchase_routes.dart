@@ -120,7 +120,7 @@ void addPurchaseRoutes(Router router, ApiContext ctx) {
   router.get('/v1/purchases', (Request request) {
     requireUser(ctx, request);
 
-    return json(listPurchases(db, page: request.queryInt('page'), pageSize: request.queryIntOr('pageSize'), dari: request.query('dari'), sampai: request.query('sampai')));
+    return json(listPurchases(db, page: request.queryInt('page'), pageSize: request.queryIntOr('pageSize'), dari: request.query('dari'), sampai: request.query('sampai'), search: request.query('q')));
   });
 
   router.post('/v1/purchases', (Request request) async {
