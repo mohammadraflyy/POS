@@ -316,7 +316,9 @@ class _CartLineState extends State<_CartLine> {
     if (widget.isSelected && !oldWidget.isSelected) {
       if (!_focusNode.hasFocus) _focusNode.requestFocus();
       _ensureVisible();
-    } else if (!widget.isSelected && oldWidget.isSelected) {
+    } else if (!widget.isSelected && oldWidget.isSelected && widget.store.selectedCartIndex == null) {
+      // only when no line is selected: moving to another line, that line's requestFocus in this
+      // same frame must win, and an unfocus here would land after it and drop the keyboard
       if (_focusNode.hasFocus) _focusNode.unfocus();
     }
   }
@@ -382,40 +384,29 @@ class _CartLineState extends State<_CartLine> {
         }
       },
       onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        // the only owner of these keys while a line is selected: the till's global handler
+        // leaves them alone, so one press is one step (and one Delete removes one line)
+        if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+        // Ctrl+arrow changes menu (MainScreen); the cart must not step as well
+        if (HardwareKeyboard.instance.isControlPressed) return KeyEventResult.ignored;
         final key = event.logicalKey;
         if (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace) {
-          if (widget.store.editable) {
-            widget.store.removeSelectedCartItem();
-            return KeyEventResult.handled;
-          }
+          if (event is KeyDownEvent && widget.store.editable) widget.store.removeSelectedCartItem();
+          return KeyEventResult.handled;
         }
+        // arrows stay inside the cart, the edges included; PageDown/PageUp change panel
         if (key == LogicalKeyboardKey.arrowDown) {
-          final next = widget.index + 1;
-          if (next < widget.store.items.length) {
-            widget.store.selectCartIndex(next);
-          }
+          if (widget.index + 1 < widget.store.items.length) widget.store.selectCartIndex(widget.index + 1);
           return KeyEventResult.handled;
         }
         if (key == LogicalKeyboardKey.arrowUp) {
-          final prev = widget.index - 1;
-          if (prev >= 0) {
-            widget.store.selectCartIndex(prev);
-            return KeyEventResult.handled;
-          } else {
-            widget.store.selectCartIndex(null);
-            _focusNode.unfocus();
-            widget.onExitTop?.call();
-            return KeyEventResult.handled;
-          }
-        }
-        if (key == LogicalKeyboardKey.arrowLeft) {
-          final fromTop = widget.index == 0;
-          widget.store.selectCartIndex(null);
-          _focusNode.unfocus();
-          if (fromTop) widget.onExitTop?.call();
+          if (widget.index > 0) widget.store.selectCartIndex(widget.index - 1);
           return KeyEventResult.handled;
         }
+        if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowRight) {
+          return KeyEventResult.handled;
+        }
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
         if (key == LogicalKeyboardKey.home) {
           widget.store.selectCartIndex(0);
           return KeyEventResult.handled;

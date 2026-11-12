@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -167,7 +168,11 @@ void main() {
     store.dispose();
   });
 
-  testWidgets('cart navigation walks up with arrowUp and exits to search when reaching top', (tester) async {
+  testWidgets('cart navigation walks up with arrowUp, stays on the top line, and PageDown/PageUp change panel', (tester) async {
+    // the cart sits beside the catalog only on a wide desktop window
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
     final guard = MutationGuard(MemoryPending());
     final api = BusinessApi((path, {required method, query, body}) async {
       if (path == '/v1/carts/price') {
@@ -210,21 +215,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(store.selectedCartIndex, 0);
 
-    // Arrow up again while already at top ("udah mentok")
-    // Should clear cart selection and exit to search focus
+    // Arrow up again while already at top ("udah mentok"): the cart keeps the keyboard
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-    await tester.pumpAndSettle();
-    expect(store.selectedCartIndex, isNull);
-
-    // Verify search field is now focused
-    final searchInput = tester.widgetList<TextField>(find.byType(TextField)).firstWhere((f) => f.decoration?.labelText != 'Jumlah');
-    expect(searchInput.focusNode?.hasFocus, isTrue);
-
-    // Arrow right from search field (when empty) jumps back into cart at index 0
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
     expect(store.selectedCartIndex, 0);
 
+    // PageDown leaves the cart for the next panel, wrapping round to the search box
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, isNull);
+    final searchInput = tester.widgetList<TextField>(find.byType(TextField)).firstWhere((f) => f.decoration?.labelText != 'Jumlah');
+    expect(searchInput.focusNode?.hasFocus, isTrue);
+
+    // PageUp from the search box goes back round to the cart, at its top line
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 0);
+
+    await tester.pumpWidget(const SizedBox());
     store.dispose();
+    debugDefaultTargetPlatformOverride = null;
   });
 }

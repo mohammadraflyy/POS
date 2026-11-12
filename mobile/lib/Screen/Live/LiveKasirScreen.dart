@@ -27,6 +27,9 @@ class CatalogLine {
   }
 }
 
+/// The three panels of the till that PageDown/PageUp walk between, in screen order.
+enum KasirPanel { search, catalog, cart }
+
 class LiveKasirScreen extends StatefulWidget {
   const LiveKasirScreen({super.key, required this.store, this.active = true});
   final LiveStore store;
@@ -65,6 +68,11 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   List<LiveProduct> products = [];
   int selectedIndex = 0;
   final catalogScroll = ScrollController();
+  final selectedRowKey = GlobalKey();
+  /// The catalog holds focus while the arrows walk it. Merely unfocusing the search box
+  /// leaves focus nowhere in particular, and Flutter's own arrow traversal then hops the
+  /// next press over to the cart.
+  final catalogFocus = FocusNode(debugLabel: 'catalog', skipTraversal: true);
   bool loading = true;
   String? error;
   int page = 1, lastPage = 1, serial = 0, seenCatalogRevision = 0;
@@ -90,6 +98,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     qty.dispose();
     qtyFocus.dispose();
     catalogScroll.dispose();
+    catalogFocus.dispose();
     super.dispose();
   }
 
@@ -164,22 +173,49 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       showError(context, e);
     }
   }
+  /// The panel the keyboard is in. Exactly one at a time: the cart while a line is selected,
+  /// the catalog while it holds focus, the search row otherwise.
+  KasirPanel get currentPanel => widget.store.selectedCartIndex != null
+      ? KasirPanel.cart
+      : catalogFocus.hasFocus ? KasirPanel.catalog : KasirPanel.search;
+
+  /// PageDown/PageUp: next or previous panel, wrapping round. An empty cart is skipped.
+  void switchPanel(int step) {
+    final panels = [KasirPanel.search, KasirPanel.catalog, if (widget.store.items.isNotEmpty) KasirPanel.cart];
+    final from = panels.indexOf(currentPanel);
+    enterPanel(panels[((from < 0 ? 0 : from) + step) % panels.length]);
+  }
+
+  void enterPanel(KasirPanel panel) {
+    if (panel != KasirPanel.cart) widget.store.selectCartIndex(null);
+    switch (panel) {
+      case KasirPanel.search:
+        searchFocus.requestFocus();
+        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
+      case KasirPanel.catalog:
+        catalogFocus.requestFocus();
+        moveSelection(0);
+      case KasirPanel.cart:
+        // the line takes focus itself once selected - see _CartLineState
+        widget.store.selectCartIndex(0);
+    }
+  }
+
   void moveSelection(int delta) {
     final lines = catalogLines;
     if (lines.isEmpty) return;
     setState(() {
       selectedIndex = (selectedIndex + delta).clamp(0, lines.length - 1);
     });
-    if (catalogScroll.hasClients) {
-      final target = selectedIndex * 62.0;
-      final view = catalogScroll.position.viewportDimension;
-      final offset = catalogScroll.offset;
-      if (target < offset) {
-        catalogScroll.jumpTo(target);
-      } else if (target + 62 > offset + view) {
-        catalogScroll.jumpTo(target + 62 - view);
-      }
-    }
+    // scroll by the row's real size: rows grow with text scale and the second line,
+    // so a fixed row height drifts further off the more rows it counts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final row = selectedRowKey.currentContext;
+      if (row == null || !mounted) return;
+      Scrollable.ensureVisible(row, duration: Duration.zero, alignmentPolicy: delta > 0
+          ? ScrollPositionAlignmentPolicy.keepVisibleAtEnd
+          : ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+    });
   }
 
   void pickSelected() {
@@ -247,84 +283,25 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     final key = event.logicalKey;
     final alt = HardwareKeyboard.instance.isAltPressed;
     void Function()? action;
-    if (key == LogicalKeyboardKey.pageUp) {
-      action = () { qtyFocus.requestFocus(); qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length); };
+    if (key == LogicalKeyboardKey.pageDown || key == LogicalKeyboardKey.pageUp) {
+      action = () => switchPanel(key == LogicalKeyboardKey.pageDown ? 1 : -1);
     } else if (key == LogicalKeyboardKey.slash && !typing) {
       action = () => openPalette();
     } else if (alt && key == LogicalKeyboardKey.keyP) {
       action = pickCustomer;
-    } else if (key == LogicalKeyboardKey.f1 || key == LogicalKeyboardKey.f2 || key == LogicalKeyboardKey.pageDown) {
-      action = () { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); };
+    } else if (key == LogicalKeyboardKey.f1 || key == LogicalKeyboardKey.f2) {
+      action = () => enterPanel(KasirPanel.search);
     } else if (key == LogicalKeyboardKey.f4 || key == LogicalKeyboardKey.f12 || (key == LogicalKeyboardKey.end && !typing)) {
       action = pay;
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
-    } else if (!typing && (key == LogicalKeyboardKey.delete || key == LogicalKeyboardKey.backspace)) {
-      if (widget.store.selectedCartIndex != null && widget.store.editable) {
-        widget.store.removeSelectedCartItem();
-        return true;
-      }
-    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowDown) {
-      final next = widget.store.selectedCartIndex! + 1;
-      // stay on the last line: a false here lets Flutter's focus traversal hop to another panel
-      if (next < widget.store.items.length) {
-        widget.store.selectCartIndex(next);
-      }
-      return true;
-    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowUp) {
-      final prev = widget.store.selectedCartIndex! - 1;
-      if (prev >= 0) {
-        widget.store.selectCartIndex(prev);
-        return true;
-      } else {
-        widget.store.selectCartIndex(null);
-        searchFocus.requestFocus();
-        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
-        return true;
-      }
-    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.arrowLeft) {
-      // mid-list Left goes to the catalog; from the top line it goes on to the search box
-      final fromTop = widget.store.selectedCartIndex == 0;
-      widget.store.selectCartIndex(null);
-      if (fromTop || products.isEmpty) {
-        searchFocus.requestFocus();
-        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
-      } else {
-        setState(() {});
-      }
-      return true;
-    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.home) {
-      widget.store.selectCartIndex(0);
-      return true;
-    } else if (!typing && widget.store.selectedCartIndex != null && key == LogicalKeyboardKey.escape) {
-      widget.store.selectCartIndex(null);
-      searchFocus.requestFocus();
-      return true;
-    } else if (!typing && !isOutsideCatalog && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowDown) {
-      if (catalogLines.isNotEmpty) {
-        moveSelection(1);
-        return true;
-      }
-    } else if (!typing && !isOutsideCatalog && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowUp) {
-      if (selectedIndex > 0) {
-        moveSelection(-1);
-        return true;
-      } else {
-        searchFocus.requestFocus();
-        search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
-        return true;
-      }
-    } else if (!typing && widget.store.selectedCartIndex == null && key == LogicalKeyboardKey.arrowRight) {
-      if (widget.store.items.isNotEmpty) {
-        widget.store.selectCartIndex(0);
-        return true;
-      }
     } else if (key == LogicalKeyboardKey.enter) {
       final primaryCtx = FocusManager.instance.primaryFocus?.context;
       if (primaryCtx != null && (primaryCtx.findAncestorWidgetOfExactType<SidebarArea>() != null || primaryCtx.findAncestorWidgetOfExactType<HeaderArea>() != null)) {
         return false;
       }
-      if (!isOutsideCatalog) {
+      // the catalog's own Focus takes Enter while it holds focus - this is for focus resting nowhere
+      if (!isOutsideCatalog && !catalogFocus.hasFocus) {
         action = pickSelected;
       }
     } else if (alt && key == LogicalKeyboardKey.keyH) {
@@ -447,34 +424,28 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         borderRadius: BorderRadius.circular(Corners.control),
       ),
       child: Row(children: [
-        SizedBox(width: 88, child: TextField(controller: qty, focusNode: qtyFocus, textAlign: TextAlign.end,
+        SizedBox(width: 88, child: Focus(
+          // Right at the end of Jumlah (or with it all selected) steps back to the search box
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.arrowRight) return KeyEventResult.ignored;
+            final atEnd = qty.selection.extentOffset >= qty.text.length || qty.selection.start == 0 && qty.selection.end == qty.text.length;
+            if (!atEnd) return KeyEventResult.ignored;
+            enterPanel(KasirPanel.search);
+            return KeyEventResult.handled;
+          },
+          child: TextField(controller: qty, focusNode: qtyFocus, textAlign: TextAlign.end,
           keyboardType: const TextInputType.numberWithOptions(decimal: true), textInputAction: TextInputAction.next,
           style: amountStyle.copyWith(fontSize: 16),
           // Enter in Jumlah goes on to the search, ready for the scan or the name
           onSubmitted: (_) { searchFocus.requestFocus(); search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length); },
           onTap: () => qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length),
-          decoration: const InputDecoration(prefixText: '× ', hintText: '1', helperText: null, labelText: 'Jumlah'))),
+          decoration: const InputDecoration(prefixText: '× ', hintText: '1', helperText: null, labelText: 'Jumlah')))),
         const SizedBox(width: Space.sm),
         Expanded(child: Focus(
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent) return KeyEventResult.ignored;
-            if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-              if (products.isNotEmpty) {
-                searchFocus.unfocus();
-                // a cart line still selected would take the next arrow press away from the catalog
-                widget.store.selectCartIndex(null);
-                setState(() => selectedIndex = 0);
-                return KeyEventResult.handled;
-              }
-            }
-            if (event.logicalKey == LogicalKeyboardKey.arrowRight && search.selection.baseOffset == search.text.length) {
-              if (widget.store.items.isNotEmpty) {
-                searchFocus.unfocus();
-                widget.store.selectCartIndex(0);
-                return KeyEventResult.handled;
-              }
-            }
-            if (event.logicalKey == LogicalKeyboardKey.pageUp) {
+            // Left at the start of the search box steps over to Jumlah, in the same panel
+            if (event.logicalKey == LogicalKeyboardKey.arrowLeft && search.selection.isCollapsed && search.selection.baseOffset <= 0) {
               qtyFocus.requestFocus();
               qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length);
               return KeyEventResult.handled;
@@ -516,7 +487,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         IconButton(onPressed: () => load(target: page), tooltip: 'Muat ulang katalog', icon: const Icon(Icons.refresh, size: 20)),
       ]),
     );
-    final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('↑↓ pilih barang · Enter ambil · PageUp jumlah · PageDown cari · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+H antrean · Alt+T antrean baru · Alt+K kosongkan',
+    final keys = isDesktop && wide ? Padding(padding: EdgeInsets.only(top: Space.sm), child: Text('PageDown/PageUp pindah panel · ↑↓ pilih · Ctrl+↑↓ ganti menu · Enter ambil · ← jumlah · / palet barang · Alt+P pelanggan · End bayar · F3 ubah baris atas · Alt+H antrean · Alt+T antrean baru · Alt+K kosongkan',
       style: TextStyle(color: muted, fontSize: 12))) : const SizedBox.shrink();
     final queueTabs = widget.store.queues.length > 1 ? Container(
       padding: const EdgeInsets.fromLTRB(Space.lg, Space.xs, Space.sm, Space.xs),
@@ -572,15 +543,15 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       else if (lines.isEmpty && !loading) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(Space.lg), child: Text('Tidak ada barang yang cocok. Coba kata lain atau scan barcodenya.', style: TextStyle(color: muted))))
       else SliverList(delegate: SliverChildBuilderDelegate((context, index) {
         final line = lines[index];
-        final isSelected = isDesktop && !isOutsideCatalog && index == selectedIndex;
-        return ProductRow(
+        return KeyedSubtree(key: index == selectedIndex ? selectedRowKey : null, child: ProductRow(
           name: line.displayName,
           code: line.unit.conversionFactor > 1 ? '${line.product.code} · ${line.unit.name}' : line.product.code,
           stock: line.stock == null ? '-' : quantityText(line.stock),
           price: rupiah(line.unit.price),
           unit: line.unit.name,
           inCart: widget.store.items.any((item) => item.product.id == line.product.id && item.unit.id == line.unit.id),
-          selected: false,
+          // only while the arrows are in the catalog, so no stale mark while typing or in the cart
+          selected: isDesktop && catalogFocus.hasFocus && index == selectedIndex,
           onConfigure: widget.store.editable ? () {
             searchFocus.unfocus();
             qtyFocus.unfocus();
@@ -597,7 +568,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
             setState(() => selectedIndex = index);
             addOne(line.product, unit: line.unit);
           },
-        );
+        ));
       }, childCount: lines.length)),
       if (lastPage > 1) SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.md), child: Row(children: [
         Text('Halaman $page dari $lastPage', style: TextStyle(color: muted, fontSize: 13)),
@@ -637,7 +608,23 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         SingleActivator(LogicalKeyboardKey.arrowUp): DoNothingAndStopPropagationTextIntent(),
         SingleActivator(LogicalKeyboardKey.arrowDown): DoNothingAndStopPropagationTextIntent(),
       },
-      child: list,
+      child: Focus(focusNode: catalogFocus, onFocusChange: (_) => setState(() {}), onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+        // Ctrl+arrow changes menu (MainScreen); the catalog must not step as well
+        if (HardwareKeyboard.instance.isControlPressed) return KeyEventResult.ignored;
+        final key = event.logicalKey;
+        // arrows stay inside the catalog, the edges included; PageDown/PageUp change panel
+        if (key == LogicalKeyboardKey.arrowDown) { moveSelection(1); return KeyEventResult.handled; }
+        if (key == LogicalKeyboardKey.arrowUp) { moveSelection(-1); return KeyEventResult.handled; }
+        if (key == LogicalKeyboardKey.home) { moveSelection(-selectedIndex); return KeyEventResult.handled; }
+        if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowRight) return KeyEventResult.handled;
+        if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+          if (event is KeyDownEvent) pickSelected();
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.escape) { enterPanel(KasirPanel.search); return KeyEventResult.handled; }
+        return KeyEventResult.ignored;
+      }, child: list),
     );
     if (!wide) {
       return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: Column(children: [

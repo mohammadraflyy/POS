@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../lib/core/theme.dart';
+import '../lib/models/live_models.dart';
 import '../lib/services/business_api.dart';
 import '../lib/services/mutation_guard.dart';
 import '../lib/state/live_store.dart';
@@ -80,13 +81,32 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('PageDown jumps back to the search box', (tester) async {
+  testWidgets('PageDown walks search, catalog, cart and round again; PageUp walks back', (tester) async {
     await openTill(tester);
-    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.tap(find.byWidget(searchField(tester)));
     await tester.pump();
+
     await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'catalog');
+    expect(store.selectedCartIndex, isNull);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 0);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, isNull);
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 0);
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'catalog');
+    expect(store.selectedCartIndex, isNull);
     await finish(tester);
   });
 
@@ -147,7 +167,7 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('Jumlah sets how many go in, then falls back to 1; PageUp jumps to it', (tester) async {
+  testWidgets('Jumlah sets how many go in, then falls back to 1; Left from the empty search box reaches it, Right goes back', (tester) async {
     await openTill(tester);
     final qtyField = find.widgetWithText(TextField, 'Jumlah');
     await tester.enterText(qtyField, '3');
@@ -156,10 +176,16 @@ void main() {
     expect(store.items.single.quantity, 4); // 1 from the setup plus 3
     expect(tester.widget<TextField>(qtyField).controller!.text, '1');
 
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+    await tester.tap(find.byWidget(searchField(tester)));
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pump();
     expect(tester.widget<TextField>(qtyField).focusNode!.hasFocus, isTrue);
+
+    // Jumlah comes up all selected, ready to retype; Right hands back to the search box
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
     await finish(tester);
   });
 
@@ -174,12 +200,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
     expect(store.items.single.quantity, initialQty + 1);
 
-    // Typing in search then pressing Enter picks the selected match
+    // Typing in search, PageDown into the catalog, then Enter picks the selected match
     await tester.tap(find.byWidget(searchField(tester)));
     await tester.enterText(find.byWidget(searchField(tester)), 'Kopi');
     await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
@@ -425,39 +451,101 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('Down from the search box enters the catalog even while a cart line is selected', (tester) async {
+  testWidgets('arrows never leave the panel they are in', (tester) async {
     await openTill(tester);
-    store.selectCartIndex(0);
-    await tester.pumpAndSettle();
-
     await tester.tap(find.byWidget(searchField(tester)));
     await tester.pump();
+
+    // search row: Down and Right stay put
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
     expect(store.selectedCartIndex, isNull);
 
-    // a second Down moves inside the catalog, it must not touch the cart
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump();
+    // catalog: the row is marked, and every arrow - held down too - stays in the catalog
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+    await tester.pumpAndSettle();
+    expect(tester.widget<ProductRow>(find.byType(ProductRow).first).selected, isTrue);
+    for (final key in [LogicalKeyboardKey.arrowUp, LogicalKeyboardKey.arrowRight, LogicalKeyboardKey.arrowLeft, LogicalKeyboardKey.arrowDown]) {
+      await tester.sendKeyEvent(key);
+      await tester.sendKeyRepeatEvent(key);
+    }
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'catalog');
     expect(store.selectedCartIndex, isNull);
     await finish(tester);
   });
 
-  testWidgets('Down on the last cart line stays put, and Left from the top line returns to the search box', (tester) async {
-    await openTill(tester);
-    store.selectCartIndex(0);
+  testWidgets('arrowing down a long catalog keeps the selected row on screen', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
+    guard = MutationGuard(MemoryPending()); await guard.load();
+    store = LiveStore(BusinessApi((path, {required method, query, body}) async {
+      if (path == '/v1/catalog/search') {
+        return {'data': [for (var i = 0; i < 40; i++) {'id': i + 1, 'namaItem': 'Barang ${i.toString().padLeft(2, '0')}', 'kodeItem': 'B$i', 'satuan': 'PCS', 'stok': 5, 'hargaJual': 1000, 'units': <Object>[]}],
+          'currentPage': 1, 'lastPage': 1};
+      }
+      if (path == '/v1/carts/price') return {'lines': <Object>[], 'subtotal': 0, 'diskon': 0, 'total': 0};
+      throw StateError('Unexpected request: $path');
+    }), guard);
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(), home: Scaffold(body: LiveKasirScreen(store: store))));
     await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+    await tester.pump();
 
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 25; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
     }
-    expect(store.selectedCartIndex, 0);
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pump();
-    expect(store.selectedCartIndex, isNull);
-    expect(searchField(tester).focusNode!.hasFocus, isTrue);
+    final row = tester.getRect(find.text('Barang 25'));
+    final viewport = tester.getRect(find.byType(CustomScrollView));
+    expect(row.top, greaterThanOrEqualTo(viewport.top));
+    expect(row.bottom, lessThanOrEqualTo(viewport.bottom));
+    await finish(tester);
+  });
+
+  testWidgets('one Delete removes exactly one cart line', (tester) async {
+    await openTill(tester);
+    final kopi = store.items.single.product;
+    store.put(LiveCartItem(product: kopi, unit: kopi.units.last, quantity: 1));
+    await tester.pumpAndSettle();
+    expect(store.items, hasLength(2));
+
+    store.selectCartIndex(0);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+    await tester.pumpAndSettle();
+    expect(store.items, hasLength(1));
+    await finish(tester);
+  });
+
+  testWidgets('cart arrows move one line per press and never leave the cart', (tester) async {
+    await openTill(tester);
+    final kopi = store.items.single.product;
+    store.put(LiveCartItem(product: kopi, unit: kopi.units.last, quantity: 1));
+    await tester.pumpAndSettle();
+    expect(store.items, hasLength(2));
+
+    store.selectCartIndex(0);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 1);
+
+    // held down at the bottom, and every other arrow: still in the cart
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 1);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 0);
     await finish(tester);
   });
 }
