@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../lib/Widgets/popup.dart' show AppPopup;
 import '../lib/core/theme.dart';
 import '../lib/Widgets/ui.dart';
 import '../lib/Screen/MainScreen.dart';
@@ -161,7 +162,7 @@ void main() {
     await tester.tap(find.text('Buka')); await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('Mengerti')); await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppPopup), findsNothing);
   });
 
   testWidgets('pairing keyboard and field values survive an error', (tester) async {
@@ -177,7 +178,7 @@ void main() {
     await tester.pumpAndSettle();
     final button = find.widgetWithText(FilledButton, 'Hubungkan perangkat');
     await tester.ensureVisible(button); await tester.tap(button); await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(AppPopup), findsOneWidget);
     await tester.tap(find.text('Mengerti')); await tester.pumpAndSettle();
     expect(find.text('kasir-satu'), findsOneWidget);
     expect(tester.takeException(), isNull);

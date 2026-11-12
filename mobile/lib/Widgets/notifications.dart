@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/theme.dart';
+import 'popup.dart';
 
 enum NoticeKind { error, warning, success, info }
 
@@ -77,15 +78,15 @@ Future<void> showNotice(BuildContext context, String message, {
                 dismiss(onAction != null);
                 return KeyEventResult.handled;
               }
+              if (event.logicalKey == LogicalKeyboardKey.escape) {
+                dismiss(false);
+                return KeyEventResult.handled;
+              }
               return KeyEventResult.ignored;
             },
-            child: AlertDialog(
-              title: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(icon, color: color, size: 24), const SizedBox(width: Space.md),
-                Expanded(child: Text(heading)),
-              ]),
-              scrollable: true,
-              content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child: AppPopup(
+              icon: icon, tone: color, title: heading,
+              body: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(message),
                 if (details != null && details.trim().isNotEmpty) ExpansionTile(
                   tilePadding: EdgeInsets.zero, title: const Text('Detail masalah'),
@@ -93,12 +94,9 @@ Future<void> showNotice(BuildContext context, String message, {
                 ),
               ]),
               actions: [
-                if (onAction != null) TextButton(onPressed: () => dismiss(false), child: const Text('Nanti')),
-                FilledButton(
-                  autofocus: true,
-                  onPressed: () => dismiss(onAction != null),
-                  child: Text(actionLabel ?? 'Mengerti'),
-                ),
+                if (onAction != null) PopupButton('Nanti', keyHint: 'Esc', onPressed: () => dismiss(false)),
+                PopupButton(actionLabel ?? 'Mengerti', primary: true, autofocus: true, keyHint: 'Enter',
+                  onPressed: () => dismiss(onAction != null)),
               ],
             ),
           ),

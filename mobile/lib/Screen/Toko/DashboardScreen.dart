@@ -226,42 +226,20 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
     return ScreenBody(onRefresh: load, children: [
       ScreenHeader('Hari ini', finding, actions: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F5E9),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFA5D6A7)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF2E7D32),
-                  shape: BoxShape.circle,
-                ),
-              ),
+        // live already, so reloading is a small icon (and pull-to-refresh on a phone), not a big button
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: pillPositiveBg, borderRadius: BorderRadius.circular(16)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: pillPositiveInk, shape: BoxShape.circle)),
               const SizedBox(width: 6),
-              const Text(
-                'Realtime',
-                style: TextStyle(
-                  color: Color(0xFF1B5E20),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+              Text('Realtime', style: TextStyle(color: pillPositiveInk, fontSize: 12, fontWeight: FontWeight.w600)),
+            ]),
           ),
-        ),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: () => load(),
-          icon: const Icon(Icons.refresh, size: 18),
-          label: const Text('Muat ulang'),
-        ),
+          const SizedBox(width: 4),
+          IconButton(onPressed: () => load(), tooltip: 'Muat ulang', icon: const Icon(Icons.refresh_rounded, size: 20)),
+        ]),
       ]),
       LoadSwitch(loading: loading, error: error, onRetry: load, child: LayoutBuilder(builder: (context, box) {
         final wide = box.maxWidth >= 900;

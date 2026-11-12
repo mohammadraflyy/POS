@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../lib/Widgets/popup.dart' show AppPopup;
 import '../lib/Widgets/ui.dart';
 import '../lib/Screen/Pairing/PairingScreen.dart';
 import '../lib/Screen/Live/LiveSaleScreen.dart';
@@ -19,7 +20,7 @@ void main() {
     expect(identical(first, duplicate), isTrue);
     final second = showNotice(page, 'Periksa PC', kind: NoticeKind.warning);
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(AppPopup), findsOneWidget);
     expect(find.text('Gagal menyimpan'), findsOneWidget);
     await tester.tapAt(const Offset(5, 5));
     await tester.pumpAndSettle();
@@ -34,7 +35,7 @@ void main() {
     await tester.tap(find.text('Mengerti'));
     await tester.pumpAndSettle();
     await second;
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppPopup), findsNothing);
   });
 
   testWidgets('persistent warning appears once, and again after recovery', (tester) async {
@@ -49,12 +50,12 @@ void main() {
     await tester.pumpAndSettle();
     message.notifyListeners();
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppPopup), findsNothing);
     message.value = null;
     await tester.pump();
     message.value = 'Koneksi terputus';
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(AppPopup), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     message.dispose();
   });
@@ -70,13 +71,13 @@ void main() {
     await tester.ensureVisible(button);
     await tester.tap(button);
     await tester.pumpAndSettle();
-    expect(find.descendant(of: find.byType(AlertDialog),
+    expect(find.descendant(of: find.byType(AppPopup),
       matching: find.text('Isi kode 6 digit, username, dan password.')), findsOneWidget);
     await tester.tap(find.text('Mengerti'));
     await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(AppPopup), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     app.dispose();
   });
@@ -90,8 +91,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: LiveSaleScreen(api: api, id: 7,
       confirmation: const {'saleId': 7, 'total': 1000, 'printed': false})));
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(find.descendant(of: find.byType(AlertDialog),
+    expect(find.byType(AppPopup), findsOneWidget);
+    expect(find.descendant(of: find.byType(AppPopup),
       matching: find.textContaining('Jangan membuat penjualan lagi')), findsOneWidget);
     await tester.tap(find.text('Nanti'));
     await tester.pumpAndSettle();
@@ -124,7 +125,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     await first;
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppPopup), findsNothing);
 
     final second = showNotice(page, 'Peringatan 2', kind: NoticeKind.error);
     await tester.pumpAndSettle();
@@ -132,6 +133,6 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.numpadEnter);
     await tester.pumpAndSettle();
     await second;
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(AppPopup), findsNothing);
   });
 }

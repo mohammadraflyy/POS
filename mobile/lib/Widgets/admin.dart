@@ -7,6 +7,7 @@ import '../core/format.dart';
 import '../core/theme.dart';
 import '../models/live_models.dart';
 import '../services/mobile_api.dart';
+import 'popup.dart';
 import 'ui.dart';
 
 /// PC-only conveniences (save dialogs, keyboard shortcuts) switch on here. Read from the
@@ -15,12 +16,15 @@ bool get isDesktop => switch (defaultTargetPlatform) { TargetPlatform.windows ||
 
 Future<bool> confirmAction(BuildContext context, {required String title, required String message,
     String confirmLabel = 'Ya, lanjutkan', bool destructive = false}) async {
-  final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
-    title: Text(title), content: Text(message),
+  // the confirm button holds focus, so Enter confirms; Esc closes the dialog as Batal
+  final yes = await showDialog<bool>(context: context, builder: (context) => AppPopup(
+    icon: destructive ? Icons.delete_outline_rounded : Icons.help_outline_rounded,
+    tone: destructive ? errorColor : dataHue,
+    title: title, body: Text(message),
     actions: [
-      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
-      FilledButton(onPressed: () => Navigator.pop(context, true),
-        style: destructive ? FilledButton.styleFrom(backgroundColor: errorColor) : null, child: Text(confirmLabel)),
+      PopupButton('Batal', keyHint: 'Esc', onPressed: () => Navigator.pop(context, false)),
+      PopupButton(confirmLabel, primary: true, autofocus: true, keyHint: 'Enter',
+        tone: destructive ? errorColor : null, onPressed: () => Navigator.pop(context, true)),
     ]));
   return yes == true;
 }
@@ -444,6 +448,8 @@ class _FormDialogState extends State<_FormDialog> {
       default:
         return TextField(controller: controllers[f.key], enabled: !saving, obscureText: f.kind == FieldKind.password,
           maxLines: f.kind == FieldKind.multiline ? 3 : 1,
+          // Enter in a one-line field saves the form; a multiline field keeps Enter for new lines
+          onSubmitted: f.kind == FieldKind.multiline ? null : (_) => _save(),
           keyboardType: switch (f.kind) {
             FieldKind.money || FieldKind.number => const TextInputType.numberWithOptions(decimal: true),
             FieldKind.integer => TextInputType.number,
@@ -459,15 +465,16 @@ class _FormDialogState extends State<_FormDialog> {
             }) : null));
     }
   }
-  @override Widget build(BuildContext context) => AlertDialog(title: Text(widget.title), scrollable: true,
-    content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
+  @override Widget build(BuildContext context) => AppPopup(icon: Icons.edit_note_rounded, tone: dataHue, title: widget.title,
+    onClose: saving ? null : () => Navigator.pop(context),
+    body: Column(mainAxisSize: MainAxisSize.min, children: [
+      const SizedBox(height: Space.xs),
       for (final f in widget.fields) Padding(padding: const EdgeInsets.only(bottom: Space.md), child: _field(f)),
       if (error != null) Text(error!, style: TextStyle(color: errorColor)),
-    ])),
+    ]),
     actions: [
-      TextButton(onPressed: saving ? null : () => Navigator.pop(context), child: const Text('Batal')),
-      FilledButton(onPressed: saving ? null : _save, child: saving
-        ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: onPrimary)) : Text(widget.saveLabel)),
+      PopupButton('Batal', keyHint: 'Esc', onPressed: saving ? null : () => Navigator.pop(context)),
+      PopupButton(widget.saveLabel, primary: true, keyHint: 'Enter', busy: saving, onPressed: saving ? null : _save),
     ]);
 }
 
