@@ -80,13 +80,20 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
     TextField(onChanged: (v) { query = v; serial++; timer?.cancel(); setState(() => loading = true); timer = Timer(const Duration(milliseconds: 350), () => load()); },
       decoration: const InputDecoration(hintText: 'Cari nomor nota atau nama pelanggan', prefixIcon: Icon(Icons.search, size: 20))),
     const SizedBox(height: Space.md),
-    // one row of filters: the method, then whether cancelled notes show
-    Wrap(spacing: Space.sm, runSpacing: Space.sm, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      for (final entry in _methods.entries) ChoiceChip(label: Text(entry.value), selected: method == entry.key, showCheckmark: false, onSelected: (_) { method = entry.key; load(); }),
-      const SizedBox(width: Space.sm),
-      FilterChip(label: const Text('Sembunyikan yang batal'), selected: status == 'selesai', onSelected: (v) { status = v ? 'selesai' : ''; load(); }),
-      FilterChip(label: const Text('Hanya yang batal'), selected: status == 'dibatalkan', onSelected: (v) { status = v ? 'dibatalkan' : ''; load(); }),
-    ]),
+    // one line of filters that scrolls sideways, not three wrapped rows on a phone: the method
+    // chips, then the cancelled-note filter as a single dropdown
+    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+      for (final entry in _methods.entries) Padding(padding: const EdgeInsets.only(right: Space.sm),
+        child: ChoiceChip(label: Text(entry.value), selected: method == entry.key, showCheckmark: false, onSelected: (_) { method = entry.key; load(); })),
+      const SizedBox(width: Space.xs),
+      DropdownButton<String>(value: status, underline: const SizedBox(), borderRadius: BorderRadius.circular(Corners.control),
+        items: const [
+          DropdownMenuItem(value: '', child: Text('Semua status')),
+          DropdownMenuItem(value: 'selesai', child: Text('Tanpa yang batal')),
+          DropdownMenuItem(value: 'dibatalkan', child: Text('Hanya yang batal')),
+        ],
+        onChanged: (v) { status = v ?? ''; load(); }),
+    ])),
     const SizedBox(height: Space.md),
     if (loading) const LinearProgressIndicator(minHeight: 2),
     if (error != null) EmptyPanel(icon: Icons.wifi_off, title: 'Riwayat belum dimuat', message: error!, action: OutlinedButton(onPressed: () => load(), child: const Text('Coba lagi')))
@@ -98,7 +105,7 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
       DataCol('Barang', _itemsSummary, flex: 2),
       DataCol('Metode', (r) => _methods[r['metodePembayaran']] ?? text(r['metodePembayaran'])),
       DataCol('Status', _status, flex: 2),
-      DataCol('Total', (r) => rupiah(r['total']), numeric: true, flex: 2),
+      DataCol('Total', (r) => rupiah(r['total']), numeric: true, flex: 2, headline: true),
       DataCol('Laba', (r) => r['status'] == 'dibatalkan' ? '—' : rupiah(r['laba']), numeric: true, flex: 2),
     ]),
     Pager(page: page, last: last, busy: loading, onPage: (p) => load(target: p)),

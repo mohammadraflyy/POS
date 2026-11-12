@@ -169,7 +169,13 @@ void main() {
       await show(tester, LiveHistoryScreen(api: api, isAdmin: true));
       expect(find.textContaining('Beras ×2'), findsOneWidget);
       expect(find.textContaining('Belum lunas · Sisa Rp10.000'), findsOneWidget);
-      expect(find.text('Hanya yang batal'), findsOneWidget);
+      // the cancelled-note filter is a dropdown now; its choices show once it opens
+      expect(find.text('Semua status'), findsOneWidget);
+      await tester.tap(find.text('Semua status'));
+      await tester.pumpAndSettle();
+      expect(find.text('Hanya yang batal').last, findsOneWidget);
+      await tester.tap(find.text('Hanya yang batal').last);
+      await tester.pumpAndSettle();
 
       await show(tester, LiveSaleScreen(api: api, id: 12, isAdmin: true));
       expect(find.textContaining('grosir · diskon Rp500'), findsOneWidget);

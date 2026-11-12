@@ -217,11 +217,17 @@ const metodeLabel = {'tunai': 'Tunai', 'bon': 'Bon', 'qris': 'QRIS', 'transfer':
 // ---------------------------------------------------------------------------
 
 class DataCol<T> {
-  const DataCol(this.label, this.cell, {this.numeric = false, this.flex = 1});
+  const DataCol(this.label, this.cell, {this.numeric = false, this.flex = 1, this.headline = false, this.phone = true});
   final String label;
   final String Function(T row) cell;
   final bool numeric;
   final int flex;
+
+  /// The figure a phone card shows top right. Without one, the last numeric column.
+  final bool headline;
+
+  /// False leaves the column out of a phone card, where every field costs a line.
+  final bool phone;
 }
 
 class DataView<T> extends StatelessWidget {
@@ -247,6 +253,9 @@ class DataView<T> extends StatelessWidget {
     return LayoutBuilder(builder: (context, box) {
       final wide = box.maxWidth >= 720;
       if (!wide) {
+        final rest = columns.skip(1);
+        final headline = rest.where((c) => c.headline).firstOrNull ?? rest.where((c) => c.numeric).lastOrNull;
+        final details = [for (final col in rest) if (col != headline && col.phone) col];
         return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
           clipBehavior: Clip.antiAlias, child: Column(children: [for (final (index, row) in rows.indexed) Material(color: surface, child: InkWell(
           onTap: onTap == null ? null : () => onTap!(row),
@@ -256,12 +265,16 @@ class DataView<T> extends StatelessWidget {
               Row(children: [
                 if (_selectable) _checkbox(row),
                 Expanded(child: Text(columns.first.cell(row), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500))),
-                if (columns.skip(1).where((c) => c.numeric).isNotEmpty)
-                  Text(columns.skip(1).lastWhere((c) => c.numeric).cell(row), style: amountStyle.copyWith(fontSize: 14)),
+                if (headline != null) ...[const SizedBox(width: Space.sm),
+                  Text(headline.cell(row), style: amountStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w600))],
               ]),
-              const SizedBox(height: 4),
-              Text([for (final col in columns.skip(1)) if (!col.numeric || col != columns.skip(1).lastWhere((c) => c.numeric)) '${col.label} ${col.cell(row)}'].join(' · '),
-                style: TextStyle(color: muted, fontSize: 13)),
+              // label above value, two-ish to a line: scans faster than one long "a · b · c" sentence
+              if (details.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(spacing: Space.lg, runSpacing: 6, children: [
+                for (final col in details) Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(col.label, style: TextStyle(color: muted, fontSize: 11)),
+                  Text(col.cell(row), style: TextStyle(color: secondaryInk, fontSize: 13)),
+                ]),
+              ])),
               if (actions != null) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: Space.xs, children: actions!(row))),
             ]))))]));
       }
@@ -486,14 +499,29 @@ class ScreenHeader extends StatelessWidget {
 
   /// A section further down the screen: 16px, so the screen keeps one 24px title.
   final bool section;
-  @override Widget build(BuildContext context) => Padding(padding: EdgeInsets.only(bottom: section ? Space.md : Space.xl), child: Wrap(
-    alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.end, spacing: Space.lg, runSpacing: Space.md, children: [
-      ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: section ? Theme.of(context).textTheme.titleMedium : Theme.of(context).textTheme.titleLarge), SizedBox(height: section ? 2 : Space.xs),
-        Text(description, style: TextStyle(color: muted, fontSize: section ? 13 : 14)),
-      ])),
-      if (actions.isNotEmpty) Wrap(spacing: Space.sm, runSpacing: Space.sm, children: actions),
-    ]));
+  @override Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    // a phone already names the screen in its app bar: a smaller title, and the actions on one
+    // line that scrolls sideways instead of buttons of odd widths wrapping onto two rows
+    final phone = MediaQuery.sizeOf(context).width < 600;
+    final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(title, style: section ? textTheme.titleMedium : phone ? textTheme.titleLarge?.copyWith(fontSize: 20) : textTheme.titleLarge),
+      SizedBox(height: section ? 2 : Space.xs),
+      Text(description, style: TextStyle(color: muted, fontSize: section || phone ? 13 : 14)),
+    ]);
+    if (phone) {
+      return Padding(padding: EdgeInsets.only(bottom: section ? Space.md : Space.lg), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        heading,
+        if (actions.isNotEmpty) Padding(padding: const EdgeInsets.only(top: Space.md), child: SingleChildScrollView(scrollDirection: Axis.horizontal,
+          child: Row(children: [for (final (i, a) in actions.indexed) Padding(padding: EdgeInsets.only(left: i == 0 ? 0 : Space.sm), child: a)]))),
+      ]));
+    }
+    return Padding(padding: EdgeInsets.only(bottom: section ? Space.md : Space.xl), child: Wrap(
+      alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.end, spacing: Space.lg, runSpacing: Space.md, children: [
+        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: heading),
+        if (actions.isNotEmpty) Wrap(spacing: Space.sm, runSpacing: Space.sm, children: actions),
+      ]));
+  }
 }
 
 /// Scrollable page body with a consistent width and padding.

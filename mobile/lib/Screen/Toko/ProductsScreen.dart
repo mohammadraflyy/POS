@@ -270,7 +270,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
           final u = (number(p['unitsCount']) ?? 1).toInt();
           final t = (number(p['priceTiersCount']) ?? 0).toInt();
           return '$u satuan${t > 0 ? ' · $t grosir' : ''}';
-        }, flex: 2),
+        }, flex: 2, phone: false),
         DataCol('Stok', (p) {
           final s = number(p['stok']) ?? 0;
           final str = '${quantityText(p['stok'])} ${text(p['satuan'], '')}';

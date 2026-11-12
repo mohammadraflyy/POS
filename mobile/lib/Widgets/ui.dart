@@ -361,14 +361,19 @@ class BrandMarkPainter extends CustomPainter {
 class PageIntro extends StatelessWidget {
   const PageIntro(this.title, this.description, {super.key});
   final String title, description;
-  @override Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: Space.xl),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: Space.xs),
-      Text(description, style: TextStyle(color: muted, fontSize: 14)),
-    ]),
-  );
+  @override Widget build(BuildContext context) {
+    // a phone already names the screen in its app bar, so the intro gets smaller there
+    final phone = MediaQuery.sizeOf(context).width < 600;
+    final style = Theme.of(context).textTheme.titleLarge;
+    return Padding(
+      padding: EdgeInsets.only(bottom: phone ? Space.lg : Space.xl),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: phone ? style?.copyWith(fontSize: 20) : style),
+        const SizedBox(height: Space.xs),
+        Text(description, style: TextStyle(color: muted, fontSize: phone ? 13 : 14)),
+      ]),
+    );
+  }
 }
 
 /// A bounded reading/form width that still fills the available scroll height.
