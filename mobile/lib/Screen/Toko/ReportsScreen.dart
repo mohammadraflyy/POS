@@ -196,9 +196,11 @@ class _RekapScreenState extends State<RekapScreen> {
   bool loading = true;
   String? error;
   @override void initState() { super.initState(); load(); }
+  static const stockPageSize = 25;
+  int stockPage = 1;
   Future<void> load() async {
     setState(() { loading = true; error = null; });
-    try { final result = await widget.api.rekap(isoDate(range.start), isoDate(range.end)); if (mounted) setState(() => data = result); }
+    try { final result = await widget.api.rekap(isoDate(range.start), isoDate(range.end)); if (mounted) setState(() { data = result; stockPage = 1; }); }
     catch (e) { if (mounted) setState(() => error = e.toString()); }
     finally { if (mounted) setState(() => loading = false); }
   }
@@ -282,6 +284,9 @@ class _RekapScreenState extends State<RekapScreen> {
     final saran = penjelasan.isEmpty ? const <Map<String, dynamic>>[] : jsonRows(penjelasan['saran']);
     final rugi = penjelasan['barisRugi'] is List ? jsonRows(penjelasan['barisRugi']) : const <Map<String, dynamic>>[];
     final salesHistory = data?['salesHistory'] is List ? jsonRows(data!['salesHistory']) : const <Map<String, dynamic>>[];
+    final stockRows = stock.isEmpty ? const <Map<String, dynamic>>[] : jsonRows(stock['produk']);
+    final lastStockPage = stockRows.isEmpty ? 1 : (stockRows.length / stockPageSize).ceil();
+    final page = stockPage.clamp(1, lastStockPage);
     return ScreenBody(onRefresh: load, children: [
       ScreenHeader('Rekap', 'Omzet dihitung saat uang diterima: bon masuk saat lunas.', actions: [
         OutlinedButton.icon(onPressed: () async { final picked = await pickRange(context, range); if (picked != null) { range = picked; load(); } },
@@ -442,12 +447,16 @@ class _RekapScreenState extends State<RekapScreen> {
             DataCol('Dibayar', (r) => rupiah(r['dibayar']), numeric: true),
           ],
         )),
-        section('Nilai stok · ${rupiah(stock['totalNilai'])}', DataView<Map<String, dynamic>>(rows: stock.isEmpty ? const [] : jsonRows(stock['produk']), columns: [
-          DataCol('Kode', (r) => text(r['kodeItem'])),
-          DataCol('Produk', (r) => text(r['namaItem']), flex: 3),
-          DataCol('Stok', (r) => '${quantityText(r['stok'])} ${text(r['satuan'], '')}', numeric: true),
-          DataCol('Harga pokok', (r) => rupiah(r['hargaPokok']), numeric: true),
-          DataCol('Nilai', (r) => rupiah(r['nilai']), numeric: true),
+        section('Nilai stok · ${rupiah(stock['totalNilai'])}', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // the rekap sends every product at once; show it a page at a time instead of one long table
+          DataView<Map<String, dynamic>>(rows: stockRows.skip((page - 1) * stockPageSize).take(stockPageSize).toList(), columns: [
+            DataCol('Kode', (r) => text(r['kodeItem'])),
+            DataCol('Produk', (r) => text(r['namaItem']), flex: 3),
+            DataCol('Stok', (r) => '${quantityText(r['stok'])} ${text(r['satuan'], '')}', numeric: true),
+            DataCol('Harga pokok', (r) => rupiah(r['hargaPokok']), numeric: true),
+            DataCol('Nilai', (r) => rupiah(r['nilai']), numeric: true),
+          ]),
+          if (lastStockPage > 1) Pager(page: page, last: lastStockPage, onPage: (p) => setState(() => stockPage = p)),
         ])),
       ])),
     ]);

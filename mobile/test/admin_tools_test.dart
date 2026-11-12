@@ -107,6 +107,29 @@ void main() {
     expect(find.text('Zona berbahaya'), findsNothing);
   });
 
+  testWidgets('nilai stok shows 25 products a page', (tester) async {
+    final store = FakeStore({
+      'GET /v1/rekap': (_) => {
+        'summary': {'omzetTunai': 0, 'labaKotor': 0},
+        'labaPerKategori': <Object>[], 'labaPerHari': <Object>[], 'labaPerSatuan': <Object>[], 'produkTerlaris': <Object>[],
+        'pembelianPerSupplier': <Object>[], 'piutangPerPelanggan': <Object>[],
+        'stockValue': {'totalNilai': 30000, 'produk': [
+          for (var i = 1; i <= 30; i++) {'kodeItem': 'B$i', 'namaItem': 'Barang $i', 'stok': 1, 'satuan': 'PCS', 'hargaPokok': 1000, 'nilai': 1000},
+        ]},
+      },
+    });
+    await show(tester, RekapScreen(api: store.api));
+
+    expect(find.text('Barang 25'), findsOneWidget);
+    expect(find.text('Barang 26'), findsNothing);
+    expect(find.text('Halaman 1 dari 2'), findsOneWidget);
+    await tester.ensureVisible(find.byTooltip('Halaman berikutnya'));
+    await tester.tap(find.byTooltip('Halaman berikutnya'));
+    await tester.pumpAndSettle();
+    expect(find.text('Barang 26'), findsOneWidget);
+    expect(find.text('Barang 1'), findsNothing);
+  });
+
   testWidgets('corrects the cost of a line sold at a loss: preview, reason, save', (tester) async {
     final store = FakeStore({
       'GET /v1/rekap': (_) => {
