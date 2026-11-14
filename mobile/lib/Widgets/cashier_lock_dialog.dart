@@ -134,8 +134,8 @@ class _CashierLockDialogState extends State<CashierLockDialog> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final displayName = widget.app.userName.isEmpty ? 'Kasir' : widget.app.userName;
     final role = widget.app.role == 'admin' ? 'Admin' : 'Kasir';
-    final borderCol = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
-    final userTileBg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final borderCol = lineColor;
+    final userTileBg = raised;
 
     return AuthLayout(
       child: Column(
@@ -175,7 +175,7 @@ class _CashierLockDialogState extends State<CashierLockDialog> {
                       height: 36,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                        color: activePill,
                         shape: BoxShape.circle,
                       ),
                       child: Text(

@@ -34,7 +34,7 @@ Future<void> showNotice(BuildContext context, String message, {
       NoticeKind.error => errorColor,
       NoticeKind.warning => warningColor,
       NoticeKind.success => successColor,
-      NoticeKind.info => const Color(0xFF285E89),
+      NoticeKind.info => primaryInk,
     };
     final icon = switch (kind) {
       NoticeKind.error => Icons.error_outline,

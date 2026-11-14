@@ -75,7 +75,6 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
     finally { if (mounted) setState(() => loading = false); }
   }
   @override Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final lines = purchaseLines;
     return Scaffold(appBar: AppBar(title: const Text('Tambah barang masuk')), body: SafeArea(child: ListView(padding: const EdgeInsets.all(Space.lg), children: [
     Row(children: [Expanded(child: TextField(controller: query, onSubmitted: (_) => search(), decoration: const InputDecoration(hintText: 'Cari produk', prefixIcon: Icon(Icons.search)))),
@@ -99,21 +98,21 @@ class _LivePurchaseItemScreenState extends State<LivePurchaseItemScreen> {
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: isDark ? raised : const Color(0xFFE0F2FE),
+            color: dataHueSoft,
             borderRadius: BorderRadius.circular(Corners.control),
-            border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFBAE6FD)),
+            border: Border.all(color: lineColor),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.add, size: 14, color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1)),
+              Icon(Icons.add, size: 14, color: primaryInk),
               const SizedBox(width: 4),
               Text(
                 line.unit.name,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0369A1),
+                  color: primaryInk,
                 ),
               ),
             ],

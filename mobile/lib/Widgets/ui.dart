@@ -216,7 +216,7 @@ class KpiStrip extends StatelessWidget {
 }
 
 /// The app's mark. With [logo] (the shop's own image, from Pengaturan) it shows that;
-/// otherwise the default: a till receipt with a torn edge on a rounded wine tile.
+/// otherwise the default: a till receipt with a torn edge on a rounded blue tile.
 class BrandMark extends StatelessWidget {
   const BrandMark({super.key, this.size = 24, this.logo});
   final double size;

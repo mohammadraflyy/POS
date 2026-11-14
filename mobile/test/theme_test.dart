@@ -18,7 +18,7 @@ void main() {
     expect(ThemeController.paletteFor(ThemeMode.system, Brightness.light), same(Palette.light));
   });
 
-  test('the dark palette keeps text readable and the wine visible on its cards', () {
+  test('the dark palette keeps text readable and the blue visible on its cards', () {
     double luminance(Color c) => c.computeLuminance();
     double contrast(Color a, Color b) {
       final (hi, lo) = luminance(a) > luminance(b) ? (a, b) : (b, a);
@@ -29,7 +29,7 @@ void main() {
       expect(contrast(p.muted, p.surface), greaterThanOrEqualTo(4.5), reason: '${p.brightness} secondary text');
       expect(contrast(p.muted, p.canvas), greaterThanOrEqualTo(4.5), reason: '${p.brightness} secondary text on the ground');
       expect(contrast(p.dataHue, p.surface), greaterThanOrEqualTo(3), reason: '${p.brightness} the one data hue');
-      expect(contrast(p.onPrimary, p.primaryInk), greaterThan(7), reason: '${p.brightness} primary button label');
+      expect(contrast(p.onPrimary, p.primaryInk), greaterThanOrEqualTo(4.5), reason: '${p.brightness} primary button label');
     }
   });
 

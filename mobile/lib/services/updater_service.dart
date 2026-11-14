@@ -349,7 +349,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
     return AlertDialog(
       title: Row(
         children: [
-          const Icon(Icons.system_update, color: Colors.blueAccent),
+          Icon(Icons.system_update, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 10),
           Expanded(child: Text('Pembaruan ${widget.info.releaseName}')),
         ],

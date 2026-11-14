@@ -34,7 +34,7 @@ class ProductRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final rowBg = selected
-        ? (isDark ? const Color(0xFF0C4A6E).withValues(alpha: 0.35) : const Color(0xFFF0F9FF))
+        ? dataHueSoft
         : surface;
 
     return Material(
@@ -48,7 +48,7 @@ class ProductRow extends StatelessWidget {
             decoration: BoxDecoration(
               border: Border(
                 left: selected
-                    ? BorderSide(color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7), width: 3)
+                    ? BorderSide(color: primaryInk, width: 3)
                     : BorderSide.none,
                 bottom: BorderSide(color: ruleColor, width: 1),
               ),

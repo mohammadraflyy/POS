@@ -104,7 +104,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
       fontFamily: monoFamily,
       fontFamilyFallback: ['monospace'],
       fontSize: 11,
-      color: Color(0xFF1E293B),
+      color: Color(0xFF262626),
       height: 1.3,
       letterSpacing: 0.2,
     );
@@ -136,7 +136,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
           Container(
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+              color: raised,
               borderRadius: BorderRadius.circular(Corners.control),
               border: Border.all(color: lineColor),
             ),
@@ -167,7 +167,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+            border: Border.all(color: const Color(0xFFD4D4D4), width: 1.2),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.08),
@@ -210,7 +210,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
               // Divider
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(divider, style: mono.copyWith(color: const Color(0xFF94A3B8)), textAlign: TextAlign.center),
+                child: Text(divider, style: mono.copyWith(color: const Color(0xFFA3A3A3)), textAlign: TextAlign.center),
               ),
 
               // Transaction info
@@ -222,7 +222,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
               // Divider
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(divider, style: mono.copyWith(color: const Color(0xFF94A3B8)), textAlign: TextAlign.center),
+                child: Text(divider, style: mono.copyWith(color: const Color(0xFFA3A3A3)), textAlign: TextAlign.center),
               ),
 
               // 80mm Column Headers
@@ -230,7 +230,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
                 Text(padReceiptLine('ITEM', 'QTY     HARGA      TOTAL', chars), style: monoBold.copyWith(fontSize: 10.5)),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(divider, style: mono.copyWith(color: const Color(0xFF94A3B8)), textAlign: TextAlign.center),
+                  child: Text(divider, style: mono.copyWith(color: const Color(0xFFA3A3A3)), textAlign: TextAlign.center),
                 ),
               ],
 
@@ -246,7 +246,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
               // Divider
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(divider, style: mono.copyWith(color: const Color(0xFF94A3B8)), textAlign: TextAlign.center),
+                child: Text(divider, style: mono.copyWith(color: const Color(0xFFA3A3A3)), textAlign: TextAlign.center),
               ),
 
               // Summary
@@ -256,7 +256,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
               if (widget.note != null && widget.note!.trim().isNotEmpty) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(divider, style: mono.copyWith(color: const Color(0xFF94A3B8)), textAlign: TextAlign.center),
+                  child: Text(divider, style: mono.copyWith(color: const Color(0xFFA3A3A3)), textAlign: TextAlign.center),
                 ),
                 Text('Keterangan: ${widget.note!.trim()}', style: mono.copyWith(fontSize: 9.5)),
               ],
@@ -264,7 +264,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
               // Divider
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(divider, style: mono.copyWith(color: const Color(0xFF94A3B8)), textAlign: TextAlign.center),
+                child: Text(divider, style: mono.copyWith(color: const Color(0xFFA3A3A3)), textAlign: TextAlign.center),
               ),
 
               // Footer
@@ -272,7 +272,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
                 const SizedBox(height: 2),
                 Text(
                   foot,
-                  style: mono.copyWith(fontStyle: FontStyle.italic, fontSize: 10, color: const Color(0xFF475569)),
+                  style: mono.copyWith(fontStyle: FontStyle.italic, fontSize: 10, color: const Color(0xFF525252)),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 2),
@@ -302,7 +302,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
           children: [
             Text(padReceiptLine(name, rightPart, chars), style: mono),
             if (discVal > 0)
-              Text(padReceiptLine('  Diskon barang', '-${rupiah(discVal)}', chars), style: mono.copyWith(fontSize: 10, color: const Color(0xFF64748B))),
+              Text(padReceiptLine('  Diskon barang', '-${rupiah(discVal)}', chars), style: mono.copyWith(fontSize: 10, color: const Color(0xFF737373))),
           ],
         ),
       );
@@ -316,7 +316,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
             Text(name, style: monoBold.copyWith(fontSize: 10.5), maxLines: 2, overflow: TextOverflow.ellipsis),
             Text(padReceiptLine(qtyLabel, rupiah(subtotalVal + discVal), chars), style: mono),
             if (discVal > 0)
-              Text(padReceiptLine('  Diskon', '-${rupiah(discVal)}', chars), style: mono.copyWith(fontSize: 10, color: const Color(0xFF64748B))),
+              Text(padReceiptLine('  Diskon', '-${rupiah(discVal)}', chars), style: mono.copyWith(fontSize: 10, color: const Color(0xFF737373))),
           ],
         ),
       );
@@ -331,7 +331,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
           Text(padReceiptLine('Kopi Susu Gula Aren', '  1x     8.000      8.000', chars), style: mono),
           Text(padReceiptLine('Mie Instan Goreng Spesial', '  2x     3.500      7.000', chars), style: mono),
           Text(padReceiptLine('Minyak Goreng Sawit 1L', '  1x    18.000     18.000', chars), style: mono),
-          Text(padReceiptLine('  Diskon barang', '-2.000', chars), style: mono.copyWith(fontSize: 10, color: const Color(0xFF64748B))),
+          Text(padReceiptLine('  Diskon barang', '-2.000', chars), style: mono.copyWith(fontSize: 10, color: const Color(0xFF737373))),
         ],
       );
     } else {
@@ -346,7 +346,7 @@ class _ReceiptPaperPreviewState extends State<ReceiptPaperPreview> {
           const SizedBox(height: 2),
           Text('Minyak Goreng Sawit 1L', style: monoBold.copyWith(fontSize: 10.5)),
           Text(padReceiptLine('1 × 18.000', '18.000', chars), style: mono),
-          Text(padReceiptLine('  Diskon', '-2.000', chars), style: mono.copyWith(fontSize: 10, color: const Color(0xFF64748B))),
+          Text(padReceiptLine('  Diskon', '-2.000', chars), style: mono.copyWith(fontSize: 10, color: const Color(0xFF737373))),
         ],
       );
     }

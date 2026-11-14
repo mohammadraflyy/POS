@@ -41,7 +41,6 @@ class AuthBanner extends StatefulWidget {
 }
 
 class _AuthBannerState extends State<AuthBanner> {
-  static const _navy = Color(0xFF0F172A), _sky = Color(0xFF38BDF8);
   int _index = 0;
   Timer? _timer;
 
@@ -57,17 +56,17 @@ class _AuthBannerState extends State<AuthBanner> {
   @override
   Widget build(BuildContext context) {
     final slide = AuthBanner.slides[_index];
+    // The banner stays the light-mode blue in both themes so its white text keeps its contrast.
     return Container(
-      decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-        colors: [_navy, Color(0xFF0C4A6E)])),
+      color: Palette.light.primaryInk,
       padding: const EdgeInsets.all(Space.xxl),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Row(children: [BrandMark(size: 30), SizedBox(width: Space.md),
           Text('Point of Sales', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600))]),
         const Spacer(),
         AnimatedSwitcher(duration: Motion.enter * 2, child: Column(key: ValueKey(_index), crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(width: 56, height: 56, decoration: BoxDecoration(color: _sky.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(Corners.panel)),
-            child: Icon(slide.icon, color: _sky, size: 28)),
+          Container(width: 56, height: 56, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(Corners.panel)),
+            child: Icon(slide.icon, color: Colors.white, size: 28)),
           const SizedBox(height: Space.xl),
           Text(slide.title, style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700, height: 1.2)),
           const SizedBox(height: Space.md),
@@ -79,10 +78,10 @@ class _AuthBannerState extends State<AuthBanner> {
           for (var i = 0; i < AuthBanner.slides.length; i++)
             GestureDetector(onTap: () => setState(() => _index = i), child: AnimatedContainer(duration: Motion.enter,
               margin: const EdgeInsets.only(right: 8), width: i == _index ? 28 : 8, height: 8,
-              decoration: BoxDecoration(color: i == _index ? _sky : Colors.white.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(4)))),
+              decoration: BoxDecoration(color: i == _index ? Colors.white : Colors.white.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(4)))),
         ]),
         const Spacer(),
-        Text('Data tersimpan di PC toko, tetap jalan tanpa internet.', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
+        Text('Data tersimpan di PC toko, tetap jalan tanpa internet.', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 12)),
       ]),
     );
   }

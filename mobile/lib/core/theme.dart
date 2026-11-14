@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 
-// Achromatic ledger, from the taste-skill sheet (seed 544233759, kind commerce).
-// The chrome holds no colour: ink, greys and a stone ground. The one hue is the shop's
-// wine, and it goes on data only - the main figure or series of a screen - never on a
-// button, a nav row or an icon. Status colours are for status.
+// Neutral greys plus one blue. The blue marks actions, the active nav row and the main
+// figure of a screen; everything else is ink, grey and white. Status colours are for status.
 //
 // Two palettes, light and dark (true neutral darks, lightness steps instead of borders,
-// the wine lifted so it still reads on black). Every colour below is read from the
+// the blue lifted so it still reads on black). Every colour below is read from the
 // palette in force; the app switches it and rebuilds when the mode changes.
 
 /// One full set of the app's colours.
@@ -31,29 +29,29 @@ class Palette {
 
   static const light = Palette(
     brightness: Brightness.light,
-    canvas: Color(0xFFF1F5F9), surface: Colors.white, raised: Color(0xFFF8FAFC), activePill: Color(0xFFE2E8F0),
-    lineColor: Color(0xFFCBD5E1), ruleColor: Color(0xFFE2E8F0), controlBorder: Color(0xFF94A3B8),
-    ink: Color(0xFF0F172A), muted: Color(0xFF475569), secondaryInk: Color(0xFF1E293B),
-    primaryInk: Color(0xFF0F172A), onPrimary: Colors.white,
-    dataHue: Color(0xFF0284C7), dataHueSoft: Color(0xFFE0F2FE),
+    canvas: Color(0xFFFAFAFA), surface: Colors.white, raised: Color(0xFFF5F5F5), activePill: Color(0xFFE9EEF4),
+    lineColor: Color(0xFFE5E5E5), ruleColor: Color(0xFFEDEDED), controlBorder: Color(0xFF8F8F8F),
+    ink: Color(0xFF0A0A0A), muted: Color(0xFF636363), secondaryInk: Color(0xFF262626),
+    primaryInk: Color(0xFF00579A), onPrimary: Color(0xFFFCFCFC),
+    dataHue: Color(0xFF00579A), dataHueSoft: Color(0xFFDBE8F4),
     successColor: Color(0xFF16A34A), warningColor: Color(0xFFD97706), errorColor: Color(0xFFDC2626),
     pillPositiveBg: Color(0xFFDCFCE7), pillPositiveInk: Color(0xFF15803D), pillNegativeBg: Color(0xFFFEE2E2), pillNegativeInk: Color(0xFFB91C1C),
-    pillWarningBg: Color(0xFFFEF3C7), pillWarningInk: Color(0xFFB45309), pillNeutralBg: Color(0xFFF1F5F9), pillNeutralInk: Color(0xFF334155),
-    noticeBorder: Color(0xFFF59E0B), gridLine: Color(0xFFCBD5E1), baseline: Color(0xFF64748B), comparison: Color(0xFF475569),
+    pillWarningBg: Color(0xFFFEF3C7), pillWarningInk: Color(0xFFB45309), pillNeutralBg: Color(0xFFF5F5F5), pillNeutralInk: Color(0xFF404040),
+    noticeBorder: Color(0xFFF59E0B), gridLine: Color(0xFFE5E5E5), baseline: Color(0xFF737373), comparison: Color(0xFF525252),
     overlay: Colors.black,
   );
 
   static const dark = Palette(
     brightness: Brightness.dark,
-    canvas: Color(0xFF090D16), surface: Color(0xFF131D2E), raised: Color(0xFF1E293B), activePill: Color(0xFF334155),
-    lineColor: Color(0xFF334155), ruleColor: Color(0xFF232F42), controlBorder: Color(0xFF475569),
-    ink: Color(0xFFF8FAFC), muted: Color(0xFF94A3B8), secondaryInk: Color(0xFFE2E8F0),
-    primaryInk: Color(0xFF38BDF8), onPrimary: Color(0xFF0F172A),
-    dataHue: Color(0xFF38BDF8), dataHueSoft: Color(0xFF0C4A6E),
+    canvas: Color(0xFF0A0A0A), surface: Color(0xFF171717), raised: Color(0xFF262626), activePill: Color(0xFF1C2A38),
+    lineColor: Color(0xFF2E2E2E), ruleColor: Color(0xFF262626), controlBorder: Color(0xFF666666),
+    ink: Color(0xFFFAFAFA), muted: Color(0xFFA1A1A1), secondaryInk: Color(0xFFE5E5E5),
+    primaryInk: Color(0xFF4A94DB), onPrimary: Color(0xFF0F1A26),
+    dataHue: Color(0xFF4A94DB), dataHueSoft: Color(0xFF16293C),
     successColor: Color(0xFF22C55E), warningColor: Color(0xFFF59E0B), errorColor: Color(0xFFEF4444),
     pillPositiveBg: Color(0xFF052E16), pillPositiveInk: Color(0xFF4ADE80), pillNegativeBg: Color(0xFF450A0A), pillNegativeInk: Color(0xFFF87171),
-    pillWarningBg: Color(0xFF451A03), pillWarningInk: Color(0xFFFBBF24), pillNeutralBg: Color(0xFF1E293B), pillNeutralInk: Color(0xFFCBD5E1),
-    noticeBorder: Color(0xFF92400E), gridLine: Color(0xFF2D3C52), baseline: Color(0xFF64748B), comparison: Color(0xFFCBD5E1),
+    pillWarningBg: Color(0xFF451A03), pillWarningInk: Color(0xFFFBBF24), pillNeutralBg: Color(0xFF262626), pillNeutralInk: Color(0xFFD4D4D4),
+    noticeBorder: Color(0xFF92400E), gridLine: Color(0xFF333333), baseline: Color(0xFF737373), comparison: Color(0xFFD4D4D4),
     overlay: Colors.white,
   );
 }
@@ -62,7 +60,7 @@ class Palette {
 Palette palette = Palette.light;
 bool get isDark => palette.brightness == Brightness.dark;
 
-/// The page ground: a stone white from the shop's world, one level off the white cards.
+/// The page ground: an off-white one level off the white cards.
 Color get canvas => palette.canvas;
 Color get surface => palette.surface;
 
@@ -83,17 +81,17 @@ Color get controlBorder => palette.controlBorder;
 
 Color get ink => palette.ink;
 
-/// Secondary text; 5.3:1 on white and 4.8:1 on the ground (light), 7:1 on dark.
+/// Secondary text, held at 4.5:1 or better on both the surface and the ground.
 Color get muted => palette.muted;
 
 /// Body text one step quieter than [ink] (table cells after the first).
 Color get secondaryInk => palette.secondaryInk;
 
-/// The one primary action: near-black with a white label (inverted on dark).
+/// The one primary action: solid blue with a near-white label (lifted blue with a dark label on dark).
 Color get primaryInk => palette.primaryInk;
 Color get onPrimary => palette.onPrimary;
 
-/// The shop's wine, on data only (today's bars, the figure that answers the screen).
+/// The blue of the figure that answers a screen (today's bars, the main total).
 Color get dataHue => palette.dataHue;
 
 /// A pale tint of [dataHue] for a selected filter card.
@@ -196,8 +194,8 @@ ThemeData _buildTheme() {
     error: errorColor, onError: onPrimary,
     surfaceTint: Colors.transparent,
   );
-    final focusHighlight = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
-    final focusSoftBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF0F9FF);
+    final focusHighlight = primaryInk;
+    final focusSoftBg = isDark ? raised : dataHueSoft;
     final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control));
     return ThemeData(
       useMaterial3: true,
@@ -328,11 +326,11 @@ ThemeData _buildTheme() {
       trackOutlineColor: WidgetStateProperty.all(Colors.transparent)),
     chipTheme: ChipThemeData(
       backgroundColor: surface,
-      selectedColor: isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
-      checkmarkColor: isDark ? const Color(0xFF38BDF8) : Colors.white,
+      selectedColor: isDark ? activePill : primaryInk,
+      checkmarkColor: isDark ? primaryInk : onPrimary,
       side: WidgetStateBorderSide.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return BorderSide(color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A), width: 2.0);
+          return BorderSide(color: primaryInk, width: 2.0);
         }
         if (states.contains(WidgetState.focused)) {
           return BorderSide(color: focusHighlight, width: 2.0);
@@ -341,7 +339,7 @@ ThemeData _buildTheme() {
       }),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control)),
       labelStyle: TextStyle(fontFamily: fontFamily, color: ink, fontSize: 14),
-      secondaryLabelStyle: TextStyle(fontFamily: fontFamily, color: isDark ? const Color(0xFF38BDF8) : Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+      secondaryLabelStyle: TextStyle(fontFamily: fontFamily, color: isDark ? primaryInk : onPrimary, fontSize: 14, fontWeight: FontWeight.bold),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     ),
     tabBarTheme: TabBarThemeData(labelColor: ink, unselectedLabelColor: muted, indicatorColor: ink,

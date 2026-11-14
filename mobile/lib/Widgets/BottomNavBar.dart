@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 
 /// The phone's four destinations and "Lainnya", each with a short label. The active one
-/// is ink with a neutral pill behind its icon; the rest are grey. No brand colour.
+/// is blue, with a solid blue pill behind its icon on light; the rest are grey.
 class BottomNavBar extends StatelessWidget {
   const BottomNavBar({super.key, required this.selectedIndex, required this.onDestinationSelected,
     this.labels = const ['Kasir', 'Pembelian', 'Opname', 'Riwayat'],
@@ -27,10 +27,10 @@ class BottomNavBar extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: selectedIndex == i
-                      ? (isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A))
+                      ? (isDark ? activePill : primaryInk)
                       : Colors.transparent,
                   border: selectedIndex == i && isDark
-                      ? Border.all(color: const Color(0xFF38BDF8), width: 1.2)
+                      ? Border.all(color: primaryInk, width: 1.2)
                       : null,
                   borderRadius: BorderRadius.circular(15),
                   boxShadow: selectedIndex == i && !isDark ? [
@@ -40,7 +40,7 @@ class BottomNavBar extends StatelessWidget {
                 child: Icon(
                   icons[i],
                   color: selectedIndex == i
-                      ? (isDark ? const Color(0xFF38BDF8) : Colors.white)
+                      ? (isDark ? primaryInk : onPrimary)
                       : muted,
                   size: 20,
                 ),
@@ -53,9 +53,7 @@ class BottomNavBar extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12,
-                  color: selectedIndex == i
-                      ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A))
-                      : muted,
+                  color: selectedIndex == i ? primaryInk : muted,
                   fontWeight: selectedIndex == i ? FontWeight.bold : FontWeight.w500,
                 ),
               ),

@@ -86,8 +86,8 @@ class _MainScreenState extends State<MainScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E3A8A),
-        border: Border(bottom: BorderSide(color: Colors.blue.shade300.withValues(alpha: 0.3))),
+        color: Palette.light.primaryInk,
+        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.3))),
       ),
       child: Row(children: [
         const Icon(Icons.system_update_outlined, color: Colors.white, size: 18),
@@ -101,7 +101,7 @@ class _MainScreenState extends State<MainScreen> {
         FilledButton(
           style: FilledButton.styleFrom(
             backgroundColor: Colors.white,
-            foregroundColor: const Color(0xFF1E3A8A),
+            foregroundColor: Palette.light.primaryInk,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -214,13 +214,12 @@ class _MainScreenState extends State<MainScreen> {
   Widget _navRow(Menu menu, {required bool compact}) {
     final selected = menu == _menu;
     final info = menuInfo[menu]!;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // Active row: a soft tint and a short accent bar, not a solid block - the page's own
     // primary button should be the loudest thing on screen, not the menu.
-    final activeBg = isDark ? const Color(0x2638BDF8) : const Color(0xFFE2E8F0);
+    final activeBg = activePill;
     final activeFg = ink;
-    final activeIconColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A);
+    final activeIconColor = primaryInk;
 
     final row = Material(
       color: selected ? activeBg : Colors.transparent,
@@ -240,7 +239,7 @@ class _MainScreenState extends State<MainScreen> {
                 Icon(
                   info.icon,
                   size: 20,
-                  color: selected ? activeIconColor : (isDark ? muted : const Color(0xFF64748B)),
+                  color: selected ? activeIconColor : muted,
                 ),
                 if (!compact) ...[
                   const SizedBox(width: 12),
@@ -251,7 +250,7 @@ class _MainScreenState extends State<MainScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 14,
-                        color: selected ? activeFg : (isDark ? secondaryInk : const Color(0xFF334155)),
+                        color: selected ? activeFg : secondaryInk,
                         fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                       ),
                     ),
@@ -349,10 +348,9 @@ class _MainScreenState extends State<MainScreen> {
     final groups = <String, List<Menu>>{};
     for (final menu in menus) { (groups[menuInfo[menu]!.group] ??= []).add(menu); }
     final offline = widget.app.notice != null;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      color: surface,
       child: Column(children: [
         _brand(compact: compact),
         // tighter rows so nearly every menu fits a 900px-tall screen; below that the list scrolls
@@ -365,7 +363,7 @@ class _MainScreenState extends State<MainScreen> {
                 child: Text(
                   group.key.toUpperCase(),
                   style: TextStyle(
-                    color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                    color: muted,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.8,
