@@ -337,14 +337,16 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   OutlineInputBorder _border(Color color, [double width = 1]) =>
     OutlineInputBorder(borderRadius: BorderRadius.circular(Corners.control), borderSide: BorderSide(color: color, width: width));
 
-  InputDecoration _fieldDecoration(String hint, {Widget? prefix, Widget? suffix, String? prefixText}) => InputDecoration(
-    hintText: hint, hintStyle: TextStyle(color: KasirColors.muted), isDense: true, filled: true, fillColor: KasirColors.surface,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  /// With [bare] the field draws no border or fill: the PC header's input group supplies both.
+  InputDecoration _fieldDecoration(String hint, {Widget? prefix, Widget? suffix, String? prefixText, bool bare = false}) => InputDecoration(
+    hintText: hint, hintStyle: TextStyle(color: KasirColors.muted), isDense: true, filled: !bare, fillColor: KasirColors.surface,
+    contentPadding: EdgeInsets.symmetric(horizontal: bare ? 4 : 12, vertical: 10),
     prefixText: prefixText, prefixStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: KasirColors.ink),
     prefixIcon: prefix, prefixIconConstraints: const BoxConstraints(minWidth: 38),
     suffixIcon: suffix == null ? null : Padding(padding: const EdgeInsets.only(right: 8), child: suffix),
     suffixIconConstraints: const BoxConstraints(),
-    border: _border(KasirColors.border), enabledBorder: _border(KasirColors.border), focusedBorder: _border(KasirColors.primary, 2),
+    border: bare ? InputBorder.none : _border(KasirColors.border), enabledBorder: bare ? InputBorder.none : _border(KasirColors.border),
+    focusedBorder: bare ? InputBorder.none : _border(KasirColors.primary, 2),
   );
 
   /// Down in Jumlah or the search box goes to the Pelanggan box, the first stop below them.
@@ -453,7 +455,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     return KeyEventResult.handled;
   }
 
-  Widget _qtyField(double width, double height) => SizedBox(width: width, height: height, child: Focus(
+  Widget _qtyField(double width, double height, {bool bare = false}) => SizedBox(width: width, height: height, child: Focus(
     // Right at the end of Jumlah (or with it all selected) steps back to the search box
     onKeyEvent: (node, event) {
       if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -464,7 +466,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       enterPanel(KasirPanel.search);
       return KeyEventResult.handled;
     },
-    child: Semantics(label: 'Jumlah', child: TextField(controller: qty, focusNode: qtyFocus, textAlign: TextAlign.center, textAlignVertical: TextAlignVertical.center,
+    child: Semantics(label: 'Jumlah', child: TextField(controller: qty, focusNode: qtyFocus, textAlign: bare ? TextAlign.start : TextAlign.center, textAlignVertical: TextAlignVertical.center,
       keyboardType: const TextInputType.numberWithOptions(decimal: true), textInputAction: TextInputAction.next,
       style: amountStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: KasirColors.ink),
       // Enter in Jumlah goes on to the search, ready for the scan or the name; "Panah global" opens the palette instead
@@ -474,10 +476,10 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         search.selection = TextSelection(baseOffset: 0, extentOffset: search.text.length);
       },
       onTap: () => qty.selection = TextSelection(baseOffset: 0, extentOffset: qty.text.length),
-      decoration: _fieldDecoration('1', prefixText: '× ')))));
+      decoration: _fieldDecoration('1', prefixText: '× ', bare: bare)))));
 
   /// The search box. On a phone it only opens the palette: there is no catalog list to filter.
-  Widget _searchField({required bool phone}) => SizedBox(height: phone ? 42 : 38, child: Focus(
+  Widget _searchField({required bool phone, bool bare = false}) => SizedBox(height: phone ? 42 : 38, child: Focus(
     onKeyEvent: (node, event) {
       if (event is! KeyDownEvent) return KeyEventResult.ignored;
       if (kasirKeys.isGlobalArrows) {
@@ -506,7 +508,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       readOnly: phone, onTap: phone ? openPalette : null, autofocus: isDesktop, onSubmitted: (_) => submitSearch(),
       style: TextStyle(fontSize: 14, color: KasirColors.ink),
       decoration: _fieldDecoration(phone ? 'Cari barang…' : 'Cari nama / kode / barcode',
-        prefix: Icon(Icons.search, size: 20, color: KasirColors.muted), suffix: phone ? null : const KasirKey('/'))),
+        prefix: Icon(Icons.search, size: 20, color: KasirColors.muted), suffix: phone ? null : const KasirKey('/'), bare: bare)),
   ));
 
   /// A bordered box with a small label over its value, an icon tile at the left; tappable when [onTap] is given.
@@ -591,6 +593,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
 
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([widget.store, widget.store.guard]), builder: (context, _) => LayoutBuilder(builder: (context, box) {
     final wide = usesSplitCart(context, box);
+    // below this the fixed parts of the card would crowd out the rows, so the whole page scrolls instead
+    final fill = wide && box.hasBoundedHeight && box.maxHeight >= 590;
     final store = widget.store;
     final totalText = store.items.isEmpty ? rupiah(0) : rupiah(store.price?.total);
     final editing = widget.store.editingSaleId;
@@ -619,7 +623,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         const SizedBox(width: Space.sm),
         TextButton(onPressed: widget.store.editable ? widget.store.cancelEdit : null, child: const Text('Batal ubah')),
       ]));
-    final cart = LiveCartPanel(store: store, onExitTop: exitCartTop, inCard: wide, holdFocus: holdFocus, clearFocus: clearFocus, onRowKey: cartRowKey);
+    final cart = LiveCartPanel(store: store, onExitTop: exitCartTop, inCard: wide, fill: fill, holdFocus: holdFocus, clearFocus: clearFocus, onRowKey: cartRowKey);
     final customer = store.customerName.isEmpty ? 'Umum' : store.customerName;
     if (!wide) {
       return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: ColoredBox(color: KasirColors.surface, child: Column(children: [
@@ -671,28 +675,51 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           Row(mainAxisSize: MainAxisSize.min, children: [KasirKey(key), const SizedBox(width: 6), Text(label, style: TextStyle(fontSize: 12, color: KasirColors.label))]),
       ]),
     ));
+    Widget page(Widget card) => fill ? Padding(padding: const EdgeInsets.all(24), child: card) : SingleChildScrollView(padding: const EdgeInsets.all(24), child: card);
     // the till is driven from the keyboard on a PC - see handleKey
-    return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: SizedBox.expand(child: ColoredBox(color: KasirColors.surface, child: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+    return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: SizedBox.expand(child: ColoredBox(color: KasirColors.surface, child: page(
       // the whole page is one card split by hairlines, like the dashboard money panel
-      child: Container(
+      Container(
           decoration: BoxDecoration(
             color: KasirColors.surface,
             border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel), boxShadow: KasirColors.softShadow,
           ),
           clipBehavior: Clip.antiAlias,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Padding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 16), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-              Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                Flexible(child: Text(editing == null ? 'Kasir' : 'Kasir · Ubah nota #$editing', maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: KasirColors.ink))),
-                const SizedBox(width: 12),
-                Text(store.activeQueue.label, style: TextStyle(fontSize: 12, color: KasirColors.muted)),
-              ])),
-              Text('Jumlah', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: KasirColors.label)), const SizedBox(width: Space.sm),
-              _qtyField(68, 38), const SizedBox(width: Space.sm),
-              SizedBox(width: 300, child: _searchField(phone: false)),
-            ])),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min, children: [
+            // the queue tabs sit on the header's bottom hairline, so their underline is flush with it
+            SizedBox(height: 56, child: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 20, 0), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Expanded(child: editing == null
+                ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    for (var i = 0; i < store.queues.length; i++)
+                      _QueueTab(queue: store.queues[i], active: i == store.activeQueueIndex,
+                        onTap: () => store.switchQueue(i), onClose: () => confirmCloseQueue(context, store, i)),
+                    Padding(padding: const EdgeInsets.only(top: 13), child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Tooltip(message: 'Antrean baru (Alt+T)', child: Material(
+                        color: Colors.transparent, clipBehavior: Clip.antiAlias,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control), side: BorderSide(color: KasirColors.border)),
+                        child: InkWell(onTap: store.editable ? () => store.newQueue() : null, child: SizedBox(width: 30, height: 30,
+                          child: Icon(Icons.add, size: 18, color: store.editable ? KasirColors.ink : KasirColors.muted))),
+                      )),
+                      const SizedBox(width: 8),
+                      Text('Alt+T', style: TextStyle(fontFamily: monoFamily, fontSize: 11, color: KasirColors.muted)),
+                    ])),
+                  ]))
+                : Padding(padding: const EdgeInsets.only(left: 8), child: Text('Kasir · Ubah nota #$editing', maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: KasirColors.ink)))),
+              const SizedBox(width: Space.md),
+              // Jumlah and the search are one bordered group; it shows the focus ring when either field has focus
+              ListenableBuilder(listenable: Listenable.merge([qtyFocus, searchFocus]), builder: (context, _) => Container(
+                width: 360, height: 38,
+                decoration: BoxDecoration(color: KasirColors.surface, borderRadius: BorderRadius.circular(Corners.control)),
+                foregroundDecoration: BoxDecoration(borderRadius: BorderRadius.circular(Corners.control),
+                  border: Border.all(color: qtyFocus.hasFocus || searchFocus.hasFocus ? KasirColors.primary : KasirColors.border, width: qtyFocus.hasFocus || searchFocus.hasFocus ? 2 : 1)),
+                child: Row(children: [
+                  Tooltip(message: 'Jumlah', child: Padding(padding: const EdgeInsets.only(left: 8), child: _qtyField(48, 38, bare: true))),
+                  Container(width: 1, height: 22, color: KasirColors.border),
+                  Expanded(child: _searchField(phone: false, bare: true)),
+                ]),
+              )),
+            ]))),
             if (editBanner != null) Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 16), child: editBanner),
             Container(height: 1, color: lineColor),
             SizedBox(height: 64, child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -723,11 +750,47 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
             ])),
           ])),
             Container(height: 1, color: lineColor),
-            cart,
+            if (fill) Expanded(child: cart) else cart,
             Container(height: 1, color: lineColor),
             strip,
           ]),
         ),
     )))));
   }));
+}
+
+/// One queue tab in the PC header, drawn like PageTabs: the active tab sits on a tint with a primary underline.
+class _QueueTab extends StatelessWidget {
+  const _QueueTab({required this.queue, required this.active, required this.onTap, required this.onClose});
+  final CartQueue queue;
+  final bool active;
+  final VoidCallback onTap, onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = queue.items.length;
+    return Padding(padding: const EdgeInsets.only(top: 8, right: 4), child: Stack(children: [
+      Padding(padding: const EdgeInsets.only(bottom: 10), child: Semantics(selected: active, child: Material(
+        color: active ? KasirColors.tint : Colors.transparent, borderRadius: BorderRadius.circular(Corners.control), clipBehavior: Clip.antiAlias,
+        child: InkWell(onTap: onTap, hoverColor: active ? Colors.transparent : raised, child: SizedBox(height: 38, child: Padding(padding: const EdgeInsets.only(left: 10, right: 4), child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.shopping_cart_outlined, size: 14, color: active ? KasirColors.primary : KasirColors.label),
+          const SizedBox(width: 6),
+          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 160), child: Text(queue.label, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 14, fontWeight: active ? FontWeight.w600 : FontWeight.w500, color: active ? KasirColors.ink : KasirColors.label))),
+          if (count > 0) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+              decoration: BoxDecoration(color: active ? KasirColors.tint2 : raised, borderRadius: BorderRadius.circular(10)),
+              child: Text('$count', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: active ? KasirColors.primary : KasirColors.label)),
+            ),
+          ],
+          const SizedBox(width: 2),
+          Tooltip(message: 'Tutup ${queue.label}', child: InkWell(onTap: onClose, borderRadius: BorderRadius.circular(6),
+            child: Padding(padding: const EdgeInsets.all(7), child: Icon(Icons.close, size: 13, color: KasirColors.muted)))),
+        ])))),
+      ))),
+      Positioned(left: 0, right: 0, bottom: 0, height: 2, child: ColoredBox(color: active ? KasirColors.primary : Colors.transparent)),
+    ]));
+  }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../Widgets/popup.dart';
 import '../../models/live_models.dart';
 import '../../core/theme.dart';
@@ -31,6 +32,11 @@ class LiveItemSheet extends StatefulWidget {
 class _LiveItemSheetState extends State<LiveItemSheet> {
   late LiveUnit unit;
   late TextEditingController quantity, manual, discount;
+  final quantityFocus = FocusNode(), manualFocus = FocusNode(), discountFocus = FocusNode();
+  // Wrap the unit chips and the footer buttons so up/down can treat each row as one stop.
+  final _unitZone = FocusNode(skipTraversal: true, canRequestFocus: false);
+  final _footerZone = FocusNode(skipTraversal: true, canRequestFocus: false);
+  LiveUnit? _ringUnit;
   String? error;
 
   @override void initState() {
@@ -43,7 +49,11 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
     discount = TextEditingController(text: widget.existing?.discount?.toString() ?? '');
     for (final c in [quantity, manual, discount]) { c.addListener(_edited); }
   }
-  @override void dispose() { quantity.dispose(); manual.dispose(); discount.dispose(); super.dispose(); }
+  @override void dispose() {
+    for (final c in [quantity, manual, discount]) { c.dispose(); }
+    for (final n in [quantityFocus, manualFocus, discountFocus, _unitZone, _footerZone]) { n.dispose(); }
+    super.dispose();
+  }
 
   // Rebuilds the live summary; a stale save error would no longer match what is typed.
   void _edited() => setState(() => error = null);
@@ -85,25 +95,60 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
     quantity.text = quantityText((next * 1000).round() / 1000);
   }
 
+  // Text fields swallow up/down, so the dialog walks its own stops: unit chips, Jumlah, Harga manual, Diskon, footer.
+  KeyEventResult _onKey(FocusNode _, KeyEvent event) {
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    final stops = [_unitZone, quantityFocus, manualFocus, discountFocus, _footerZone];
+    final at = stops.indexWhere((s) => s.hasFocus);
+    if (at < 0) return KeyEventResult.ignored;
+    if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowUp) {
+      final next = at + (key == LogicalKeyboardKey.arrowDown ? 1 : -1);
+      if (next >= 0 && next < stops.length) _land(next);
+      return KeyEventResult.handled;
+    }
+    final sideways = key == LogicalKeyboardKey.arrowRight ? 1 : key == LogicalKeyboardKey.arrowLeft ? -1 : 0;
+    // Inside a text field left/right stay caret moves.
+    if (sideways == 0 || (at != 0 && at != stops.length - 1)) return KeyEventResult.ignored;
+    final row = stops[at].traversalDescendants.toList();
+    final from = row.indexWhere((n) => n.hasPrimaryFocus);
+    if (from >= 0) row[(from + sideways).clamp(0, row.length - 1)].requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  void _land(int stop) {
+    final fields = [null, quantity, manual, discount, null];
+    final field = fields[stop];
+    if (field != null) {
+      field.selection = TextSelection(baseOffset: 0, extentOffset: field.text.length);
+      [quantityFocus, manualFocus, discountFocus][stop - 1].requestFocus();
+      return;
+    }
+    final row = (stop == 0 ? _unitZone : _footerZone).traversalDescendants.toList();
+    final chosen = stop == 0 ? widget.product.units.indexWhere((u) => u.id == unit.id) : row.length - 1;
+    row[chosen.clamp(0, row.length - 1)].requestFocus();
+  }
+
   @override Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= _wideFrom;
-    final content = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final content = Focus(onKeyEvent: _onKey, canRequestFocus: false, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _header(wide),
       Divider(height: 1, color: KasirColors.border),
       Flexible(child: SingleChildScrollView(padding: const EdgeInsets.all(20), child: _body(wide))),
       Divider(height: 1, color: KasirColors.border),
       Padding(padding: const EdgeInsets.all(16), child: _footer()),
-    ]);
+    ]));
     if (!wide) {
       return SafeArea(top: false, child: Padding(padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom), child: content));
     }
+    // A bare shape: the themed dialog shell would draw its own border around the whole dialog area.
     return Dialog(
-      backgroundColor: Colors.transparent, elevation: 0, insetPadding: const EdgeInsets.all(24),
-      child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: Container(
+      backgroundColor: Colors.transparent, elevation: 0, insetPadding: const EdgeInsets.all(24), shape: const RoundedRectangleBorder(),
+      child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 480), child: Container(
         decoration: BoxDecoration(color: KasirColors.surface, border: Border.all(color: KasirColors.border), borderRadius: BorderRadius.circular(Corners.panel), boxShadow: KasirColors.softShadow),
         clipBehavior: Clip.antiAlias,
         child: content,
-      ))),
+      )),
     );
   }
 
@@ -129,10 +174,10 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
   }
 
   Widget _body(bool wide) {
-    final manualField = TextField(controller: manual, textInputAction: TextInputAction.done, onSubmitted: (_) => save(),
+    final manualField = TextField(controller: manual, focusNode: manualFocus, textInputAction: TextInputAction.done, onSubmitted: (_) => save(),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: const InputDecoration(labelText: 'Harga manual', hintText: 'otomatis', floatingLabelBehavior: FloatingLabelBehavior.always));
-    final discountField = TextField(controller: discount, textInputAction: TextInputAction.done, onSubmitted: (_) => save(),
+    final discountField = TextField(controller: discount, focusNode: discountFocus, textInputAction: TextInputAction.done, onSubmitted: (_) => save(),
       keyboardType: TextInputType.text,
       decoration: const InputDecoration(labelText: 'Diskon', hintText: 'Rp atau %', floatingLabelBehavior: FloatingLabelBehavior.always));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -143,7 +188,7 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
       Row(children: [
         _stepButton(Icons.remove, 'Kurangi jumlah', () => _step(-1)),
         const SizedBox(width: 12),
-        Expanded(child: TextField(controller: quantity, autofocus: true, textAlign: TextAlign.center,
+        Expanded(child: TextField(controller: quantity, focusNode: quantityFocus, autofocus: true, textAlign: TextAlign.center,
           textInputAction: TextInputAction.done, onSubmitted: (_) => save(),
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           style: amountStyle.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
@@ -166,22 +211,26 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
 
   Widget _units() {
     final units = widget.product.units;
-    if (units.length > _maxChipUnits) {
-      return DropdownButtonFormField<LiveUnit>(initialValue: unit, isExpanded: true,
-        items: [for (final u in units) DropdownMenuItem(value: u, child: Text('${u.name} • ${rupiah(u.price)}'))],
-        onChanged: (u) { if (u != null) _pickUnit(u); });
-    }
-    return Wrap(spacing: 8, runSpacing: 8, children: [for (final u in units) _unitChip(u)]);
+    final row = units.length > _maxChipUnits
+      ? DropdownButtonFormField<LiveUnit>(initialValue: unit, isExpanded: true,
+          items: [for (final u in units) DropdownMenuItem(value: u, child: Text('${u.name} • ${rupiah(u.price)}'))],
+          onChanged: (u) { if (u != null) _pickUnit(u); })
+      : Wrap(spacing: 8, runSpacing: 8, children: [for (final u in units) _unitChip(u)]);
+    return Focus(focusNode: _unitZone, canRequestFocus: false, skipTraversal: true, child: row);
   }
 
   Widget _unitChip(LiveUnit u) {
     final selected = u.id == unit.id;
     final fg = selected ? KasirColors.onPrimary : KasirColors.ink;
+    final ringed = identical(_ringUnit, u);
+    // On the filled chip a primary ring would vanish into the fill.
+    final ring = BorderSide(color: selected ? KasirColors.ink : KasirColors.primary, width: 2);
     return Semantics(button: true, selected: selected, child: Material(
       color: selected ? KasirColors.primary : KasirColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control), side: BorderSide(color: selected ? KasirColors.primary : KasirColors.gridLine)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control), side: ringed ? ring : BorderSide(color: selected ? KasirColors.primary : KasirColors.gridLine)),
       child: InkWell(
         onTap: () => _pickUnit(u), borderRadius: BorderRadius.circular(Corners.control),
+        onFocusChange: (focused) { if (mounted) setState(() => _ringUnit = focused ? u : (identical(_ringUnit, u) ? null : _ringUnit)); },
         child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 44), child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -216,13 +265,22 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
     );
   }
 
-  Widget _footer() => Row(children: [
-    Expanded(child: Align(alignment: Alignment.centerLeft, child: widget.onRemove == null ? null : TextButton.icon(
-      onPressed: remove, icon: const Icon(Icons.delete_outline, size: 18),
-      label: const Text('Hapus barang', maxLines: 1, overflow: TextOverflow.ellipsis),
-      style: TextButton.styleFrom(foregroundColor: KasirColors.destructive, minimumSize: const Size(0, 44))))),
-    PopupButton('Batal', keyHint: 'Esc', onPressed: () => Navigator.of(context).maybePop()),
-    const SizedBox(width: 10),
-    PopupButton('Simpan', primary: true, tone: KasirColors.primary, keyHint: 'Enter', onPressed: save),
-  ]);
+  Widget _footer() {
+    final theme = Theme.of(context);
+    // Simpan is primary-filled, so the themed primary focus border would be invisible on it.
+    final filled = (theme.filledButtonTheme.style ?? const ButtonStyle()).copyWith(
+      side: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.focused) ? BorderSide(color: KasirColors.ink, width: 2) : BorderSide.none));
+    return Focus(focusNode: _footerZone, canRequestFocus: false, skipTraversal: true, child: Theme(
+      data: theme.copyWith(filledButtonTheme: FilledButtonThemeData(style: filled)),
+      child: Row(children: [
+        Expanded(child: Align(alignment: Alignment.centerLeft, child: widget.onRemove == null ? null : TextButton.icon(
+          onPressed: remove, icon: const Icon(Icons.delete_outline, size: 18),
+          label: const Text('Hapus barang', maxLines: 1, overflow: TextOverflow.ellipsis),
+          style: TextButton.styleFrom(foregroundColor: KasirColors.destructive, minimumSize: const Size(0, 44))))),
+        PopupButton('Batal', keyHint: 'Esc', onPressed: () => Navigator.of(context).maybePop()),
+        const SizedBox(width: 10),
+        PopupButton('Simpan', primary: true, tone: KasirColors.primary, keyHint: 'Enter', onPressed: save),
+      ]),
+    ));
+  }
 }

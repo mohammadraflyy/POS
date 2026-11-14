@@ -17,7 +17,8 @@ Future<void> confirmClearCart(BuildContext context, LiveStore store) async {
   if (yes == true) store.clear();
 }
 
-Future<void> _confirmCloseQueue(BuildContext context, LiveStore store, int index) async {
+/// Closes a queue, asking first when it still holds items. Shared by the phone strip and the PC header tabs.
+Future<void> confirmCloseQueue(BuildContext context, LiveStore store, int index) async {
   final q = store.queues[index];
   if (q.items.isNotEmpty) {
     final yes = await showDialog<bool>(
@@ -62,7 +63,7 @@ Widget _sourcePill(String text) => Container(
 );
 
 class LiveCartPanel extends StatelessWidget {
-  const LiveCartPanel({super.key, required this.store, this.onExitTop, this.inCard = false, this.holdFocus, this.clearFocus, this.onRowKey});
+  const LiveCartPanel({super.key, required this.store, this.onExitTop, this.inCard = false, this.fill = false, this.holdFocus, this.clearFocus, this.onRowKey});
   final LiveStore store;
   final VoidCallback? onExitTop;
 
@@ -72,6 +73,10 @@ class LiveCartPanel extends StatelessWidget {
 
   /// Sits inside a bigger card: the card supplies the frame, so the table drops its own.
   final bool inCard;
+
+  /// Only with [inCard], and when the parent hands it a bounded height: the heading and the column header stay put
+  /// and the rows scroll inside the space left, instead of the whole page scrolling.
+  final bool fill;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -86,41 +91,45 @@ class LiveCartPanel extends StatelessWidget {
       }
       // 2px primary ring on keyboard focus, like Pelanggan and Diskon nota
       final focusRing = WidgetStateProperty.resolveWith<BorderSide?>((states) => states.contains(WidgetState.focused) ? BorderSide(color: KasirColors.primary, width: 2) : null);
+      final empty = Padding(padding: const EdgeInsets.all(48), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Opacity(opacity: 0.4, child: Icon(Icons.shopping_cart_outlined, size: 32, color: KasirColors.muted)),
+        const SizedBox(height: Space.sm),
+        Text('Keranjang kosong. Scan barcode atau cari barang untuk mulai.', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: KasirColors.muted)),
+      ]));
+      final columnHeader = Container(
+        height: 40,
+        color: KasirColors.accent,
+        padding: const EdgeInsets.only(right: 12),
+        child: Row(children: [
+          _cell(_noWidth, Text('NO', style: headStyle)),
+          Expanded(child: Padding(padding: const EdgeInsets.only(left: 12), child: Text('PRODUK', style: headStyle))),
+          _cell(_unitWidth, Text('SATUAN', style: headStyle)),
+          _cell(_priceWidth, Text('HARGA', textAlign: TextAlign.end, style: headStyle)),
+          _cell(_discountWidth, Text('DISKON', textAlign: TextAlign.end, style: headStyle)),
+          _cell(_qtyWidth, Text('QTY', textAlign: TextAlign.center, style: headStyle)),
+          _cell(_subtotalWidth, Text('SUBTOTAL', textAlign: TextAlign.end, style: headStyle)),
+          const SizedBox(width: _removeWidth),
+        ]),
+      );
+      // a plain Column, not a lazy list: the selected line must exist for ensureVisible and focus even when scrolled off
+      final rows = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var index = 0; index < store.items.length; index++)
+          _CartLine(
+            key: ObjectKey(store.items[index]),
+            store: store,
+            index: index,
+            isSelected: store.selectedCartIndex == index,
+            wide: wide,
+            onExitTop: onExitTop,
+          ),
+      ]);
       final table = store.items.isEmpty
-        ? Padding(padding: const EdgeInsets.all(48), child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Opacity(opacity: 0.4, child: Icon(Icons.shopping_cart_outlined, size: 32, color: KasirColors.muted)),
-            const SizedBox(height: Space.sm),
-            Text('Keranjang kosong. Scan barcode atau cari barang untuk mulai.', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: KasirColors.muted)),
-          ]))
-        : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (wide) Container(
-              height: 40,
-              color: KasirColors.accent,
-              padding: const EdgeInsets.only(right: 12),
-              child: Row(children: [
-                _cell(_noWidth, Text('NO', style: headStyle)),
-                Expanded(child: Padding(padding: const EdgeInsets.only(left: 12), child: Text('PRODUK', style: headStyle))),
-                _cell(_unitWidth, Text('SATUAN', style: headStyle)),
-                _cell(_priceWidth, Text('HARGA', textAlign: TextAlign.end, style: headStyle)),
-                _cell(_discountWidth, Text('DISKON', textAlign: TextAlign.end, style: headStyle)),
-                _cell(_qtyWidth, Text('QTY', textAlign: TextAlign.center, style: headStyle)),
-                _cell(_subtotalWidth, Text('SUBTOTAL', textAlign: TextAlign.end, style: headStyle)),
-                const SizedBox(width: _removeWidth),
-              ]),
-            ),
-            for (var index = 0; index < store.items.length; index++)
-              _CartLine(
-                key: ObjectKey(store.items[index]),
-                store: store,
-                index: index,
-                isSelected: store.selectedCartIndex == index,
-                wide: wide,
-                onExitTop: onExitTop,
-              ),
-          ]);
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        ? empty
+        : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [if (wide) columnHeader, rows]);
+      final filled = inCard && fill;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: filled ? MainAxisSize.max : MainAxisSize.min, children: [
         Padding(padding: inCard ? const EdgeInsets.fromLTRB(20, 12, 12, 8) : EdgeInsets.zero, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-        if (store.queues.length > 1) ...[
+        if (!inCard && store.queues.length > 1) ...[
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -131,7 +140,7 @@ class LiveCartPanel extends StatelessWidget {
                     isActive: i == store.activeQueueIndex,
                     canClose: store.queues.length > 1,
                     onTap: () => store.switchQueue(i),
-                    onClose: () => _confirmCloseQueue(context, store, i),
+                    onClose: () => confirmCloseQueue(context, store, i),
                   ),
                   const SizedBox(width: 6),
                 ],
@@ -190,7 +199,9 @@ class LiveCartPanel extends StatelessWidget {
         ])),
         ])),
         if (inCard) Container(height: 1, color: lineColor) else const SizedBox(height: Space.sm),
-        if (inCard) table else Container(
+        if (filled && store.items.isEmpty) Expanded(child: Center(child: FittedBox(child: empty)))
+        else if (filled) ...[if (wide) columnHeader, Expanded(child: SingleChildScrollView(child: rows))]
+        else if (inCard) table else Container(
           decoration: BoxDecoration(color: KasirColors.surface, border: Border.all(color: KasirColors.gridLine), borderRadius: BorderRadius.circular(Corners.panel), boxShadow: KasirColors.softShadow),
           clipBehavior: Clip.antiAlias,
           child: table,

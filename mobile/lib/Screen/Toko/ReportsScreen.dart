@@ -311,7 +311,7 @@ class _RekapScreenState extends State<RekapScreen> {
         // the period's answer leads; the stock value lives with its own table below
         KpiStrip([
           Kpi('Laba kotor', rupiah(summary['labaKotor']), lead: true, caption: rangeLabel(range),
-            color: (number(summary['labaKotor']) ?? 0) < 0 ? errorColor : successColor),
+            color: profitColor(number(summary['labaKotor']))),
           Kpi('Omzet tunai', rupiah(summary['omzetTunai']), caption: 'termasuk pelunasan bon'),
           Kpi('Omzet QRIS & transfer', rupiah(summary['omzetNonTunai'])),
           Kpi('Transaksi', text(summary['jumlahTransaksi'], '0')),
@@ -336,7 +336,7 @@ class _RekapScreenState extends State<RekapScreen> {
           SummaryRow('Omzet', rupiah(penjelasan['omzet'])),
           SummaryRow('Modal barang', _minus(penjelasan['modal'])),
           SummaryRow('Laba kotor', rupiah(penjelasan['labaKotor']), strong: true,
-            color: (number(penjelasan['labaKotor']) ?? 0) >= 0 ? successColor : errorColor),
+            color: profitColor(number(penjelasan['labaKotor']))),
           if ((number(penjelasan['jumlahBarisRugi']) ?? 0) > 0)
             SummaryRow('${penjelasan['jumlahBarisRugi']} baris terjual rugi (minus)', '-${rupiah(penjelasan['totalRugi'])}', color: errorColor),
         ]))),
@@ -351,7 +351,7 @@ class _RekapScreenState extends State<RekapScreen> {
               DataCol('Barang', (r) => '${r['namaItem']} (${r['satuan']}) · nota #${r['saleId']}', flex: 3),
               DataCol('Perhitungan', (r) => '${quantityText(r['qty'])} × (${rupiah(r['hargaJual'])} jual − ${rupiah(r['hargaPokok'])} modal)'
                 '${(number(r['diskon']) ?? 0) > 0 ? ' − diskon ${rupiah(r['diskon'])}' : ''}', flex: 4),
-              DataCol('Laba', (r) => rupiah(r['laba']), numeric: true),
+              DataCol('Laba', (r) => rupiah(r['laba']), numeric: true, color: (r) => profitColor(number(r['laba']))),
             ])),
         if (saran.isNotEmpty) section('Saran', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (final s in saran) Padding(padding: const EdgeInsets.only(bottom: Space.sm), child: WhitePanel(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -402,19 +402,19 @@ class _RekapScreenState extends State<RekapScreen> {
         section('Laba per kategori', DataView<Map<String, dynamic>>(rows: rowsOf('labaPerKategori'), columns: [
           DataCol('Kategori', (r) => text(r['categoryName']), flex: 2),
           DataCol('Omzet', (r) => rupiah(r['omzet']), numeric: true),
-          DataCol('Laba', (r) => rupiah(r['laba']), numeric: true),
+          DataCol('Laba', (r) => rupiah(r['laba']), numeric: true, color: (r) => profitColor(number(r['laba']))),
         ])),
         section('Laba per hari, angkanya', DataView<Map<String, dynamic>>(rows: rowsOf('labaPerHari'), columns: [
           DataCol('Tanggal', (r) => text(r['tanggal'])),
           DataCol('Omzet', (r) => rupiah(r['omzet']), numeric: true),
-          DataCol('Laba', (r) => rupiah(r['laba']), numeric: true),
+          DataCol('Laba', (r) => rupiah(r['laba']), numeric: true, color: (r) => profitColor(number(r['laba']))),
         ])),
         section('Laba per satuan', DataView<Map<String, dynamic>>(rows: rowsOf('labaPerSatuan'), columns: [
           DataCol('Satuan', (r) => text(r['satuan'])),
           DataCol('Qty', (r) => quantityText(r['qtyTerjual']), numeric: true),
           DataCol('Omzet', (r) => rupiah(r['omzet']), numeric: true),
-          DataCol('Laba', (r) => rupiah(r['laba']), numeric: true),
-          DataCol('Margin', (r) => '${(number(r['marginPersen']) ?? 0).toStringAsFixed(1)}%', numeric: true),
+          DataCol('Laba', (r) => rupiah(r['laba']), numeric: true, color: (r) => profitColor(number(r['laba']))),
+          DataCol('Margin', (r) => '${(number(r['marginPersen']) ?? 0).toStringAsFixed(1)}%', numeric: true, color: (r) => profitColor(number(r['marginPersen']))),
         ])),
         section('Produk terlaris', DataView<Map<String, dynamic>>(rows: rowsOf('produkTerlaris'), columns: [
           DataCol('Produk', (r) => text(r['namaItem']), flex: 3),

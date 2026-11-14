@@ -6,6 +6,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -117,7 +118,13 @@ void main() {
         await _capture(tester, key, '$label-$name');
       }
       final saleId = (await tester.runAsync(() async => db.scalar<int>("SELECT max(id) FROM sales WHERE metode_pembayaran = 'bon'")))!;
-      await shoot('nota', LiveSaleScreen(api: api, id: saleId, isAdmin: true));
+      // the PC's keycaps and key strip only draw on a desktop platform
+      Future<void> shootNota(String name) async {
+        if (label == 'pc') debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+        await shoot(name, LiveSaleScreen(api: api, id: saleId, isAdmin: true, onEdit: (_) async {}));
+        debugDefaultTargetPlatformOverride = null;
+      }
+      await shootNota('nota');
       final guard = MutationGuard(_NoPending());
       await tester.runAsync(() => guard.load());
       final store = LiveStore(api, guard);
@@ -143,6 +150,7 @@ void main() {
         await _capture(tester, key, '$label-gelap-$name');
       }
       await shoot('gelap-bayar', LivePaymentScreen(store: store));
+      await shootNota('gelap-nota');
       palette = Palette.light;
 
       await tester.pumpWidget(const SizedBox());

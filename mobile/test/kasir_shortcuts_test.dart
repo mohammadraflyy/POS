@@ -7,6 +7,7 @@ import '../lib/models/live_models.dart';
 import '../lib/services/business_api.dart';
 import '../lib/services/mutation_guard.dart';
 import '../lib/state/live_store.dart';
+import '../lib/Screen/Live/LiveCartPanel.dart';
 import '../lib/Screen/Live/LiveKasirScreen.dart';
 import '../lib/Screen/Live/LivePaymentScreen.dart';
 import 'live_store_test.dart' show MemoryPending;
@@ -54,6 +55,67 @@ void main() {
     await tester.pumpWidget(const SizedBox()); store.dispose(); guard.dispose();
     debugDefaultTargetPlatformOverride = null;
   }
+
+  testWidgets('the card header holds one tab per queue: tap switches, + adds, x asks before closing a queue with items', (tester) async {
+    await openTill(tester);
+    store.newQueue();
+    await tester.pumpAndSettle();
+    expect(find.text('Antrean 1'), findsOneWidget);
+    expect(find.text('Antrean 2'), findsOneWidget);
+
+    await tester.tap(find.text('Antrean 1'));
+    await tester.pumpAndSettle();
+    expect(store.activeQueueIndex, 0);
+
+    await tester.tap(find.byTooltip('Antrean baru (Alt+T)'));
+    await tester.pumpAndSettle();
+    expect(store.queues, hasLength(3));
+
+    await tester.tap(find.byTooltip('Tutup Antrean 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hapus Antrean 1?'), findsOneWidget);
+    await tester.tap(find.text('Batal'));
+    await tester.pumpAndSettle();
+    expect(store.queues, hasLength(3));
+    await finish(tester);
+  });
+
+  testWidgets('Jumlah and the search share one bordered group, without a separate Jumlah label', (tester) async {
+    await openTill(tester);
+    final group = find.ancestor(of: jumlahField, matching: find.byWidgetPredicate((w) => w is Container && w.foregroundDecoration is BoxDecoration)).first;
+    expect(find.descendant(of: group, matching: find.byWidget(searchField(tester))), findsOneWidget);
+    expect(find.text('Jumlah'), findsNothing);
+    await finish(tester);
+  });
+
+  testWidgets('with 30 lines only the table body scrolls: Bayar and the strip stay put, and arrowing down keeps the line in view', (tester) async {
+    await openTill(tester);
+    for (var i = 2; i <= 30; i++) {
+      final product = LiveProduct.fromJson({'id': i, 'namaItem': 'Barang $i', 'kodeItem': 'B$i', 'satuan': 'PCS', 'stok': 50, 'hargaJual': 1500, 'units': []});
+      store.put(LiveCartItem(product: product, unit: product.units.first, quantity: 1));
+    }
+    await tester.pumpAndSettle();
+    final bayar = tester.getRect(find.text('Bayar'));
+    final strip = tester.getRect(find.text('antrean baru'));
+    expect(bayar.bottom, lessThan(900));
+    expect(strip.bottom, lessThanOrEqualTo(900));
+
+    final body = find.descendant(of: find.byType(LiveCartPanel), matching: find.byType(Scrollable)).first;
+    expect(tester.state<ScrollableState>(body).position.maxScrollExtent, greaterThan(0));
+
+    store.selectCartIndex(0);
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 29; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(store.selectedCartIndex, 29);
+    expect(tester.getRect(find.text('Barang 30')).bottom, lessThanOrEqualTo(tester.getRect(body).bottom));
+    expect(tester.getRect(find.text('Bayar')), bayar);
+    expect(tester.getRect(find.text('antrean baru')), strip);
+    await finish(tester);
+  });
 
   testWidgets('End opens payment, but not while typing in the search box', (tester) async {
     await openTill(tester);

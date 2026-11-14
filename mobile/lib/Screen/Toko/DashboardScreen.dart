@@ -222,6 +222,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
             subline: '${_saleTime(r['createdAt'])} · ${metodeLabel[r['metodePembayaran']] ?? text(r['metodePembayaran'])}',
             value: rupiah(r['total']),
             trailing: _bonPill(r),
+            // the same yellow wash Riwayat gives a bon still owing money
+            background: r['status'] != 'dibatalkan' && r['metodePembayaran'] == 'bon' && (number(r['dibayar']) ?? 0) < (number(r['total']) ?? 0) ? pillWarningBg : null,
           )]));
 
     return ScreenBody(onRefresh: load, children: [
@@ -290,7 +292,7 @@ class _MoneyFigures extends StatelessWidget {
     );
     final lead = cell('Uang masuk', rupiah(masuk), caption: 'tunai + QRIS + transfer', lead: true);
     final rest = [
-      cell('Laba kotor', rupiah(laba), caption: laba < 0 ? 'rugi hari ini' : null, color: laba < 0 ? errorColor : null),
+      cell('Laba kotor', rupiah(laba), caption: laba < 0 ? 'rugi hari ini' : null, color: profitColor(laba)),
       cell('Nota', '$notes', caption: notes == 0 ? 'belum ada penjualan' : null),
       cell('Piutang bon', rupiah(piutang), caption: piutang > 0 ? 'belum lunas' : 'semua lunas', color: piutang > 0 ? warningColor : null),
     ];

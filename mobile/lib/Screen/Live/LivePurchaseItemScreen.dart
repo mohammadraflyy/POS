@@ -156,11 +156,17 @@ class _PurchaseFieldsState extends State<_PurchaseFields> {
 
   /// "Untung Rp500 per PCS (14%)" from the cost being typed and the price it will sell at.
   String? get _margin {
+    final gain = _gain;
+    if (gain == null) return null;
+    final selling = _read(sell) ?? unit.price!;
+    return '${gain < 0 ? 'Rugi' : 'Untung'} ${rupiah(gain.abs())} per ${unit.name} (${(gain / selling * 100).toStringAsFixed(0)}%)';
+  }
+
+  num? get _gain {
     final cost = _read(price);
     final selling = _read(sell) ?? unit.price;
     if (cost == null || selling == null || selling <= 0) return null;
-    final gain = selling - cost;
-    return '${gain < 0 ? 'Rugi' : 'Untung'} ${rupiah(gain.abs())} per ${unit.name} (${(gain / selling * 100).toStringAsFixed(0)}%)';
+    return selling - cost;
   }
   @override Widget build(BuildContext context) => SafeArea(child: SingleChildScrollView(padding: EdgeInsets.fromLTRB(24, 0, 24, MediaQuery.viewInsetsOf(context).bottom + 24), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
     Text(widget.product.name, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: Space.md),
@@ -205,7 +211,7 @@ class _PurchaseFieldsState extends State<_PurchaseFields> {
     const SizedBox(height: Space.lg), TextField(controller: sell, textInputAction: TextInputAction.done, onChanged: (_) => setState(() {}), keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(labelText: 'Harga jual baru per ${unit.name} (opsional)', hintText: unit.price == null ? null : rupiah(unit.price),
         helperText: 'Sekarang ${rupiah(unit.price)}. Kosongkan bila harga jual tidak berubah.')),
-    if (_margin != null) Padding(padding: const EdgeInsets.only(top: Space.sm), child: Text(_margin!, style: TextStyle(color: _margin!.startsWith('Rugi') ? errorColor : muted, fontSize: 13))),
+    if (_margin != null) Padding(padding: const EdgeInsets.only(top: Space.sm), child: Text(_margin!, style: TextStyle(color: profitColor(_gain) ?? muted, fontSize: 13))),
     if (error != null) Text(error!, style: TextStyle(color: errorColor)), const SizedBox(height: Space.lg),
     SizedBox(width: double.infinity, child: FilledButton(onPressed: () { try { Navigator.pop(context, PurchaseDraftItem(widget.product, unit, inputQty(quantity.text), inputRupiah(price.text), sellPrice: _read(sell))); } catch (_) { setState(() => error = 'Isi jumlah positif dan harga beli yang valid.'); showError(context, error!); } }, child: Text(widget.existing == null ? 'Tambah ke pembelian' : 'Simpan perubahan'))),
   ])));

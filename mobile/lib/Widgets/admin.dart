@@ -217,9 +217,12 @@ const metodeLabel = {'tunai': 'Tunai', 'bon': 'Bon', 'qris': 'QRIS', 'transfer':
 // ---------------------------------------------------------------------------
 
 class DataCol<T> {
-  const DataCol(this.label, this.cell, {this.numeric = false, this.flex = 1, this.headline = false, this.phone = true});
+  const DataCol(this.label, this.cell, {this.numeric = false, this.flex = 1, this.headline = false, this.phone = true, this.color});
   final String label;
   final String Function(T row) cell;
+
+  /// Ink for this column's cell in a row; null keeps the plain table ink.
+  final Color? Function(T row)? color;
   final bool numeric;
   final int flex;
 
@@ -232,7 +235,7 @@ class DataCol<T> {
 
 class DataView<T> extends StatelessWidget {
   const DataView({super.key, required this.rows, required this.columns, this.onTap, this.actions,
-    this.emptyTitle = 'Belum ada data', this.emptyMessage = 'Data akan tampil di sini.', this.isSelected, this.onSelect, this.actionsWidth = 120});
+    this.emptyTitle = 'Belum ada data', this.emptyMessage = 'Data akan tampil di sini.', this.isSelected, this.onSelect, this.actionsWidth = 120, this.rowColor, this.highlightedIndex});
   final List<T> rows;
   final List<DataCol<T>> columns;
   final void Function(T row)? onTap;
@@ -245,9 +248,19 @@ class DataView<T> extends StatelessWidget {
   /// Both set: each row gets a checkbox, for actions on several rows at once.
   final bool Function(T row)? isSelected;
   final void Function(T row, bool selected)? onSelect;
+
+  /// A wash behind rows that need a second look (an unpaid bon); null keeps the plain row.
+  final Color? Function(T row)? rowColor;
+
+  /// The row a keyboard user is on: the selected-row colour (the wash stays on a washed row) and a bar on its left edge, scrolled into view. Null for none.
+  final int? highlightedIndex;
   bool get _selectable => isSelected != null && onSelect != null;
   Widget _checkbox(T row) => SizedBox(width: 40, child: Align(alignment: Alignment.centerLeft, child: Checkbox(value: isSelected!(row), onChanged: (v) => onSelect!(row, v ?? false),
     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact)));
+  Color _fill(int index, T row, Color plain) => rowColor?.call(row) ?? (index == highlightedIndex ? dataHueSoft : plain);
+  Widget _mark(int index, Widget row) => index != highlightedIndex ? row : _RevealOnMount(child: Stack(children: [
+    row, Positioned(left: 0, top: 0, bottom: 0, width: 3, child: ColoredBox(color: primaryInk)),
+  ]));
   @override Widget build(BuildContext context) {
     if (rows.isEmpty) return EmptyPanel(icon: Icons.inbox_outlined, title: emptyTitle, message: emptyMessage);
     return LayoutBuilder(builder: (context, box) {
@@ -257,7 +270,7 @@ class DataView<T> extends StatelessWidget {
         final headline = rest.where((c) => c.headline).firstOrNull ?? rest.where((c) => c.numeric).lastOrNull;
         final details = [for (final col in rest) if (col != headline && col.phone) col];
         return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
-          clipBehavior: Clip.antiAlias, child: Column(children: [for (final (index, row) in rows.indexed) Material(color: surface, child: InkWell(
+          clipBehavior: Clip.antiAlias, child: Column(children: [for (final (index, row) in rows.indexed) _mark(index, Material(color: _fill(index, row, surface), child: InkWell(
           onTap: onTap == null ? null : () => onTap!(row),
           child: Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 14),
             decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
@@ -266,7 +279,7 @@ class DataView<T> extends StatelessWidget {
                 if (_selectable) _checkbox(row),
                 Expanded(child: Text(columns.first.cell(row), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500))),
                 if (headline != null) ...[const SizedBox(width: Space.sm),
-                  Text(headline.cell(row), style: amountStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w600))],
+                  Text(headline.cell(row), style: amountStyle.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: headline.color?.call(row)))],
               ]),
               // label above value, two-ish to a line: scans faster than one long "a · b · c" sentence
               // the actions sit beside the details, not on a row of their own under every card
@@ -274,12 +287,12 @@ class DataView<T> extends StatelessWidget {
                 Expanded(flex: 2, child: Wrap(spacing: Space.lg, runSpacing: 6, children: [
                   for (final col in details) Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(col.label, style: TextStyle(color: muted, fontSize: 11)),
-                    Text(col.cell(row), style: TextStyle(color: secondaryInk, fontSize: 13)),
+                    Text(col.cell(row), style: TextStyle(color: col.color?.call(row) ?? secondaryInk, fontSize: 13)),
                   ]),
                 ])),
                 if (actions != null) Flexible(child: Wrap(alignment: WrapAlignment.end, spacing: Space.xs, crossAxisAlignment: WrapCrossAlignment.center, children: actions!(row))),
               ])),
-            ]))))]));
+            ])))))]));
       }
       return Container(decoration: BoxDecoration(color: surface, border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel)),
         clipBehavior: Clip.antiAlias, child: Column(children: [
@@ -290,7 +303,7 @@ class DataView<T> extends StatelessWidget {
               style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w500))),
             if (actions != null) SizedBox(width: actionsWidth),
           ])),
-          for (final (index, row) in rows.indexed) InkWell(onTap: onTap == null ? null : () => onTap!(row), child: Container(
+          for (final (index, row) in rows.indexed) _mark(index, Material(color: _fill(index, row, Colors.transparent), child: InkWell(onTap: onTap == null ? null : () => onTap!(row), child: Container(
             constraints: const BoxConstraints(minHeight: 50),
             padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 11),
             decoration: BoxDecoration(border: index == 0 ? null : Border(top: BorderSide(color: ruleColor))),
@@ -298,12 +311,29 @@ class DataView<T> extends StatelessWidget {
               if (_selectable) _checkbox(row),
               for (final (colIndex, col) in columns.indexed) Expanded(flex: col.flex, child: Text(col.cell(row), maxLines: 2, overflow: TextOverflow.ellipsis,
                 textAlign: col.numeric ? TextAlign.end : TextAlign.start,
-                style: col.numeric ? amountStyle.copyWith(fontSize: 14) : TextStyle(fontSize: 14, color: colIndex == 0 ? ink : secondaryInk))),
+                style: col.numeric ? amountStyle.copyWith(fontSize: 14, color: col.color?.call(row))
+                  : TextStyle(fontSize: 14, color: col.color?.call(row) ?? (colIndex == 0 ? ink : secondaryInk)))),
               if (actions != null) SizedBox(width: actionsWidth, child: _CompactActions(children: actions!(row))),
-            ]))),
+            ]))))),
         ]));
     });
   }
+}
+
+/// Scrolls its row into view when it first draws, so arrow keys never leave the highlight off screen.
+class _RevealOnMount extends StatefulWidget {
+  const _RevealOnMount({required this.child});
+  final Widget child;
+  @override State<_RevealOnMount> createState() => _RevealOnMountState();
+}
+class _RevealOnMountState extends State<_RevealOnMount> {
+  @override void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Scrollable.maybeOf(context)?.position.ensureVisible(context.findRenderObject()!, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+    });
+  }
+  @override Widget build(BuildContext context) => widget.child;
 }
 
 class Pager extends StatelessWidget {
@@ -576,16 +606,16 @@ class SectionCard extends StatelessWidget {
 /// Rows inside a [SectionCard]: a label (and an optional grey subline) on the left, the
 /// figure right-aligned on one edge, a rule between rows.
 class LedgerRow extends StatelessWidget {
-  const LedgerRow({super.key, required this.label, required this.value, this.subline, this.leading, this.trailing, this.first = false, this.valueColor});
+  const LedgerRow({super.key, required this.label, required this.value, this.subline, this.leading, this.trailing, this.first = false, this.valueColor, this.background});
   final String label, value;
   final String? subline;
   final Widget? leading;
   final Widget? trailing;
   final bool first;
-  final Color? valueColor;
+  final Color? valueColor, background;
   @override Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: 13),
-    decoration: BoxDecoration(border: first ? null : Border(top: BorderSide(color: ruleColor))),
+    decoration: BoxDecoration(color: background, border: first ? null : Border(top: BorderSide(color: ruleColor))),
     child: Row(children: [
       if (leading != null) ...[leading!, const SizedBox(width: Space.md)],
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

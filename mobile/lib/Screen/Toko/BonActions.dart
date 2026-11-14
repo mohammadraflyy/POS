@@ -1,9 +1,23 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme.dart';
 import '../../models/live_models.dart';
 import '../../services/store_api.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/ui.dart';
+
+/// One thing the nota detail offers: its label, the letter that runs it and the shortcut word
+/// the key strip shows. A null [run] draws it dimmed (busy).
+class SaleCommand {
+  const SaleCommand(this.label, this.icon, this.run, {this.key, this.hint, this.primary = false, this.destructive = false});
+  final String label;
+  final IconData icon;
+  final FutureOr<void> Function()? run;
+  final LogicalKeyboardKey? key;
+  final String? hint;
+  final bool primary, destructive;
+}
 
 /// What can be done to a saved sale from its detail screen: collect a bon instalment, add
 /// goods to an unpaid bon, and (admin) cancel or delete it.
@@ -51,13 +65,19 @@ class SaleActions extends StatelessWidget {
     if (context.mounted && await runAction(context, () => api.deleteSale(id), success: 'Transaksi dihapus.')) onDeleted();
   }
 
+  /// The actions that apply to this sale. [context] is the screen's: the dialogs open over it.
+  List<SaleCommand> commands(BuildContext context) => [
+    if (openBon) SaleCommand('Bayar bon', Icons.payments_outlined, () => _pay(context), key: LogicalKeyboardKey.keyB, hint: 'bayar bon', primary: true),
+    if (openBon) SaleCommand('Tambah barang', Icons.add_shopping_cart, () => _addItem(context), key: LogicalKeyboardKey.keyT, hint: 'tambah'),
+    if (isAdmin && active) SaleCommand('Batalkan nota', Icons.block, () => _cancel(context), destructive: true),
+    if (isAdmin) SaleCommand('Hapus', Icons.delete_outline, () => _delete(context), destructive: true),
+  ];
+
   @override Widget build(BuildContext context) {
     final buttons = <Widget>[
-      if (openBon) FilledButton.icon(onPressed: () => _pay(context), icon: const Icon(Icons.payments_outlined), label: const Text('Bayar bon')),
-      if (openBon) OutlinedButton.icon(onPressed: () => _addItem(context), icon: const Icon(Icons.add_shopping_cart), label: const Text('Tambah barang')),
-      if (isAdmin && active) OutlinedButton.icon(onPressed: () => _cancel(context), icon: const Icon(Icons.block), label: const Text('Batalkan')),
-      if (isAdmin) OutlinedButton.icon(onPressed: () => _delete(context), style: OutlinedButton.styleFrom(foregroundColor: errorColor),
-        icon: const Icon(Icons.delete_outline), label: const Text('Hapus')),
+      for (final c in commands(context)) c.primary
+        ? FilledButton.icon(onPressed: c.run, icon: Icon(c.icon), label: Text(c.label))
+        : OutlinedButton.icon(onPressed: c.run, style: c.destructive ? OutlinedButton.styleFrom(foregroundColor: errorColor) : null, icon: Icon(c.icon), label: Text(c.label)),
     ];
     if (buttons.isEmpty) return const SizedBox.shrink();
     return Wrap(spacing: Space.sm, runSpacing: Space.sm, children: buttons);

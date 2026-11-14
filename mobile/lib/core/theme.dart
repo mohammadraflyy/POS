@@ -111,6 +111,10 @@ Color get pillWarningInk => palette.pillWarningInk;
 Color get pillNeutralBg => palette.pillNeutralBg;
 Color get pillNeutralInk => palette.pillNeutralInk;
 
+/// Green for a gain, red for a loss, null (the caller's neutral) for zero or unknown.
+/// The pill inks, not successColor: that green is 3.3:1 on white; these hold 4.5:1 on white, canvas and the blue tint.
+Color? profitColor(num? value) => value == null || value == 0 ? null : value > 0 ? pillPositiveInk : pillNegativeInk;
+
 /// The 1px border of a notice strip.
 Color get noticeBorder => palette.noticeBorder;
 

@@ -103,8 +103,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       await show(tester, LivePaymentScreen(store: store));
-      expect(find.text('Modal barang'), findsOneWidget);
-      expect(find.text('Perkiraan laba'), findsOneWidget);
+      expect(find.textContaining('Modal Rp2.500 · perkiraan laba'), findsOneWidget);
       expect(find.textContaining('Harga setelah diskon di bawah modal'), findsOneWidget);
 
       await tapText(tester, 'Bon');
@@ -178,13 +177,14 @@ void main() {
       await tester.pumpAndSettle();
 
       await show(tester, LiveSaleScreen(api: api, id: 12, isAdmin: true));
-      expect(find.textContaining('grosir · diskon Rp500'), findsOneWidget);
+      expect(find.text('grosir'), findsOneWidget);
+      expect(find.text('−Rp500'), findsOneWidget);
       expect(find.text('Diskon nota'), findsOneWidget);
       expect(find.text('Biaya lain'), findsOneWidget);
-      expect(find.text('Modal barang'), findsOneWidget);
-      expect(find.text('Laba'), findsOneWidget);
+      expect(find.textContaining('Modal Rp12.000 · laba Rp3.000'), findsOneWidget);
       expect(find.textContaining('Titip siang'), findsOneWidget);
-      expect(find.textContaining('Admin • Revisi qty (Rp8.000 → Rp15.000)'), findsOneWidget);
+      expect(find.textContaining('Admin · Revisi qty'), findsOneWidget);
+      expect(find.text('Rp8.000 → Rp15.000'), findsOneWidget);
     });
   });
 

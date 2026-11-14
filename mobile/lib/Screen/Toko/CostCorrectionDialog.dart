@@ -105,15 +105,15 @@ class _CostCorrectionDialogState extends State<_CostCorrectionDialog> {
           Text.rich(TextSpan(children: [
             TextSpan(text: 'Laba baris terpilih: ${rupiah(preview!['labaLama'])} → '),
             TextSpan(text: rupiah(preview!['labaBaru']), style: TextStyle(fontWeight: FontWeight.w600,
-              color: (number(preview!['labaBaru']) ?? 0) < 0 ? errorColor : successColor)),
+              color: profitColor(number(preview!['labaBaru'])))),
           ])),
           const SizedBox(height: Space.sm),
           ConstrainedBox(constraints: const BoxConstraints(maxHeight: 240), child: SingleChildScrollView(child: DataView<Map<String, dynamic>>(rows: rows, columns: [
             DataCol('Nota', (r) => '#${r['saleId']} · ${dateTimeLabel(r['tanggal']).split(' ').first}', flex: 2),
             DataCol('Qty', (r) => quantityText(r['qty']), numeric: true),
             DataCol('HPP lama', (r) => rupiah(r['hargaPokokLama']), numeric: true),
-            DataCol('Laba lama', (r) => rupiah(r['labaLama']), numeric: true),
-            DataCol('Laba baru', (r) => rupiah(r['labaBaru']), numeric: true),
+            DataCol('Laba lama', (r) => rupiah(r['labaLama']), numeric: true, color: (r) => profitColor(number(r['labaLama']))),
+            DataCol('Laba baru', (r) => rupiah(r['labaBaru']), numeric: true, color: (r) => profitColor(number(r['labaBaru']))),
           ]))),
           const SizedBox(height: Space.sm),
           Text('Laba sudah memperhitungkan diskon barang dan bagian diskon nota. Bon masuk Rekap pada periode pelunasannya.', style: TextStyle(color: muted, fontSize: 13)),

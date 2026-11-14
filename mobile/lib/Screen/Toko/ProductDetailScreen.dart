@@ -20,6 +20,11 @@ String marginLabel(num? pokok, num? jual) {
   return jual < pokok ? '$pct% (di bawah modal)' : '$pct%';
 }
 
+Map<String, dynamic> _tierUnit(List<Map<String, dynamic>> units, Map<String, dynamic> tier) =>
+    units.firstWhere((x) => x['id'] == tier['productUnitId'], orElse: () => {});
+
+Color? marginColor(num? pokok, num? jual) => pokok == null || jual == null || pokok <= 0 || jual <= 0 ? null : profitColor(jual - pokok);
+
 /// One product's units (with their costs and prices), price tiers, and price history.
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.api, required this.productId, required this.isAdmin});
@@ -126,7 +131,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             DataCol('Isi', (u) => u['isBaseUnit'] == true ? '1' : '${u['konversi']} ${unitName(units.firstWhere((x) => x['isBaseUnit'] == true, orElse: () => {})['id'])}', numeric: true),
             DataCol('Harga pokok', (u) => rupiah(u['hargaPokok']), numeric: true, flex: 2),
             DataCol('Harga jual', (u) => rupiah(u['hargaJual']), numeric: true, flex: 2),
-            DataCol('Margin', (u) => marginLabel(number(u['hargaPokok']), number(u['hargaJual'])), numeric: true, flex: 2),
+            DataCol('Margin', (u) => marginLabel(number(u['hargaPokok']), number(u['hargaJual'])), numeric: true, flex: 2,
+              color: (u) => marginColor(number(u['hargaPokok']), number(u['hargaJual']))),
           ]),
         const SizedBox(height: Space.xl),
         ScreenHeader(section: true, 'Harga bertingkat', 'Harga khusus saat membeli dalam jumlah tertentu.', actions: [
@@ -140,10 +146,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             DataCol('Satuan', (t) => unitName(t['productUnitId'])),
             DataCol('Qty', (t) => t['maxQty'] == null ? '≥ ${t['minQty']}' : '${t['minQty']} – ${t['maxQty']}'),
             DataCol('Harga', (t) => rupiah(t['hargaJual']), numeric: true),
-            DataCol('Margin', (t) {
-              final u = units.firstWhere((x) => x['id'] == t['productUnitId'], orElse: () => {});
-              return marginLabel(number(u['hargaPokok']), number(t['hargaJual']));
-            }, numeric: true),
+            DataCol('Margin', (t) => marginLabel(number(_tierUnit(units, t)['hargaPokok']), number(t['hargaJual'])), numeric: true,
+              color: (t) => marginColor(number(_tierUnit(units, t)['hargaPokok']), number(t['hargaJual']))),
           ]),
         const SizedBox(height: Space.xl),
         Text('Riwayat harga', style: Theme.of(context).textTheme.titleMedium), const SizedBox(height: Space.sm),
