@@ -111,9 +111,12 @@ void main() {
     await tester.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(theme: buildTheme(),
       home: Scaffold(appBar: AppBar(title: const Text('Kasir')), body: LiveKasirScreen(store: store)))));
     await tester.pumpAndSettle();
-    expect(find.text('Beras Pandan Wangi 5 kg'), findsOneWidget);
-    await tester.tap(find.byTooltip('Tambah Beras Pandan Wangi 5 kg'));
+    // a phone has no catalog list: the search box opens the palette, and the pick goes into the cart
+    await tester.tap(find.widgetWithText(TextField, 'Cari barang…'));
     await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    await tester.tap(find.text('Beras Pandan Wangi 5 kg · PCS'));
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    expect(find.text('Beras Pandan Wangi 5 kg'), findsOneWidget);
     expect(store.items.single.quantity, 1);
     expect(store.price?.total, 78000);
     await _capture(tester, key, 'kasir-live');

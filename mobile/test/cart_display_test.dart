@@ -104,8 +104,9 @@ void main() {
       ),
     ));
 
-    expect(find.textContaining('Pelanggan: Pelanggan VIP'), findsOneWidget);
-    expect(find.text('Keranjang masih kosong. Scan barang atau pilih dari katalog.'), findsOneWidget);
+    // the customer lives on the Kasir screen now, not in the cart
+    expect(find.textContaining('Pelanggan VIP'), findsNothing);
+    expect(find.text('Keranjang kosong. Scan barcode atau cari barang untuk mulai.'), findsOneWidget);
     store.dispose();
   });
 
@@ -129,47 +130,42 @@ void main() {
     expect(store.activeQueue.items.isEmpty, isTrue);
   });
 
-  testWidgets('clicking catalog row adds product even when loading is true', (tester) async {
+  testWidgets('wide Kasir shows the Total panel, the Bayar button and the table headers', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
     final guard = MutationGuard(MemoryPending());
     final api = BusinessApi((path, {required method, query, body}) async {
       if (path == '/v1/carts/price') {
-        return {'lines': [], 'subtotal': 0, 'diskon': 0, 'total': 0, 'stockEnough': true};
-      }
-      if (path == '/v1/catalog/search') {
-        return {
-          'items': [
-            {'id': 99, 'namaItem': 'Barang Klik', 'kodeItem': 'BK01', 'barcode': '999', 'stok': 10, 'satuan': 'Pcs', 'hargaJual': 7000, 'hargaPokok': 5000}
-          ],
-          'currentPage': 1,
-          'lastPage': 1,
-        };
+        return {'lines': [{'hargaJual': 12500, 'subtotal': 25000, 'diskon': 0, 'stokCukup': true}], 'subtotal': 25000, 'diskon': 0, 'total': 25000};
       }
       return {};
     });
-
     final store = LiveStore(api, guard);
-    await tester.pumpWidget(MaterialApp(
-      theme: buildTheme(Palette.light),
-      home: Scaffold(
-        body: LiveKasirScreen(store: store, active: true),
-      ),
-    ));
+    store.setCustomer('Pelanggan VIP');
+    final p = LiveProduct(2, 'Barang Cepat', 'BC01', 10, [LiveUnit(null, 'Pcs', 12500)]);
+    store.put(LiveCartItem(product: p, unit: p.units.first, quantity: 2));
+
+    await tester.pumpWidget(MaterialApp(theme: buildTheme(Palette.light), home: Scaffold(body: LiveKasirScreen(store: store))));
     await tester.pumpAndSettle();
 
-    expect(find.text('Barang Klik'), findsOneWidget);
-    // Tap the catalog row
-    await tester.tap(find.text('Barang Klik'));
-    await tester.pump();
+    expect(find.text('TOTAL'), findsOneWidget);
+    expect(find.text('1 barang · 2 qty'), findsOneWidget);
+    expect(find.text('Bayar'), findsOneWidget);
+    // the customer box, and the queue tab label that carries the customer's name
+    expect(find.text('Pelanggan VIP'), findsWidgets);
+    for (final header in ['NO', 'PRODUK', 'SATUAN', 'HARGA', 'DISKON', 'QTY', 'SUBTOTAL']) {
+      expect(find.text(header), findsOneWidget, reason: header);
+    }
+    expect(tester.takeException(), isNull);
 
-    // Verify it is added to the cart
-    expect(store.items.length, equals(1));
-    expect(store.items.first.product.id, equals(99));
-
+    await tester.pumpWidget(const SizedBox());
     store.dispose();
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('cart navigation walks up with arrowUp, stays on the top line, and PageDown/PageUp change panel', (tester) async {
-    // the cart sits beside the catalog only on a wide desktop window
+    // the wide till (table cart, keyboard strip) shows only on a wide desktop window
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
@@ -224,7 +220,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
     await tester.pumpAndSettle();
     expect(store.selectedCartIndex, isNull);
-    final searchInput = tester.widgetList<TextField>(find.byType(TextField)).firstWhere((f) => f.decoration?.labelText != 'Jumlah');
+    final searchInput = tester.widgetList<TextField>(find.byType(TextField)).firstWhere((f) => f.decoration?.hintText != '1');
     expect(searchInput.focusNode?.hasFocus, isTrue);
 
     // PageUp from the search box goes back round to the cart, at its top line

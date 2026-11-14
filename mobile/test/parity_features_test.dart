@@ -108,7 +108,7 @@ void main() {
       expect(find.textContaining('Harga setelah diskon di bawah modal'), findsOneWidget);
 
       await tapText(tester, 'Bon');
-      await tester.enterText(find.widgetWithText(TextField, 'Nama pelanggan (wajib untuk bon)'), 'UMUM');
+      await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Umum'), 'UMUM');
       await tapText(tester, 'Simpan transaksi');
       expect(find.textContaining('bukan UMUM'), findsWidgets);
 

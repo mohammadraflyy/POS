@@ -106,7 +106,7 @@ void main() {
     await settle(tester);
 
     // Initial menu is Kasir
-    expect(find.text('Daftar Produk (Katalog Aktif)'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Cari nama / kode / barcode'), findsOneWidget);
 
     // Unfocus any text field so global keys are active
     FocusManager.instance.primaryFocus?.unfocus();
@@ -115,16 +115,16 @@ void main() {
     // Arrows do not switch menus
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await settle(tester);
-    expect(find.text('Daftar Produk (Katalog Aktif)'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Cari nama / kode / barcode'), findsOneWidget);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await settle(tester);
-    expect(find.text('Daftar Produk (Katalog Aktif)'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Cari nama / kode / barcode'), findsOneWidget);
 
     // Clicking a menu in the sidebar opens it
     await tester.tap(find.text('Riwayat'));
     await settle(tester);
-    expect(find.text('Daftar Produk (Katalog Aktif)'), findsNothing);
+    expect(find.widgetWithText(TextField, 'Cari nama / kode / barcode'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });

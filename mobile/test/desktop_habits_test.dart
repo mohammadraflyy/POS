@@ -119,7 +119,7 @@ void main() {
       await scan(tester, '8991001000110');
       await tester.sendKeyEvent(LogicalKeyboardKey.end);
       await tester.pumpAndSettle();
-      await tester.enterText(find.widgetWithText(TextField, 'Uang diterima (Rp)'), '2000');
+      await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Kosong = uang pas'), '2000');
       await tester.tap(find.text('Simpan transaksi  ·  End'));
       await tester.pumpAndSettle();
 

@@ -8,6 +8,7 @@ import '../../services/barcode_burst.dart';
 import '../../services/store_api.dart';
 import '../../services/updater_service.dart';
 import '../../state/app_state.dart';
+import '../../state/kasir_keys.dart';
 import '../../state/theme_controller.dart';
 import '../../Widgets/admin.dart';
 import '../../Widgets/receipt_preview.dart';
@@ -380,6 +381,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Text('Tersimpan di perangkat ini saja.', style: TextStyle(color: muted, fontSize: 12)),
         ]),
       )),
+      if (isDesktop) ...[
+        const SizedBox(height: Space.xl),
+        const ScreenHeader('Keyboard kasir', 'Pilih tombol untuk berpindah antara Jumlah, cari barang, dan keranjang.', section: true),
+        WhitePanel(child: ValueListenableBuilder<KasirKeyLayout>(
+          valueListenable: kasirKeys,
+          builder: (context, layout, _) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SegmentedButton<KasirKeyLayout>(
+              showSelectedIcon: false,
+              segments: [for (final l in KasirKeyLayout.values) ButtonSegment(value: l, label: Text(KasirKeysController.labels[l]!))],
+              selected: {layout},
+              onSelectionChanged: (s) => kasirKeys.choose(s.first),
+            ),
+            const SizedBox(height: Space.sm),
+            Text(KasirKeysController.descriptions[layout]!, style: TextStyle(color: ink, fontSize: 13)),
+            const SizedBox(height: Space.xs),
+            Text('Tersimpan di perangkat ini saja.', style: TextStyle(color: muted, fontSize: 12)),
+          ]),
+        )),
+      ],
       const SizedBox(height: Space.xl),
       const ScreenHeader('Pembaruan Aplikasi', 'Periksa versi terbaru aplikasi dari rilis Git.', section: true),
       WhitePanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

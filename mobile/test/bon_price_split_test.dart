@@ -1,8 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../lib/core/theme.dart';
 import '../lib/models/live_models.dart';
-import '../lib/Screen/Live/LiveCartPanel.dart';
 import '../lib/Screen/Live/LiveKasirScreen.dart';
 import '../lib/services/business_api.dart';
 import '../lib/services/mutation_guard.dart';
@@ -11,6 +12,10 @@ import 'live_store_test.dart' show MemoryPending;
 
 void main() {
   testWidgets('bon item auto-splits on price change with clear explanatory badges', (tester) async {
+    // the wide till, whose search box adds by exact code
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
     final guard = MutationGuard(MemoryPending());
     final api = BusinessApi((path, {required method, query, body}) async {
       if (path == '/v1/carts/price') {
@@ -93,15 +98,18 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       theme: buildTheme(),
       home: Scaffold(
-        body: Row(
-          children: [
-            Expanded(child: LiveKasirScreen(store: store)),
-            SizedBox(width: 350, child: LiveCartPanel(store: store)),
-          ],
-        ),
+        body: LiveKasirScreen(store: store),
       ),
     ));
     await tester.pumpAndSettle();
+
+    Future<void> addSusu() async {
+      final search = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText != '1');
+      await tester.tap(search);
+      await tester.enterText(search, 'SUSU01');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+    }
 
     // Pastikan baris riwayat nota ditampilkan dengan badge riwayat
     expect(find.text('Harga riwayat nota (Rp14.000)'), findsOneWidget);
@@ -110,8 +118,7 @@ void main() {
     expect(store.items.first.quantity, 2);
 
     // 2. Kasir menambahkan Susu Kaleng yang di katalog saat ini harganya Rp16.000
-    await tester.tap(find.byTooltip('Tambah Susu Kaleng'));
-    await tester.pumpAndSettle();
+    await addSusu();
 
     // Sistem secara otomatis memisahkan menjadi 2 baris terpisah!
     expect(store.items.length, 2);
@@ -136,13 +143,16 @@ void main() {
     await tester.pumpAndSettle();
 
     // 3. Kasir menambahkan Susu Kaleng lagi
-    await tester.tap(find.byTooltip('Tambah Susu Kaleng'));
-    await tester.pumpAndSettle();
+    await addSusu();
 
     // Qty baris tambahan baru bertambah jadi 2, baris lama tetap 2
     final updatedNewLine = store.items.firstWhere((i) => i.manualPrice == 16000);
     expect(updatedNewLine.quantity, 2);
     final unchangedOldLine = store.items.firstWhere((i) => i.manualPrice == 14000);
     expect(unchangedOldLine.quantity, 2);
+
+    await tester.pumpWidget(const SizedBox());
+    store.dispose();
+    debugDefaultTargetPlatformOverride = null;
   });
 }

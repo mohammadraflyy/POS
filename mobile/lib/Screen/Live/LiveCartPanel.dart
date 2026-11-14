@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../Widgets/admin.dart' show isDesktop;
 import '../../models/live_models.dart';
+import '../../state/kasir_keys.dart';
 import '../../state/live_store.dart';
 import '../../core/theme.dart';
 import '../../Widgets/ui.dart';
 import 'LiveItemSheet.dart';
-import 'LivePaymentScreen.dart';
+import 'kasir_style.dart';
 /// Asks before emptying the cart - from the bin button or Alt+K on the PC.
 Future<void> confirmClearCart(BuildContext context, LiveStore store) async {
   if (store.items.isEmpty || !store.editable) return;
@@ -39,68 +40,86 @@ Future<void> _confirmCloseQueue(BuildContext context, LiveStore store, int index
   store.removeQueue(index);
 }
 
-class LiveCartPanel extends StatefulWidget {
-  const LiveCartPanel({super.key, required this.store, this.onExitTop});
+/// Asks for the nota discount (rupiah or %) and applies it to the active queue.
+Future<void> showCartDiscount(BuildContext context, LiveStore store) async {
+  final value = await showDialog<num>(
+    context: context,
+    builder: (_) => _DiscountDialog(initial: store.discount, subtotal: store.price?.subtotal ?? 0),
+  );
+  if (value != null) store.setDiscount(value);
+}
+
+// Fixed widths of the table columns; Produk takes what is left.
+const _noWidth = 50.0, _unitWidth = 180.0, _priceWidth = 120.0, _discountWidth = 110.0, _qtyWidth = 80.0, _subtotalWidth = 130.0, _removeWidth = 50.0;
+
+Widget _cell(double width, Widget child) => SizedBox(width: width, child: Padding(padding: const EdgeInsets.only(left: 12), child: child));
+
+/// "grosir" or "manual" under a price that did not come from the plain catalog price.
+Widget _sourcePill(String text) => Container(
+  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+  decoration: BoxDecoration(color: KasirColors.tint2, borderRadius: BorderRadius.circular(8)),
+  child: Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: KasirColors.primary)),
+);
+
+class LiveCartPanel extends StatelessWidget {
+  const LiveCartPanel({super.key, required this.store, this.onExitTop, this.inCard = false, this.holdFocus, this.clearFocus, this.onRowKey});
   final LiveStore store;
   final VoidCallback? onExitTop;
 
-  @override
-  State<LiveCartPanel> createState() => _LiveCartPanelState();
-}
+  /// Focus nodes and arrow handler of the heading buttons, owned by the Kasir screen's arrow path.
+  final FocusNode? holdFocus, clearFocus;
+  final FocusOnKeyEventCallback? onRowKey;
 
-class _LiveCartPanelState extends State<LiveCartPanel> {
-  late final ScrollController _scrollController;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController = ScrollController();
-    widget.store.addListener(_onStoreChanged);
-  }
-
-  void _onStoreChanged() {
-    final idx = widget.store.selectedCartIndex;
-    if (idx != null && idx == 0 && _scrollController.hasClients && _scrollController.offset > 0) {
-      _scrollController.animateTo(0, duration: const Duration(milliseconds: 150), curve: Curves.easeInOut);
-    }
-  }
+  /// Sits inside a bigger card: the card supplies the frame, so the table drops its own.
+  final bool inCard;
 
   @override
-  void didUpdateWidget(covariant LiveCartPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.store != widget.store) {
-      oldWidget.store.removeListener(_onStoreChanged);
-      widget.store.addListener(_onStoreChanged);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.store.removeListener(_onStoreChanged);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  Future<void> discount(BuildContext context) async {
-    final value = await showDialog<num>(
-      context: context,
-      builder: (_) => _DiscountDialog(initial: widget.store.discount, subtotal: widget.store.price?.subtotal ?? 0),
-    );
-    if (value != null) widget.store.setDiscount(value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final store = widget.store;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return AnimatedBuilder(
-      animation: Listenable.merge([store, store.guard]),
-      builder: (context, _) => CartLayout(
-        scrollController: _scrollController,
-        header: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: Listenable.merge([store, store.guard]),
+    builder: (context, _) => LayoutBuilder(builder: (context, box) {
+      // the fixed columns alone take 720, so Produk needs room beyond that
+      final wide = box.maxWidth >= 840;
+      final headStyle = TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: KasirColors.label);
+      void holdQueue() {
+        store.newQueue();
+        showNotice(context, 'Antrean baru dibuka. Transaksi sebelumnya tersimpan di tab.', kind: NoticeKind.info);
+      }
+      // 2px primary ring on keyboard focus, like Pelanggan and Diskon nota
+      final focusRing = WidgetStateProperty.resolveWith<BorderSide?>((states) => states.contains(WidgetState.focused) ? BorderSide(color: KasirColors.primary, width: 2) : null);
+      final table = store.items.isEmpty
+        ? Padding(padding: const EdgeInsets.all(48), child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Opacity(opacity: 0.4, child: Icon(Icons.shopping_cart_outlined, size: 32, color: KasirColors.muted)),
+            const SizedBox(height: Space.sm),
+            Text('Keranjang kosong. Scan barcode atau cari barang untuk mulai.', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: KasirColors.muted)),
+          ]))
+        : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (wide) Container(
+              height: 40,
+              color: KasirColors.accent,
+              padding: const EdgeInsets.only(right: 12),
+              child: Row(children: [
+                _cell(_noWidth, Text('NO', style: headStyle)),
+                Expanded(child: Padding(padding: const EdgeInsets.only(left: 12), child: Text('PRODUK', style: headStyle))),
+                _cell(_unitWidth, Text('SATUAN', style: headStyle)),
+                _cell(_priceWidth, Text('HARGA', textAlign: TextAlign.end, style: headStyle)),
+                _cell(_discountWidth, Text('DISKON', textAlign: TextAlign.end, style: headStyle)),
+                _cell(_qtyWidth, Text('QTY', textAlign: TextAlign.center, style: headStyle)),
+                _cell(_subtotalWidth, Text('SUBTOTAL', textAlign: TextAlign.end, style: headStyle)),
+                const SizedBox(width: _removeWidth),
+              ]),
+            ),
+            for (var index = 0; index < store.items.length; index++)
+              _CartLine(
+                key: ObjectKey(store.items[index]),
+                store: store,
+                index: index,
+                isSelected: store.selectedCartIndex == index,
+                wide: wide,
+                onExitTop: onExitTop,
+              ),
+          ]);
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        Padding(padding: inCard ? const EdgeInsets.fromLTRB(20, 12, 12, 8) : EdgeInsets.zero, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
         if (store.queues.length > 1) ...[
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -131,145 +150,54 @@ class _LiveCartPanelState extends State<LiveCartPanel> {
           ),
           const SizedBox(height: Space.xs),
         ],
-        Row(children: [
-          Expanded(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: Text(
-                    store.items.isEmpty ? 'Keranjang' : 'Keranjang Kasir',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                if (store.items.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: primaryInk,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${store.items.length} Item',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: onPrimary),
-                    ),
-                  ),
-                ],
-              ],
+        Focus(canRequestFocus: false, skipTraversal: true, onKeyEvent: onRowKey, child: Row(children: [
+          Expanded(child: Row(children: [
+            Icon(Icons.shopping_cart_outlined, size: 18, color: KasirColors.ink),
+            const SizedBox(width: 8),
+            Flexible(child: Text('Keranjang', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: KasirColors.ink))),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
+              decoration: BoxDecoration(color: KasirColors.tint2, borderRadius: BorderRadius.circular(10)),
+              child: Text('${store.items.length}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: KasirColors.primary)),
             ),
-          ),
+          ])),
           if (store.editable && store.editingSaleId == null)
-            IconButton(
-              tooltip: 'Tahan antrean saat ini & buka baru (Alt+H)',
-              onPressed: () {
-                store.newQueue();
-                showNotice(context, 'Antrean baru dibuka. Transaksi sebelumnya tersimpan di tab.', kind: NoticeKind.info);
-              },
-              icon: const Icon(Icons.add_shopping_cart, size: 20),
-            ),
-          IconButton(
-            tooltip: 'Kosongkan keranjang (Alt+K)',
-            onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
-            icon: const Icon(Icons.delete_outline),
-          ),
-        ]),
-      ],
-    ),
-    items: [
-      if (store.customerName.isNotEmpty)
-        Container(
-          margin: const EdgeInsets.only(top: Space.sm, bottom: Space.xs),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          decoration: BoxDecoration(
-            color: isDark ? raised : const Color(0xFFF8FAFC),
-            border: Border.all(color: lineColor),
-            borderRadius: BorderRadius.circular(Corners.control),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.person_outline, size: 16, color: muted),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Pelanggan: ${store.customerName}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              TextButton(
-                onPressed: store.editable ? () => store.setCustomer('') : null,
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(0, 26),
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
+            wide
+              ? TextButton.icon(
+                  focusNode: holdFocus,
+                  onPressed: holdQueue,
+                  style: TextButton.styleFrom(foregroundColor: KasirColors.label, minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 8)).copyWith(side: focusRing),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Antrean baru', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                )
+              : IconButton(
+                  focusNode: holdFocus,
+                  tooltip: 'Tahan antrean saat ini & buka baru',
+                  onPressed: holdQueue,
+                  color: KasirColors.label,
                   visualDensity: VisualDensity.compact,
+                  style: const ButtonStyle().copyWith(side: focusRing),
+                  icon: const Icon(Icons.add_shopping_cart, size: 20),
                 ),
-                child: const Text('Umum', style: TextStyle(fontSize: 12)),
-              ),
-            ],
+          TextButton.icon(
+            focusNode: clearFocus,
+            onPressed: store.items.isEmpty || !store.editable ? null : () => confirmClearCart(context, store),
+            style: TextButton.styleFrom(foregroundColor: KasirColors.destructive, minimumSize: const Size(0, 40), padding: const EdgeInsets.symmetric(horizontal: 8)).copyWith(side: focusRing),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('Kosongkan', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
           ),
+        ])),
+        ])),
+        if (inCard) Container(height: 1, color: lineColor) else const SizedBox(height: Space.sm),
+        if (inCard) table else Container(
+          decoration: BoxDecoration(color: KasirColors.surface, border: Border.all(color: KasirColors.gridLine), borderRadius: BorderRadius.circular(Corners.panel), boxShadow: KasirColors.softShadow),
+          clipBehavior: Clip.antiAlias,
+          child: table,
         ),
-      if (store.items.isEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: Space.xl),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Keranjang masih kosong. Scan barang atau pilih dari katalog.', style: TextStyle(color: muted)),
-            // an empty cart is the moment a new cashier has time to learn the keys
-            if (isDesktop) ...[
-              const SizedBox(height: Space.lg),
-              for (final (keys, label) in const [('F1 / F2', 'Cari barang'), ('/', 'Daftar semua barang'), ('F3', 'Ubah baris teratas'),
-                  ('PgUp / PgDn', 'Pindah panel'), ('Alt+P', 'Pilih pelanggan'), ('F4 / F12', 'Bayar')])
-                Padding(padding: const EdgeInsets.only(bottom: 6), child: Row(children: [
-                  SizedBox(width: 96, child: Text(keys, style: TextStyle(fontFamily: monoFamily, fontSize: 12, color: secondaryInk))),
-                  Expanded(child: Text(label, style: TextStyle(fontSize: 13, color: muted))),
-                ])),
-            ],
-          ]),
-        )
-      else
-        for (var index = 0; index < store.items.length; index++)
-          _CartLine(
-            key: ObjectKey(store.items[index]),
-            store: store,
-            index: index,
-            isSelected: store.selectedCartIndex == index,
-            onExitTop: widget.onExitTop,
-          ),
-    ],
-    footer: Column(mainAxisSize: MainAxisSize.min, children: [
-      if (store.pricing) const LinearProgressIndicator(minHeight: 2),
-      if (store.priceError != null) TextButton(onPressed: store.reprice, child: const Text('Coba hitung harga lagi')),
-      SummaryRow('Subtotal', store.items.isEmpty ? rupiah(0) : rupiah(store.price?.subtotal)),
-      Row(children: [
-        Expanded(child: Text('Diskon nota', style: TextStyle(color: muted))),
-        // tappable, but the figure still ends on the totals' right edge
-        TextButton(onPressed: store.items.isEmpty || !store.editable ? null : () => discount(context),
-          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: const Size(0, 32)),
-          child: Text(store.discount == 0 ? 'Tambah' : '-${rupiah(store.discount)}', style: amountStyle.copyWith(fontSize: 14, decoration: TextDecoration.underline, decorationColor: controlBorder))),
-      ]),
-      // the answer figure: the bill, in the shop's one hue; an empty cart is a real Rp0, not a dash
-      SummaryRow('Total', store.items.isEmpty ? rupiah(0) : rupiah(store.price?.total), strong: true, color: store.items.isEmpty ? muted : dataHue), const SizedBox(height: Space.lg),
-      SizedBox(width: double.infinity, child: FilledButton(
-        onPressed: store.canCheckout ? () => openPayment(context, store) : null,
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(44, 48),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Corners.control)),
-          elevation: 2,
-          backgroundColor: primaryInk,
-          foregroundColor: onPrimary,
-        ),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.check_circle_outline, size: 19, color: store.canCheckout ? const Color(0xFF34D399) : onPrimary.withValues(alpha: 0.5)),
-          const SizedBox(width: Space.sm),
-          Text(isDesktop ? 'Bayar  ·  End' : 'Bayar', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-        ]),
-      )),
-    ]),
-  ));
-  }
+      ]);
+    }),
+  );
 }
 
 /// One cart line: tap it to select/highlight ("di sorot"), delete with Del/Backspace,
@@ -280,12 +208,13 @@ class _CartLine extends StatefulWidget {
     required this.store,
     required this.index,
     required this.isSelected,
+    required this.wide,
     this.onExitTop,
   });
 
   final LiveStore store;
   final int index;
-  final bool isSelected;
+  final bool isSelected, wide;
   final VoidCallback? onExitTop;
 
   @override
@@ -343,7 +272,7 @@ class _CartLineState extends State<_CartLine> {
 
   void _openEdit() async {
     final item = widget.store.items[widget.index];
-    final result = await editLiveItem(context, item.product, existing: item);
+    final result = await editLiveItem(context, item.product, existing: item, onRemove: () => widget.store.remove(item));
     if (result != null && mounted) {
       try {
         widget.store.replace(item, result);
@@ -363,30 +292,39 @@ class _CartLineState extends State<_CartLine> {
     final fallbackSubtotal = price != null ? (price * item.quantity - discount).round() : null;
     final displaySubtotal = line?['subtotal'] ?? fallbackSubtotal;
     final priceSource = line?['priceSource']?.toString();
-    final tierBadge = priceSource == 'price_tier' ? ' · grosir' : priceSource == 'manual' ? ' · manual' : '';
+    final sourceLabel = priceSource == 'price_tier' ? 'grosir' : priceSource == 'manual' ? 'manual' : null;
     // While editing an existing sale/bon, stock was already deducted so do not warn shortage
     final short = line?['stokCukup'] == false && widget.store.editingSaleId == null;
 
     final isRiwayat = item.priceNote != null && item.priceNote!.contains('riwayat');
-    final isTambahan = item.priceNote != null && (item.priceNote!.contains('tambahan') || item.priceNote!.contains('katalog'));
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isSelected = widget.isSelected;
-
-    final cardBorder = isSelected
-        ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7))
-        : (isRiwayat
-            ? (isDark ? const Color(0xFFD97706) : const Color(0xFFFDE68A)) // amber-200
-            : isTambahan
-                ? (isDark ? const Color(0xFF059669) : const Color(0xFFA7F3D0)) // emerald-200
-                : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)));
-
-    final cardBg = isSelected
-        ? (isDark ? const Color(0xFF0C4A6E).withValues(alpha: 0.35) : const Color(0xFFF0F9FF))
-        : (isRiwayat
-            ? (isDark ? const Color(0xFF78350F).withValues(alpha: 0.25) : const Color(0xFFFFFBEB))
-            : isTambahan
-                ? (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.25) : const Color(0xFFECFDF5))
-                : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)));
+    final priceText = price == null ? '…' : rupiah(price);
+    final subtotalText = displaySubtotal == null ? '…' : rupiah(displaySubtotal);
+    final nameStyle = TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: KasirColors.ink);
+    final cellStyle = amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w400, color: KasirColors.ink);
+    final notes = [
+      if (item.priceNote != null && item.priceNote!.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(top: 4), child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+          decoration: BoxDecoration(
+            color: isRiwayat ? pillWarningBg : pillPositiveBg,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: (isRiwayat ? pillWarningInk : pillPositiveInk).withValues(alpha: 0.25)),
+          ),
+          child: Text(item.priceNote!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isRiwayat ? pillWarningInk : pillPositiveInk)),
+        )),
+      if (short) Padding(padding: const EdgeInsets.only(top: 2), child: Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))),
+    ];
+    final remove = IconButton(
+      onPressed: widget.store.editable ? () {
+        widget.store.selectCartIndex(widget.index);
+        widget.store.removeSelectedCartItem();
+      } : null,
+      tooltip: 'Hapus ${item.product.name} (Del / Backspace)',
+      iconSize: 18,
+      color: KasirColors.muted,
+      icon: const Icon(Icons.close),
+    );
 
     return Focus(
       focusNode: _focusNode,
@@ -406,13 +344,17 @@ class _CartLineState extends State<_CartLine> {
           if (event is KeyDownEvent && widget.store.editable) widget.store.removeSelectedCartItem();
           return KeyEventResult.handled;
         }
-        // arrows stay inside the cart, the edges included; PageDown/PageUp change panel
+        // arrows stay inside the cart; only "Panah global" lets Up on the first line leave it
         if (key == LogicalKeyboardKey.arrowDown) {
           if (widget.index + 1 < widget.store.items.length) widget.store.selectCartIndex(widget.index + 1);
           return KeyEventResult.handled;
         }
         if (key == LogicalKeyboardKey.arrowUp) {
-          if (widget.index > 0) widget.store.selectCartIndex(widget.index - 1);
+          if (widget.index > 0) {
+            widget.store.selectCartIndex(widget.index - 1);
+          } else if (kasirKeys.isGlobalArrows) {
+            widget.onExitTop?.call();
+          }
           return KeyEventResult.handled;
         }
         if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowRight) {
@@ -439,7 +381,6 @@ class _CartLineState extends State<_CartLine> {
       },
       child: InkWell(
         canRequestFocus: false,
-        borderRadius: BorderRadius.circular(Corners.control),
         onTap: () {
           widget.store.selectCartIndex(widget.index);
           _focusNode.requestFocus();
@@ -449,95 +390,58 @@ class _CartLineState extends State<_CartLine> {
         },
         onDoubleTap: (isDesktop && widget.store.editable) ? _openEdit : null,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-          margin: const EdgeInsets.symmetric(vertical: 3.5),
+          constraints: BoxConstraints(minHeight: widget.wide ? 52 : 66),
           decoration: BoxDecoration(
-            color: cardBg,
-            border: Border.all(
-              color: cardBorder,
-              width: isSelected ? 2.0 : ((isRiwayat || isTambahan) ? 1.2 : 1.0),
-            ),
-            borderRadius: BorderRadius.circular(Corners.control),
-            boxShadow: [
-              BoxShadow(
-                color: isSelected
-                    ? (isDark ? const Color(0xFF38BDF8).withValues(alpha: 0.3) : const Color(0xFF0284C7).withValues(alpha: 0.2))
-                    : Colors.black.withValues(alpha: isDark ? 0.2 : 0.02),
-                blurRadius: isSelected ? 4 : 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
+            color: isSelected ? KasirColors.selectedRow : null,
+            border: widget.wide || widget.index > 0 ? Border(top: BorderSide(color: KasirColors.gridLine)) : null,
           ),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 3),
-              Text('${quantityText(item.quantity)} ${item.unit.name} × ${price == null ? '…' : rupiah(price)}$tierBadge${discount > 0 ? ' · diskon ${rupiah(discount)}' : ''}',
-                style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: muted, fontSize: 12)),
-              if (item.priceNote != null && item.priceNote!.isNotEmpty) ...[
-                const SizedBox(height: 5),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                  decoration: BoxDecoration(
-                    color: isRiwayat ? pillWarningBg : pillPositiveBg,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: (isRiwayat ? pillWarningInk : pillPositiveInk).withValues(alpha: 0.25),
-                    ),
-                  ),
-                  child: Text(
-                    item.priceNote!,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: isRiwayat ? pillWarningInk : pillPositiveInk,
-                    ),
-                  ),
-                ),
-              ],
-              if (short) ...[const SizedBox(height: 2), Text('Stok tidak cukup', style: TextStyle(color: errorColor, fontSize: 12))],
-            ])),
-            const SizedBox(width: Space.md),
-            Text(displaySubtotal == null ? '…' : rupiah(displaySubtotal), style: amountStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w700)),
-            const SizedBox(width: Space.xs),
-            if (widget.store.editable) ...[
-              SizedBox(
-                width: 24,
-                height: 22,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  iconSize: 15,
-                  onPressed: _openEdit,
-                  tooltip: 'Ubah ${item.product.name} (Enter atau klik 2x)',
-                  style: IconButton.styleFrom(
-                    minimumSize: const Size(20, 20),
-                    foregroundColor: muted,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: const Icon(Icons.edit_outlined),
-                ),
-              ),
-              const SizedBox(width: 4),
-            ],
-            SizedBox(
-              width: 24,
-              height: 22,
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                iconSize: 16,
-                onPressed: widget.store.editable ? () {
-                  widget.store.selectCartIndex(widget.index);
-                  widget.store.removeSelectedCartItem();
-                } : null,
-                tooltip: 'Hapus ${item.product.name} (Del / Backspace)',
-                style: IconButton.styleFrom(
-                  minimumSize: const Size(20, 20),
-                  foregroundColor: muted,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: const Icon(Icons.close),
-              ),
-            ),
+          child: Stack(children: [
+            if (isSelected && widget.wide) Positioned(left: 0, top: 0, bottom: 0, width: 3, child: ColoredBox(color: KasirColors.primary)),
+            widget.wide
+              ? Padding(padding: const EdgeInsets.symmetric(vertical: 6).copyWith(right: 12), child: Row(children: [
+                  _cell(_noWidth, Text('${widget.index + 1}', style: cellStyle.copyWith(fontSize: 13, color: KasirColors.muted))),
+                  Expanded(child: Padding(padding: const EdgeInsets.only(left: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: nameStyle),
+                    Text(item.product.code, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: monoFamily, fontSize: 11, color: KasirColors.muted)),
+                    ...notes,
+                  ]))),
+                  _cell(_unitWidth, Align(alignment: Alignment.centerLeft, child: Container(
+                    width: 150, height: 28, padding: const EdgeInsets.only(left: 10, right: 6),
+                    decoration: BoxDecoration(color: KasirColors.surface, border: Border.all(color: KasirColors.gridLine), borderRadius: BorderRadius.circular(6)),
+                    child: Row(children: [
+                      Expanded(child: Text(item.unit.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: KasirColors.ink))),
+                      Icon(Icons.keyboard_arrow_down, size: 16, color: KasirColors.muted),
+                    ]),
+                  ))),
+                  _cell(_priceWidth, Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                    Text(priceText, textAlign: TextAlign.end, style: cellStyle),
+                    if (sourceLabel != null) Padding(padding: const EdgeInsets.only(top: 2), child: _sourcePill(sourceLabel)),
+                  ])),
+                  _cell(_discountWidth, Text(discount > 0 ? '−${rupiah(discount)}' : '-', textAlign: TextAlign.end,
+                    style: cellStyle.copyWith(fontWeight: discount > 0 ? FontWeight.w500 : FontWeight.w400, color: discount > 0 ? KasirColors.destructive : KasirColors.muted))),
+                  _cell(_qtyWidth, Center(child: Container(
+                    height: 28, constraints: const BoxConstraints(minWidth: 44), padding: const EdgeInsets.symmetric(horizontal: 10), alignment: Alignment.center,
+                    decoration: BoxDecoration(color: KasirColors.accent, borderRadius: BorderRadius.circular(14)),
+                    child: Text(quantityText(item.quantity), style: cellStyle.copyWith(fontWeight: FontWeight.w700)),
+                  ))),
+                  _cell(_subtotalWidth, Text(subtotalText, textAlign: TextAlign.end, style: cellStyle.copyWith(fontWeight: FontWeight.w700))),
+                  SizedBox(width: _removeWidth, child: Center(child: remove)),
+                ]))
+              : Padding(padding: const EdgeInsets.fromLTRB(14, 8, 0, 8), child: Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(item.product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: nameStyle),
+                    const SizedBox(height: 2),
+                    Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [
+                      Text('${quantityText(item.quantity)} ${item.unit.name} × $priceText${discount > 0 ? ' · −${rupiah(discount)}' : ''}',
+                        style: amountStyle.copyWith(fontWeight: FontWeight.w400, color: KasirColors.muted, fontSize: 12)),
+                      if (sourceLabel != null) _sourcePill(sourceLabel),
+                    ]),
+                    ...notes,
+                  ])),
+                  const SizedBox(width: Space.sm),
+                  Text(subtotalText, style: cellStyle.copyWith(fontWeight: FontWeight.w700)),
+                  remove,
+                ])),
           ]),
         ),
       ),
@@ -574,14 +478,10 @@ class _CartQueueTab extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: isActive
-                ? (isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A))
-                : (isDark ? const Color(0xFF182234) : const Color(0xFFF1F5F9)),
+            color: isActive ? (isDark ? activePill : primaryInk) : raised,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isActive
-                  ? (isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F172A))
-                  : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+              color: isActive ? primaryInk : lineColor,
               width: isActive ? 1.5 : 1,
             ),
             boxShadow: isActive ? [
@@ -600,7 +500,7 @@ class _CartQueueTab extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                  color: isActive ? (isDark ? const Color(0xFF38BDF8) : Colors.white) : ink,
+                  color: isActive ? (isDark ? primaryInk : onPrimary) : ink,
                 ),
               ),
               if (canClose) ...[
@@ -613,7 +513,7 @@ class _CartQueueTab extends StatelessWidget {
                     child: Icon(
                       Icons.close,
                       size: 14,
-                      color: isActive ? (isDark ? const Color(0xFF38BDF8) : Colors.white70) : muted,
+                      color: isActive ? (isDark ? primaryInk : onPrimary) : muted,
                     ),
                   ),
                 ),

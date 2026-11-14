@@ -122,7 +122,8 @@ class _KeyboardPickerState<T> extends State<_KeyboardPicker<T>> {
             },
             child: TextField(controller: query, autofocus: true, textInputAction: TextInputAction.go,
               onChanged: (_) { timer?.cancel(); timer = Timer(const Duration(milliseconds: 250), search); },
-              onSubmitted: (_) async { timer?.cancel(); if (loading) await search(); pick(); },
+              // a pending debounce means the list is for an older query: refresh it before picking
+              onSubmitted: (_) async { final stale = timer?.isActive ?? false; timer?.cancel(); if (loading || stale) await search(); pick(); },
               decoration: InputDecoration(hintText: widget.hint, prefixIcon: const Icon(Icons.search, size: 20))),
           ),
         ])),

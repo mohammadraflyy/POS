@@ -9,17 +9,26 @@ import '../lib/services/mutation_guard.dart';
 import '../lib/state/live_store.dart';
 import '../lib/Screen/Live/LiveKasirScreen.dart';
 import '../lib/Screen/Live/LivePaymentScreen.dart';
-import '../lib/Widgets/product_row.dart';
-import '../lib/Widgets/ui.dart';
 import 'live_store_test.dart' show MemoryPending;
 
 /// The till's search box (Jumlah sits before it).
-TextField searchField(WidgetTester tester) => tester.widgetList<TextField>(find.byType(TextField)).firstWhere((f) => f.decoration?.labelText != 'Jumlah');
+TextField searchField(WidgetTester tester) => tester.widgetList<TextField>(find.byType(TextField)).firstWhere((f) => f.decoration?.hintText != '1');
+
+/// The Jumlah box: the only one hinting 1.
+final jumlahField = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '1');
 
 /// The desktop till's keys work the same in the Flutter app on the shop PC.
 void main() {
   late MutationGuard guard;
   late LiveStore store;
+
+  /// Types an exact code in the search box and presses Enter, as a cashier would.
+  Future<void> addByCode(WidgetTester tester, String code) async {
+    await tester.tap(find.byWidget(searchField(tester)));
+    await tester.enterText(find.byWidget(searchField(tester)), code);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+  }
 
   Future<void> openTill(WidgetTester tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
@@ -37,8 +46,7 @@ void main() {
     }), guard);
     await tester.pumpWidget(MaterialApp(theme: buildTheme(), home: Scaffold(body: LiveKasirScreen(store: store))));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Tambah Kopi Sachet'));
-    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    await addByCode(tester, 'KOPI1');
     expect(store.items, hasLength(1));
   }
 
@@ -75,21 +83,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Kosongkan keranjang?'), findsOneWidget);
 
-    await tester.tap(find.text('Kosongkan'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Kosongkan'));
     await tester.pumpAndSettle();
     expect(store.items, isEmpty);
     await finish(tester);
   });
 
-  testWidgets('PageDown walks search, catalog, cart and round again; PageUp walks back', (tester) async {
+  testWidgets('PageDown walks search and cart and round again; PageUp walks back', (tester) async {
     await openTill(tester);
     await tester.tap(find.byWidget(searchField(tester)));
     await tester.pump();
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
-    await tester.pumpAndSettle();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'catalog');
-    expect(store.selectedCartIndex, isNull);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
     await tester.pumpAndSettle();
@@ -105,14 +108,14 @@ void main() {
     expect(store.selectedCartIndex, 0);
     await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
     await tester.pumpAndSettle();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'catalog');
     expect(store.selectedCartIndex, isNull);
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
     await finish(tester);
   });
 
   testWidgets('/ opens the product palette: arrows pick the unit, Enter adds the Jumlah', (tester) async {
     await openTill(tester);
-    await tester.enterText(find.widgetWithText(TextField, 'Jumlah'), '2');
+    await tester.enterText(jumlahField, '2');
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.slash);
@@ -145,7 +148,8 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.go);
     await tester.pumpAndSettle();
     expect(store.customerName, 'Bu Rina');
-    expect(find.text('Pelanggan: Bu Rina'), findsOneWidget);
+    // the customer box, and the queue label that carries the name
+    expect(find.text('Bu Rina'), findsWidgets);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.end);
     await tester.pumpAndSettle();
@@ -169,10 +173,9 @@ void main() {
 
   testWidgets('Jumlah sets how many go in, then falls back to 1; Left from the empty search box reaches it, Right goes back', (tester) async {
     await openTill(tester);
-    final qtyField = find.widgetWithText(TextField, 'Jumlah');
+    final qtyField = jumlahField;
     await tester.enterText(qtyField, '3');
-    await tester.tap(find.byTooltip('Tambah Kopi Sachet'));
-    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
+    await addByCode(tester, 'KOPI1');
     expect(store.items.single.quantity, 4); // 1 from the setup plus 3
     expect(tester.widget<TextField>(qtyField).controller!.text, '1');
 
@@ -189,44 +192,23 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('arrow keys move selection in catalog and Enter picks product into cart', (tester) async {
+  testWidgets('Enter in the search box adds an exact code with no palette, and opens the palette for a partial name', (tester) async {
     await openTill(tester);
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pump();
+    await addByCode(tester, 'kopi1');
+    expect(store.items.single.quantity, 2);
+    expect(find.text('Cari barang'), findsNothing);
+    expect(searchField(tester).controller!.text, isEmpty);
 
-    // With focus outside text field, Enter adds the selected product
-    final initialQty = store.items.single.quantity;
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
-    expect(store.items.single.quantity, initialQty + 1);
-
-    // Typing in search, PageDown into the catalog, then Enter picks the selected match
-    await tester.tap(find.byWidget(searchField(tester)));
     await tester.enterText(find.byWidget(searchField(tester)), 'Kopi');
-    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
-    await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
-    expect(store.items.single.quantity, initialQty + 2);
+    expect(find.text('Cari barang'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField).last).controller!.text, 'Kopi');
+    expect(find.text('Kopi Sachet · RENTENG'), findsOneWidget);
 
-    await finish(tester);
-  });
-
-  testWidgets('clicking product row on desktop adds with entered quantity directly without modal', (tester) async {
-    await openTill(tester);
-    final qtyField = find.widgetWithText(TextField, 'Jumlah');
-    await tester.enterText(qtyField, '5');
-    await tester.pump();
-
-    // Clicking anywhere on the product row adds directly
-    await tester.tap(find.byType(ProductRow).first);
-    await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
-
-    // 1 from initial setup + 5 from click = 6
-    expect(store.items.single.quantity, 6);
-    expect(tester.widget<TextField>(qtyField).controller!.text, '1');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(searchField(tester).controller!.text, 'Kopi');
     await finish(tester);
   });
 
@@ -246,7 +228,7 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     await tester.pump();
 
-    final paidField = find.widgetWithText(TextField, 'Uang diterima (Rp)');
+    final paidField = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Kosong = uang pas');
     expect(tester.widget<TextField>(paidField).controller!.text, '1500');
 
     // Alt+S saves the transaction
@@ -360,59 +342,6 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('arrow keys and Enter do nothing in catalog when focus is in SidebarArea', (tester) async {
-    final sidebarFocus = FocusNode();
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
-    guard = MutationGuard(MemoryPending()); await guard.load();
-    store = LiveStore(BusinessApi((path, {required method, query, body}) async {
-      if (path == '/v1/catalog/search') return {'data': [{'id': 1, 'namaItem': 'Kopi Sachet', 'kodeItem': 'KOPI1', 'satuan': 'PCS', 'stok': 50, 'hargaJual': 1500,
-        'units': [{'productUnitId': 7, 'satuan': 'RENTENG', 'konversi': 10, 'hargaJual': 14000}]}], 'currentPage': 1, 'lastPage': 1};
-      if (path == '/v1/customers') return {'names': <String>['Bu Siti']};
-      if (path == '/v1/carts/price') return {'lines': [], 'subtotal': 0, 'diskon': 0, 'total': 0};
-      throw StateError('Unexpected request: $path');
-    }), guard);
-
-    await tester.pumpWidget(MaterialApp(
-      theme: buildTheme(),
-      home: Scaffold(
-        body: Row(
-          children: [
-            SidebarArea(
-              child: Focus(
-                focusNode: sidebarFocus,
-                child: const Text('Sidebar Item'),
-              ),
-            ),
-            Expanded(child: LiveKasirScreen(store: store)),
-          ],
-        ),
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    // Focus the sidebar item
-    sidebarFocus.requestFocus();
-    await tester.pumpAndSettle();
-    expect(sidebarFocus.hasFocus, isTrue);
-
-    // Press ArrowDown and Enter while sidebar has focus
-    final countBefore = store.items.length;
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump();
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pumpAndSettle();
-
-    // Nothing added, selection did not trigger
-    expect(store.items.length, countBefore);
-
-    sidebarFocus.dispose();
-    await finish(tester);
-  });
-
   testWidgets('deleting highlighted item in cart with Delete key', (tester) async {
     await openTill(tester);
     expect(store.items, hasLength(1));
@@ -451,7 +380,7 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('arrows never leave the panel they are in', (tester) async {
+  testWidgets('arrows never leave the search row', (tester) async {
     await openTill(tester);
     await tester.tap(find.byWidget(searchField(tester)));
     await tester.pump();
@@ -463,47 +392,6 @@ void main() {
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
     expect(store.selectedCartIndex, isNull);
 
-    // catalog: the row is marked, and every arrow - held down too - stays in the catalog
-    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
-    await tester.pumpAndSettle();
-    expect(tester.widget<ProductRow>(find.byType(ProductRow).first).selected, isTrue);
-    for (final key in [LogicalKeyboardKey.arrowUp, LogicalKeyboardKey.arrowRight, LogicalKeyboardKey.arrowLeft, LogicalKeyboardKey.arrowDown]) {
-      await tester.sendKeyEvent(key);
-      await tester.sendKeyRepeatEvent(key);
-    }
-    await tester.pumpAndSettle();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'catalog');
-    expect(store.selectedCartIndex, isNull);
-    await finish(tester);
-  });
-
-  testWidgets('arrowing down a long catalog keeps the selected row on screen', (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    tester.view.physicalSize = const Size(1400, 900); tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
-    guard = MutationGuard(MemoryPending()); await guard.load();
-    store = LiveStore(BusinessApi((path, {required method, query, body}) async {
-      if (path == '/v1/catalog/search') {
-        return {'data': [for (var i = 0; i < 40; i++) {'id': i + 1, 'namaItem': 'Barang ${i.toString().padLeft(2, '0')}', 'kodeItem': 'B$i', 'satuan': 'PCS', 'stok': 5, 'hargaJual': 1000, 'units': <Object>[]}],
-          'currentPage': 1, 'lastPage': 1};
-      }
-      if (path == '/v1/carts/price') return {'lines': <Object>[], 'subtotal': 0, 'diskon': 0, 'total': 0};
-      throw StateError('Unexpected request: $path');
-    }), guard);
-    await tester.pumpWidget(MaterialApp(theme: buildTheme(), home: Scaffold(body: LiveKasirScreen(store: store))));
-    await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
-    await tester.pump();
-
-    for (var i = 0; i < 25; i++) {
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pump();
-    }
-    await tester.pump();
-    final row = tester.getRect(find.text('Barang 25'));
-    final viewport = tester.getRect(find.byType(CustomScrollView));
-    expect(row.top, greaterThanOrEqualTo(viewport.top));
-    expect(row.bottom, lessThanOrEqualTo(viewport.bottom));
     await finish(tester);
   });
 

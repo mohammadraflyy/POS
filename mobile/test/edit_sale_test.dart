@@ -64,9 +64,9 @@ void main() {
     await tapText(tester, 'Ubah nota di kasir');
     expect(find.textContaining('Mengubah nota #$saleId'), findsOneWidget);
 
-    await tapText(tester, 'Bayar');
+    await tapText(tester, 'Simpan Perubahan');
     expect(find.text('Ubah nota #$saleId'), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextField, 'Keterangan / alasan perubahan'), 'Salah input');
+    await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Contoh: salah input jumlah'), 'Salah input');
     await tapText(tester, 'Simpan perubahan');
     await tapText(tester, 'Lewati');
 
@@ -96,7 +96,7 @@ void main() {
     expect(find.textContaining('Mengubah nota #$bonId'), findsOneWidget);
     expect(find.text('Cetak Nota'), findsOneWidget);
 
-    await tapText(tester, 'Bayar');
+    await tapText(tester, 'Simpan Perubahan');
     expect(find.text('Ubah nota #$bonId'), findsOneWidget);
 
     await tapText(tester, 'Simpan perubahan');
@@ -110,12 +110,18 @@ void main() {
 
   testWidgets('a sale carries its charge and note to the server', (tester) async {
     await start(tester, Menu.kasir);
-    await tester.tap(find.byTooltip('Tambah Air Galon Isi Ulang'));
+    // a name is not an exact code, so Enter opens the palette and the pick goes into the cart
+    final search = find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Cari nama / kode / barcode');
+    await tester.tap(search);
+    await tester.enterText(search, 'Air Galon Isi Ulang');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await settle(tester);
+    await tester.tap(find.textContaining('Air Galon Isi Ulang · ').first);
     await settle(tester);
     await tapText(tester, 'Bayar');
-    await tester.enterText(find.widgetWithText(TextField, 'Biaya lain (Rp)'), '2000');
-    await tester.enterText(find.widgetWithText(TextField, 'Keterangan'), 'Antar ke rumah');
-    await tester.enterText(find.widgetWithText(TextField, 'Uang diterima (Rp)'), '10000');
+    await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == '0'), '2000');
+    await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Opsional'), 'Antar ke rumah');
+    await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Kosong = uang pas'), '10000');
     await settle(tester);
     expect(find.text('Kembalian'), findsOneWidget);
     expect(find.text('Rp2.000'), findsWidgets); // 10.000 - (6.000 + 2.000)

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'core/theme.dart';
 import 'Widgets/ui.dart';
 import 'state/app_state.dart';
+import 'state/kasir_keys.dart';
 import 'state/theme_controller.dart';
 import 'Screen/MainScreen.dart';
 import 'Screen/Pairing/PairingScreen.dart';
@@ -14,6 +15,7 @@ import 'Screen/LocalServerGate.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await appTheme.load();
+  await kasirKeys.load();
   palette = ThemeController.paletteFor(appTheme.value, WidgetsBinding.instance.platformDispatcher.platformBrightness);
   _paintCaption();
   runApp(Platform.isWindows ? const LocalServerGate(child: MyApp()) : const MyApp());
