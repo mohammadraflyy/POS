@@ -11,7 +11,7 @@ import 'LiveCartPanel.dart';
 import 'LivePaymentScreen.dart';
 import 'kasir_style.dart';
 import 'package:flutter/services.dart';
-import '../../Widgets/admin.dart' show isDesktop;
+import '../../Widgets/admin.dart' show confirmAction, isDesktop;
 import '../../services/barcode_burst.dart';
 import '../../services/mobile_api.dart' show ApiFailure;
 import '../../Widgets/keyboard_picker.dart';
@@ -216,6 +216,14 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     try { widget.store.replace(top, result); } catch (e) { showError(context, e); }
   }
 
+  /// Esc while changing a saved nota: asks first, since the changes are thrown away.
+  Future<void> confirmCancelEdit() async {
+    final id = widget.store.editingSaleId;
+    final yes = await confirmAction(context, title: 'Batal ubah nota #$id?',
+      message: 'Perubahan yang belum disimpan dibuang. Nota tetap seperti semula.', confirmLabel: 'Ya, batalkan');
+    if (yes && mounted && widget.store.editingSaleId == id) widget.store.cancelEdit();
+  }
+
   /// The desktop till's keys, so a cashier moving to this app keeps their habits. Like the
   /// desktop they work anywhere in the window - but only while the till is the screen in
   /// front: not under a dialog or the payment screen, and not while another menu is showing.
@@ -264,6 +272,10 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       };
     } else if (alt && key == LogicalKeyboardKey.keyK) {
       action = () => confirmClearCart(context, widget.store);
+    } else if (key == LogicalKeyboardKey.escape && widget.store.editingSaleId != null && widget.store.editable
+        && search.text.isEmpty && widget.store.selectedCartIndex == null) {
+      // the search box and a selected cart line use Esc first; only a bare Esc leaves the edit
+      action = confirmCancelEdit;
     }
     if (action == null) return false;
     action();
@@ -634,7 +646,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
           ),
         ),
         const SizedBox(width: Space.sm),
-        TextButton(onPressed: widget.store.editable ? widget.store.cancelEdit : null, child: const Text('Batal ubah')),
+        TextButton(onPressed: widget.store.editable ? widget.store.cancelEdit : null,
+          child: const Row(mainAxisSize: MainAxisSize.min, children: [Text('Batal ubah'), SizedBox(width: 6), KasirKey('Esc')])),
       ]));
     final cart = LiveCartPanel(store: store, onExitTop: exitCartTop, inCard: wide, holdFocus: holdFocus, clearFocus: clearFocus, onRowKey: cartRowKey);
     final customer = store.customerName.isEmpty ? 'Umum' : store.customerName;

@@ -80,6 +80,30 @@ void main() {
     await tester.runAsync(() async => db.close());
   });
 
+  testWidgets('Esc while changing a nota asks first: Esc keeps the edit, Enter leaves it', (tester) async {
+    await start(tester, Menu.riwayat);
+    final saleId = (await tester.runAsync(() async => db.scalar<int>("SELECT max(id) FROM sales WHERE status = 'selesai'")))!;
+    await tapText(tester, '#$saleId');
+    await tapText(tester, 'Ubah nota di kasir');
+    expect(find.textContaining('Mengubah nota #$saleId'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await settle(tester);
+    expect(find.text('Batal ubah nota #$saleId?'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await settle(tester);
+    expect(find.text('Batal ubah nota #$saleId?'), findsNothing);
+    expect(find.textContaining('Mengubah nota #$saleId'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await settle(tester);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await settle(tester);
+    expect(find.textContaining('Mengubah nota'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async => db.close());
+  });
+
   testWidgets('editing a bon whose stock in inventory is zero succeeds and can print', (tester) async {
     await start(tester, Menu.riwayat);
     final bonId = (await tester.runAsync(() async => db.scalar<int>("SELECT max(id) FROM sales WHERE status = 'selesai' AND metode_pembayaran = 'tunai'")))!;

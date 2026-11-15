@@ -135,6 +135,23 @@ void main() {
       await close(tester);
     });
 
+    testWidgets('F11 still works while the cashier lock covers the screen', (tester) async {
+      final asked = _mockRunner();
+      await open(tester);
+      await tester.tap(find.byTooltip('Kunci Kasir (Ctrl+L)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kasir Terkunci'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.f11);
+      await tester.pumpAndSettle();
+      expect(asked, [true]);
+      await tester.sendKeyEvent(LogicalKeyboardKey.f11);
+      await tester.pumpAndSettle();
+      expect(asked, [true, false]);
+      expect(find.text('Kasir Terkunci'), findsOneWidget);
+      await close(tester);
+    });
+
     testWidgets('Ctrl+/ opens the shortcut list and Esc closes it', (tester) async {
       await open(tester);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);

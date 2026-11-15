@@ -25,25 +25,38 @@ Future<({Future<LiveCartItem?> Function() result})> _open(WidgetTester tester, S
 
 bool _focused(WidgetTester tester, Finder inside) => Focus.of(tester.element(inside)).hasPrimaryFocus;
 
+// The unit's name also labels the Jumlah row, so scope to the tile.
+Finder _tile(String name) => find.descendant(of: find.widgetWithText(InkWell, name), matching: find.text(name));
+
+TextField _field(WidgetTester tester, String key) => tester.widget<TextField>(find.byKey(ValueKey(key)));
+
 Future<void> _press(WidgetTester tester, LogicalKeyboardKey key) async {
   await tester.sendKeyEvent(key);
   await tester.pump();
 }
 
+Future<void> _chord(WidgetTester tester, LogicalKeyboardKey modifier, LogicalKeyboardKey key) async {
+  await tester.sendKeyDownEvent(modifier);
+  await tester.sendKeyEvent(key);
+  await tester.sendKeyUpEvent(modifier);
+  await tester.pump();
+}
+
 void main() {
-  testWidgets('desktop: second unit chip, plus twice and Simpan return that unit with quantity 3', (tester) async {
+  testWidgets('desktop: second unit tile, plus twice and Simpan return that unit with quantity 3', (tester) async {
     final opened = await _open(tester, const Size(1200, 800));
     expect(find.byType(Dialog), findsOneWidget);
     expect(find.text('BRS5 · stok 103 KG'), findsOneWidget);
 
-    await tester.tap(find.text('SAK'));
+    await tester.tap(_tile('SAK'));
     await tester.pump();
     expect(find.text('BRS5 · stok 20,6 SAK'), findsOneWidget);
     await tester.tap(find.byTooltip('Tambah jumlah'));
     await tester.tap(find.byTooltip('Tambah jumlah'));
     await tester.pump();
     expect(find.text('Rp225.000'), findsOneWidget);
-    expect(find.text('3 SAK × Rp75.000 − Rp0'), findsOneWidget);
+    expect(find.text('3 SAK × Rp75.000'), findsOneWidget);
+    expect(find.text('− Rp0'), findsOneWidget);
 
     await tester.tap(find.text('Simpan'));
     await tester.pumpAndSettle();
@@ -56,8 +69,8 @@ void main() {
 
   testWidgets('manual price and percent discount feed the summary and the result', (tester) async {
     final opened = await _open(tester, const Size(1200, 800));
-    await tester.enterText(find.widgetWithText(TextField, 'Harga manual'), '16000');
-    await tester.enterText(find.widgetWithText(TextField, 'Diskon'), '10%');
+    await tester.enterText(find.byKey(const ValueKey('manual')), '16000');
+    await tester.enterText(find.byKey(const ValueKey('discount')), '10%');
     await tester.pump();
     expect(find.text('Rp14.400'), findsOneWidget);
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -77,7 +90,7 @@ void main() {
 
   testWidgets('an unreadable quantity shows a dash and the error only after Simpan', (tester) async {
     await _open(tester, const Size(1200, 800));
-    await tester.enterText(find.widgetWithText(TextField, 'Jumlah'), 'abc');
+    await tester.enterText(find.byKey(const ValueKey('quantity')), 'abc');
     await tester.pump();
     expect(find.text('Jumlah harus berupa angka valid dan tidak negatif.'), findsNothing);
     await tester.tap(find.text('Simpan'));
@@ -88,7 +101,7 @@ void main() {
 
   testWidgets('minus never goes below 1 and keeps a typed fraction', (tester) async {
     await _open(tester, const Size(1200, 800));
-    final field = find.widgetWithText(TextField, 'Jumlah');
+    final field = find.byKey(const ValueKey('quantity'));
     await tester.tap(find.byTooltip('Kurangi jumlah'));
     await tester.pump();
     expect(tester.widget<TextField>(field).controller!.text, '1');
@@ -116,7 +129,7 @@ void main() {
     final opened = await _open(tester, const Size(390, 800));
     expect(find.byType(Dialog), findsNothing);
     expect(find.byType(BottomSheet), findsOneWidget);
-    await tester.tap(find.text('SAK'));
+    await tester.tap(_tile('SAK'));
     await tester.tap(find.byTooltip('Tambah jumlah'));
     await tester.pump();
     await tester.tap(find.text('Simpan'));
@@ -134,35 +147,34 @@ void main() {
 
   testWidgets('opens on Jumlah with the whole number selected', (tester) async {
     await _open(tester, const Size(1200, 800));
-    final quantity = tester.widget<TextField>(find.widgetWithText(TextField, 'Jumlah'));
+    final quantity = _field(tester, 'quantity');
     expect(quantity.focusNode!.hasPrimaryFocus, isTrue);
     expect(quantity.controller!.selection, const TextSelection(baseOffset: 0, extentOffset: 1));
-    await tester.enterText(find.widgetWithText(TextField, 'Jumlah'), '12');
+    await tester.enterText(find.byKey(const ValueKey('quantity')), '12');
     await tester.pump();
-    expect(find.text('12 KG × Rp15.500 − Rp0'), findsOneWidget);
+    expect(find.text('12 KG × Rp15.500'), findsOneWidget);
   });
 
-  testWidgets('up from Jumlah reaches the unit chips, right moves to the next chip, Enter selects it', (tester) async {
+  testWidgets('up from Jumlah reaches the unit tiles, right moves to the next tile, Enter selects it', (tester) async {
     await _open(tester, const Size(1200, 800));
     await _press(tester, LogicalKeyboardKey.arrowUp);
-    expect(_focused(tester, find.text('KG')), isTrue);
+    expect(_focused(tester, _tile('KG')), isTrue);
     await _press(tester, LogicalKeyboardKey.arrowRight);
-    expect(_focused(tester, find.text('SAK')), isTrue);
+    expect(_focused(tester, _tile('SAK')), isTrue);
     await _press(tester, LogicalKeyboardKey.arrowRight);
-    expect(_focused(tester, find.text('SAK')), isTrue);
+    expect(_focused(tester, _tile('SAK')), isTrue);
     await _press(tester, LogicalKeyboardKey.enter);
     expect(find.text('BRS5 · stok 20,6 SAK'), findsOneWidget);
     await _press(tester, LogicalKeyboardKey.arrowDown);
-    expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Jumlah')).focusNode!.hasPrimaryFocus, isTrue);
+    expect(_field(tester, 'quantity').focusNode!.hasPrimaryFocus, isTrue);
   });
 
-  testWidgets('down walks Jumlah, Harga manual, Diskon, then the footer; left and right move between its buttons', (tester) async {
+  testWidgets('down walks Jumlah, Harga satuan, Diskon, then the footer; left and right move between its buttons', (tester) async {
     await _open(tester, const Size(1200, 800), onRemove: () {});
-    TextField field(String label) => tester.widget<TextField>(find.widgetWithText(TextField, label));
     await _press(tester, LogicalKeyboardKey.arrowDown);
-    expect(field('Harga manual').focusNode!.hasPrimaryFocus, isTrue);
+    expect(_field(tester, 'manual').focusNode!.hasPrimaryFocus, isTrue);
     await _press(tester, LogicalKeyboardKey.arrowDown);
-    expect(field('Diskon').focusNode!.hasPrimaryFocus, isTrue);
+    expect(_field(tester, 'discount').focusNode!.hasPrimaryFocus, isTrue);
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(_focused(tester, find.text('Simpan')), isTrue);
     await _press(tester, LogicalKeyboardKey.arrowDown);
@@ -174,16 +186,16 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowRight);
     expect(_focused(tester, find.text('Batal')), isTrue);
     await _press(tester, LogicalKeyboardKey.arrowUp);
-    expect(field('Diskon').focusNode!.hasPrimaryFocus, isTrue);
-    expect(field('Diskon').controller!.selection.isCollapsed, isTrue);
+    expect(_field(tester, 'discount').focusNode!.hasPrimaryFocus, isTrue);
+    expect(_field(tester, 'discount').controller!.selection.isCollapsed, isTrue);
   });
 
   testWidgets('landing on a field selects its text so typing replaces it', (tester) async {
     await _open(tester, const Size(1200, 800));
-    await tester.enterText(find.widgetWithText(TextField, 'Harga manual'), '16000');
+    await tester.enterText(find.byKey(const ValueKey('manual')), '16000');
     await _press(tester, LogicalKeyboardKey.arrowUp);
     await _press(tester, LogicalKeyboardKey.arrowDown);
-    final manual = tester.widget<TextField>(find.widgetWithText(TextField, 'Harga manual'));
+    final manual = _field(tester, 'manual');
     expect(manual.focusNode!.hasPrimaryFocus, isTrue);
     expect(manual.controller!.selection, const TextSelection(baseOffset: 0, extentOffset: 5));
   });
@@ -192,7 +204,7 @@ void main() {
     await _open(tester, const Size(1200, 800));
     await _press(tester, LogicalKeyboardKey.arrowRight);
     await _press(tester, LogicalKeyboardKey.arrowLeft);
-    expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Jumlah')).focusNode!.hasPrimaryFocus, isTrue);
+    expect(_field(tester, 'quantity').focusNode!.hasPrimaryFocus, isTrue);
   });
 
   testWidgets('Enter on Simpan returns the item, Enter on Batal returns null', (tester) async {
@@ -209,4 +221,99 @@ void main() {
     await tester.pumpAndSettle();
     expect(await opened.result(), isNull);
   });
+
+  testWidgets('Alt+2 picks the second unit; PgUp and PgDn move between units without leaving Jumlah', (tester) async {
+    await _open(tester, const Size(1200, 800));
+    await _chord(tester, LogicalKeyboardKey.altLeft, LogicalKeyboardKey.digit2);
+    expect(find.text('BRS5 · stok 20,6 SAK'), findsOneWidget);
+    expect(_field(tester, 'quantity').focusNode!.hasPrimaryFocus, isTrue);
+    await _press(tester, LogicalKeyboardKey.pageUp);
+    expect(find.text('BRS5 · stok 103 KG'), findsOneWidget);
+    await _press(tester, LogicalKeyboardKey.pageDown);
+    expect(find.text('BRS5 · stok 20,6 SAK'), findsOneWidget);
+    await _press(tester, LogicalKeyboardKey.pageDown);
+    expect(find.text('BRS5 · stok 20,6 SAK'), findsOneWidget);
+    await _chord(tester, LogicalKeyboardKey.altLeft, LogicalKeyboardKey.digit9);
+    expect(find.text('BRS5 · stok 20,6 SAK'), findsOneWidget);
+    expect(_field(tester, 'quantity').focusNode!.hasPrimaryFocus, isTrue);
+  });
+
+  testWidgets('+ and - step Jumlah and never land in the field as characters', (tester) async {
+    await _open(tester, const Size(1200, 800));
+    final text = _field(tester, 'quantity').controller!;
+    await _press(tester, LogicalKeyboardKey.numpadAdd);
+    await _press(tester, LogicalKeyboardKey.numpadAdd);
+    expect(text.text, '3');
+    await _press(tester, LogicalKeyboardKey.numpadSubtract);
+    expect(text.text, '2');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.equal, character: '+');
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.equal);
+    await tester.pump();
+    expect(text.text, '3');
+    await _press(tester, LogicalKeyboardKey.minus);
+    expect(text.text, '2');
+    expect(text.text, isNot(contains('+')));
+  });
+
+  testWidgets('Alt+D jumps to Diskon with its text selected; 10% shows the rupiah and updates the subtotal', (tester) async {
+    await _open(tester, const Size(1200, 800));
+    await tester.enterText(find.byKey(const ValueKey('discount')), '10%');
+    await tester.pump();
+    expect(find.text('= Rp1.550'), findsOneWidget);
+    expect(find.text('− Rp1.550  (10%)'), findsOneWidget);
+    expect(find.text('Rp13.950'), findsOneWidget);
+
+    await _chord(tester, LogicalKeyboardKey.altLeft, LogicalKeyboardKey.keyJ);
+    expect(_field(tester, 'quantity').focusNode!.hasPrimaryFocus, isTrue);
+    await _chord(tester, LogicalKeyboardKey.altLeft, LogicalKeyboardKey.keyD);
+    final discount = _field(tester, 'discount');
+    expect(discount.focusNode!.hasPrimaryFocus, isTrue);
+    expect(discount.controller!.selection, const TextSelection(baseOffset: 0, extentOffset: 3));
+    await _chord(tester, LogicalKeyboardKey.altLeft, LogicalKeyboardKey.keyH);
+    expect(_field(tester, 'manual').focusNode!.hasPrimaryFocus, isTrue);
+  });
+
+  testWidgets('Ctrl+Delete removes the item when onRemove is given, and does nothing without it', (tester) async {
+    var removed = 0;
+    final opened = await _open(tester, const Size(1200, 800), onRemove: () => removed++);
+    await _chord(tester, LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.delete);
+    await tester.pumpAndSettle();
+    expect(removed, 1);
+    expect(find.byType(Dialog), findsNothing);
+    expect(await opened.result(), isNull);
+
+    await _open(tester, const Size(1200, 800));
+    await _chord(tester, LogicalKeyboardKey.controlLeft, LogicalKeyboardKey.delete);
+    expect(find.byType(Dialog), findsOneWidget);
+  });
+
+  testWidgets('the subtotal in the title row is price × quantity − discount', (tester) async {
+    await _open(tester, const Size(1200, 800));
+    await tester.tap(_tile('SAK'));
+    await tester.enterText(find.byKey(const ValueKey('quantity')), '2');
+    await tester.enterText(find.byKey(const ValueKey('manual')), '80000');
+    await tester.enterText(find.byKey(const ValueKey('discount')), '5000');
+    await tester.pump();
+    expect(find.text('SUBTOTAL'), findsOneWidget);
+    expect(find.text('Rp155.000'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('quantity')), 'abc');
+    await tester.pump();
+    expect(find.text('—'), findsNWidgets(2));
+  });
+
+  testWidgets('on a desktop the keycaps, key legend and slogan show', (tester) async {
+    await _open(tester, const Size(1200, 800));
+    expect(find.text('Alt+1'), findsOneWidget);
+    expect(find.text('Alt+2'), findsOneWidget);
+    expect(find.text('PgUp / PgDn ganti satuan'), findsOneWidget);
+    expect(find.text('Alt+J/H/D'), findsOneWidget);
+    expect(find.text('Ctrl+Del'), findsNothing);
+    expect(find.text('Ketik angka, Enter. Selesai.'), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets('on a desktop the legend offers Ctrl+Del only with onRemove', (tester) async {
+    await _open(tester, const Size(1200, 800), onRemove: () {});
+    expect(find.text('Ctrl+Del'), findsOneWidget);
+    expect(find.text('Ketik angka, Enter. Selesai.'), findsNothing);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 }

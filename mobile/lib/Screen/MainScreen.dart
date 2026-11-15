@@ -161,7 +161,13 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   bool _handleKey(KeyEvent event) {
-    if (event is! KeyDownEvent || !mounted || ModalRoute.of(context)?.isCurrent == false) return false;
+    if (event is! KeyDownEvent || !mounted) return false;
+    // the window, not the page: works over the cashier lock and any dialog
+    if (event.logicalKey == LogicalKeyboardKey.f11 && windowMode.supported) {
+      windowMode.toggle();
+      return true;
+    }
+    if (ModalRoute.of(context)?.isCurrent == false) return false;
     if (event.logicalKey == LogicalKeyboardKey.keyB && HardwareKeyboard.instance.isControlPressed) {
       setState(() => _railOnly = !_railOnly);
       return true;
@@ -176,10 +182,6 @@ class _MainScreenState extends State<MainScreen> {
     }
     if (event.logicalKey == LogicalKeyboardKey.keyD && HardwareKeyboard.instance.isControlPressed) {
       _toggleTheme();
-      return true;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.f11 && windowMode.supported) {
-      windowMode.toggle();
       return true;
     }
     // Ctrl+Up/Down: previous/next menu, in the sidebar's order, from any screen
