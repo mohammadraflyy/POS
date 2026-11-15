@@ -172,10 +172,10 @@ void main() {
 
     // Server badge and Kunci Kasir button exist on the desktop header
     expect(find.text('Terhubung'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Kunci Kasir'), findsOneWidget);
+    expect(find.byTooltip('Kunci Kasir (Ctrl+L)'), findsOneWidget);
 
     // Clicking Kunci Kasir opens CashierLockDialog, NOT AccountPanel (settings)
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Kunci Kasir'));
+    await tester.tap(find.byTooltip('Kunci Kasir (Ctrl+L)'));
     await tester.pumpAndSettle();
 
     // Verifies lock dialog opens with proper title

@@ -112,6 +112,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300)); await tester.pumpAndSettle();
 
     expect(calls, contains('/v1/sales'));
+    expect(find.text('KEMBALIAN'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pumpAndSettle();
     expect(find.text('Cetak struk #41?'), findsOneWidget);
   }, variant: windows);
 

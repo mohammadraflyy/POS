@@ -36,6 +36,20 @@ bool FlutterWindow::OnCreate() {
       flutter_controller_->engine()->messenger(), "pos/window",
       &flutter::StandardMethodCodec::GetInstance());
   window_channel_->SetMethodCallHandler([this](const auto& call, auto result) {
+    if (call.method_name() == "fullscreen") {
+      const auto* on = std::get_if<bool>(call.arguments());
+      if (on == nullptr) {
+        result->Error("bad-args", "fullscreen takes a bool");
+        return;
+      }
+      SetFullscreen(*on);
+      result->Success(flutter::EncodableValue(fullscreen_));
+      return;
+    }
+    if (call.method_name() == "isFullscreen") {
+      result->Success(flutter::EncodableValue(fullscreen_));
+      return;
+    }
     const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
     if (call.method_name() != "caption" || args == nullptr) {
       result->NotImplemented();
@@ -63,6 +77,11 @@ bool FlutterWindow::OnCreate() {
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
+    // asked for before the window was on screen: now there is a placement to come back to
+    if (fullscreen_) {
+      fullscreen_ = false;
+      SetFullscreen(true);
+    }
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -71,6 +90,35 @@ bool FlutterWindow::OnCreate() {
   flutter_controller_->ForceRedraw();
 
   return true;
+}
+
+// Borderless over the whole monitor (taskbar included); leaving puts the old style and
+// placement back, so a maximized window returns maximized.
+void FlutterWindow::SetFullscreen(bool on) {
+  HWND hwnd = GetHandle();
+  if (!IsWindowVisible(hwnd)) {
+    fullscreen_ = on;
+    return;
+  }
+  if (on == fullscreen_) return;
+  if (on) {
+    saved_style_ = GetWindowLong(hwnd, GWL_STYLE);
+    saved_placement_.length = sizeof(saved_placement_);
+    GetWindowPlacement(hwnd, &saved_placement_);
+    MONITORINFO monitor = {sizeof(monitor)};
+    GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitor);
+    SetWindowLong(hwnd, GWL_STYLE, saved_style_ & ~WS_OVERLAPPEDWINDOW);
+    SetWindowPos(hwnd, HWND_TOP, monitor.rcMonitor.left, monitor.rcMonitor.top,
+                 monitor.rcMonitor.right - monitor.rcMonitor.left,
+                 monitor.rcMonitor.bottom - monitor.rcMonitor.top,
+                 SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+  } else {
+    SetWindowLong(hwnd, GWL_STYLE, saved_style_);
+    SetWindowPlacement(hwnd, &saved_placement_);
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+  }
+  fullscreen_ = on;
 }
 
 void FlutterWindow::OnDestroy() {

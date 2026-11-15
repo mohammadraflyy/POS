@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../Widgets/admin.dart' show isDesktop;
@@ -30,6 +31,10 @@ class PaidSale {
 Future<void> openPayment(BuildContext context, LiveStore store) async {
   final sale = await Navigator.of(context).push<PaidSale>(MaterialPageRoute(builder: (_) => LivePaymentScreen(store: store)));
   if (sale == null || !context.mounted) return;
+  if (sale.change > 0) {
+    await showDialog<void>(context: context, builder: (_) => _ChangeNotice(sale: sale));
+    if (!context.mounted) return;
+  }
   final away = store.viaInternet;
   final amount = sale.method == 'tunai' ? 'Kembalian ${rupiah(sale.change)}.' : 'Total ${rupiah(sale.total)}.';
   final print = await showDialog<bool>(
@@ -53,6 +58,69 @@ Future<void> openPayment(BuildContext context, LiveStore store) async {
       showNotice(messenger, 'Transaksi #${sale.saleId} tersimpan, tetapi struk gagal dicetak: ${errorText(e)}. Cetak ulang dari Riwayat.', kind: NoticeKind.error);
     }
   });
+}
+
+/// The change in very large type so the cashier hands it over while the customer waits.
+/// Any key or click closes it, and so does a 4 second timer; the receipt question follows.
+class _ChangeNotice extends StatefulWidget {
+  const _ChangeNotice({required this.sale});
+  final PaidSale sale;
+  @override State<_ChangeNotice> createState() => _ChangeNoticeState();
+}
+class _ChangeNoticeState extends State<_ChangeNotice> {
+  late final Timer timer;
+
+  void close() {
+    if (mounted) Navigator.of(context).pop();
+  }
+  @override void initState() { super.initState(); timer = Timer(const Duration(seconds: 4), close); }
+  @override void dispose() { timer.cancel(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final sale = widget.sale;
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        close();
+        return KeyEventResult.handled;
+      },
+      child: Dialog(
+        backgroundColor: KasirColors.surface,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: close,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Padding(
+                padding: const EdgeInsets.all(Space.lg),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xl),
+                    decoration: BoxDecoration(color: KasirColors.changeBg, borderRadius: BorderRadius.circular(Corners.panel)),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('KEMBALIAN', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: KasirColors.changeInk)),
+                      const SizedBox(height: Space.sm),
+                      FittedBox(fit: BoxFit.scaleDown, child: Text(rupiah(sale.change), style: moneyStyle.copyWith(fontSize: 60, fontWeight: FontWeight.w800, color: KasirColors.changeInk))),
+                    ]),
+                  ),
+                  const SizedBox(height: Space.md),
+                  Text('Diterima ${rupiah(sale.paid)} · Total ${rupiah(sale.total)}', style: TextStyle(fontSize: 14, color: KasirColors.label)),
+                  const SizedBox(height: Space.xs),
+                  Text('Nota #${sale.saleId}', style: TextStyle(fontSize: 12, color: KasirColors.label)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class LivePaymentScreen extends StatefulWidget {

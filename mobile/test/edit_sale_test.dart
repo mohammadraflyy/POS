@@ -126,6 +126,8 @@ void main() {
     expect(find.text('Kembalian'), findsOneWidget);
     expect(find.text('Rp2.000'), findsWidgets); // 10.000 - (6.000 + 2.000)
     await tapText(tester, 'Simpan transaksi');
+    await tester.tap(find.text('KEMBALIAN'));
+    await settle(tester);
     await tapText(tester, 'Lewati');
 
     final sale = (await tester.runAsync(() async => db.first('SELECT total, biaya_lain, keterangan FROM sales ORDER BY id DESC LIMIT 1')))!;

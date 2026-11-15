@@ -13,6 +13,7 @@ import 'kasir_style.dart';
 import 'package:flutter/services.dart';
 import '../../Widgets/admin.dart' show isDesktop;
 import '../../services/barcode_burst.dart';
+import '../../services/mobile_api.dart' show ApiFailure;
 import '../../Widgets/keyboard_picker.dart';
 
 /// The panels of the till that PageDown/PageUp walk between, in screen order.
@@ -237,6 +238,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       action = kasirKeys.isGlobalArrows ? () => enterPanel(KasirPanel.search) : () => openPalette();
     } else if (alt && key == LogicalKeyboardKey.keyP) {
       action = pickCustomer;
+    } else if (HardwareKeyboard.instance.isControlPressed && key == LogicalKeyboardKey.keyP && widget.store.editingSaleId == null) {
+      action = reprintLast;
     } else if (key == LogicalKeyboardKey.f1 || key == LogicalKeyboardKey.f2) {
       action = () => enterPanel(KasirPanel.search);
     } else if (key == LogicalKeyboardKey.f4 || key == LogicalKeyboardKey.f12 || (key == LogicalKeyboardKey.end && !typing)) {
@@ -323,6 +326,18 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       extra: (q, results) => q.isEmpty || results.any((o) => o.value.toLowerCase() == q.toLowerCase()) ? null
         : PickerOption(q, title: 'Pelanggan baru: $q', subtitle: 'dicatat saat transaksi disimpan'));
     if (picked != null && mounted) widget.store.setCustomer(picked);
+  }
+
+  /// Ctrl+P: the nota saved last in this session goes to the PC printer again.
+  void reprintLast() {
+    final id = widget.store.lastSavedSaleId;
+    if (id == null) { showNotice(context, 'Belum ada nota di sesi ini.', kind: NoticeKind.info); return; }
+    widget.store.api.printSale(id).then((result) {
+      if (result['printed'] != true) throw ApiFailure(result['printError']?.toString() ?? 'printer belum mengonfirmasi');
+      if (mounted) showNotice(context, 'Struk #$id dikirim ke printer PC.', kind: NoticeKind.success);
+    }).catchError((Object e) {
+      if (mounted) showError(context, e);
+    });
   }
 
   void pay() {
@@ -593,8 +608,6 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
 
   @override Widget build(BuildContext context) => AnimatedBuilder(animation: Listenable.merge([widget.store, widget.store.guard]), builder: (context, _) => LayoutBuilder(builder: (context, box) {
     final wide = usesSplitCart(context, box);
-    // below this the fixed parts of the card would crowd out the rows, so the whole page scrolls instead
-    final fill = wide && box.hasBoundedHeight && box.maxHeight >= 590;
     final store = widget.store;
     final totalText = store.items.isEmpty ? rupiah(0) : rupiah(store.price?.total);
     final editing = widget.store.editingSaleId;
@@ -623,7 +636,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
         const SizedBox(width: Space.sm),
         TextButton(onPressed: widget.store.editable ? widget.store.cancelEdit : null, child: const Text('Batal ubah')),
       ]));
-    final cart = LiveCartPanel(store: store, onExitTop: exitCartTop, inCard: wide, fill: fill, holdFocus: holdFocus, clearFocus: clearFocus, onRowKey: cartRowKey);
+    final cart = LiveCartPanel(store: store, onExitTop: exitCartTop, inCard: wide, holdFocus: holdFocus, clearFocus: clearFocus, onRowKey: cartRowKey);
     final customer = store.customerName.isEmpty ? 'Umum' : store.customerName;
     if (!wide) {
       return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: ColoredBox(color: KasirColors.surface, child: Column(children: [
@@ -669,15 +682,14 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       color: KasirColors.accent,
       child: Wrap(spacing: 20, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
         for (final (key, label) in kasirKeys.isGlobalArrows
-          ? [('/', 'cari'), ('PgUp', 'jumlah'), ('PgDn', 'cari'), ('End', 'bayar'), ('F3', 'ubah qty baris 1'), ('Alt+P', 'pelanggan'), ('Alt+K', 'kosongkan'), ('↑↓', 'pelanggan/diskon/antrean/keranjang')]
+          ? [('/', 'cari'), ('PgUp', 'jumlah'), ('PgDn', 'cari'), ('End', 'bayar'), ('F3', 'ubah qty baris 1'), ('Alt+P', 'pelanggan'), ('Alt+K', 'kosongkan'), ('Ctrl+P', 'cetak ulang'), ('↑↓', 'pelanggan/diskon/antrean/keranjang')]
           : [('/', 'cari barang'), ('F2', 'kotak cari'), ('End', 'bayar'), ('PgUp/PgDn', 'pindah panel'),
-            ('F3', 'ubah baris atas'), ('Alt+P', 'pelanggan'), ('Alt+K', 'kosongkan'), ('Alt+T', 'antrean baru')])
+            ('F3', 'ubah baris atas'), ('Alt+P', 'pelanggan'), ('Alt+K', 'kosongkan'), ('Alt+T', 'antrean baru'), ('Ctrl+P', 'cetak ulang')])
           Row(mainAxisSize: MainAxisSize.min, children: [KasirKey(key), const SizedBox(width: 6), Text(label, style: TextStyle(fontSize: 12, color: KasirColors.label))]),
       ]),
     ));
-    Widget page(Widget card) => fill ? Padding(padding: const EdgeInsets.all(24), child: card) : SingleChildScrollView(padding: const EdgeInsets.all(24), child: card);
     // the till is driven from the keyboard on a PC - see handleKey
-    return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: SizedBox.expand(child: ColoredBox(color: KasirColors.surface, child: page(
+    return Shortcuts(shortcuts: _hopKeys, child: Focus(autofocus: !isDesktop, child: SizedBox.expand(child: ColoredBox(color: KasirColors.surface, child: SingleChildScrollView(padding: const EdgeInsets.all(24), child:
       // the whole page is one card split by hairlines, like the dashboard money panel
       Container(
           decoration: BoxDecoration(
@@ -685,7 +697,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
             border: Border.all(color: lineColor), borderRadius: BorderRadius.circular(Corners.panel), boxShadow: KasirColors.softShadow,
           ),
           clipBehavior: Clip.antiAlias,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min, children: [
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
             // the queue tabs sit on the header's bottom hairline, so their underline is flush with it
             SizedBox(height: 56, child: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 20, 0), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
               Expanded(child: editing == null
@@ -750,7 +762,7 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
             ])),
           ])),
             Container(height: 1, color: lineColor),
-            if (fill) Expanded(child: cart) else cart,
+            cart,
             Container(height: 1, color: lineColor),
             strip,
           ]),

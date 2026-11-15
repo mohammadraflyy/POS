@@ -123,6 +123,8 @@ void main() {
       await tester.tap(find.text('Simpan transaksi'));
       await tester.pumpAndSettle();
 
+      await tester.tap(find.text('KEMBALIAN'));
+      await tester.pumpAndSettle();
       expect(find.text('Kembalian Rp500.'), findsOneWidget);
       await tester.tap(find.text('Lewati'));
       await tester.pumpAndSettle();

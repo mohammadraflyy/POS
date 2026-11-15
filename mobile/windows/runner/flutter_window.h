@@ -35,6 +35,12 @@ class FlutterWindow : public Win32Window {
 
   // Set once the app has painted the title bar, so a Windows theme change does not undo it.
   bool app_caption_ = false;
+
+  // "fullscreen" on the same channel: the window without its frame over the whole monitor.
+  void SetFullscreen(bool on);
+  bool fullscreen_ = false;
+  LONG saved_style_ = 0;
+  WINDOWPLACEMENT saved_placement_ = {};
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

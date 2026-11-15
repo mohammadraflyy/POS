@@ -88,20 +88,16 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('with 30 lines only the table body scrolls: Bayar and the strip stay put, and arrowing down keeps the line in view', (tester) async {
+  testWidgets('with 30 lines the cart grows and the page scrolls, and arrowing down keeps the line in view', (tester) async {
     await openTill(tester);
     for (var i = 2; i <= 30; i++) {
       final product = LiveProduct.fromJson({'id': i, 'namaItem': 'Barang $i', 'kodeItem': 'B$i', 'satuan': 'PCS', 'stok': 50, 'hargaJual': 1500, 'units': []});
       store.put(LiveCartItem(product: product, unit: product.units.first, quantity: 1));
     }
     await tester.pumpAndSettle();
-    final bayar = tester.getRect(find.text('Bayar'));
-    final strip = tester.getRect(find.text('antrean baru'));
-    expect(bayar.bottom, lessThan(900));
-    expect(strip.bottom, lessThanOrEqualTo(900));
-
-    final body = find.descendant(of: find.byType(LiveCartPanel), matching: find.byType(Scrollable)).first;
-    expect(tester.state<ScrollableState>(body).position.maxScrollExtent, greaterThan(0));
+    expect(find.descendant(of: find.byType(LiveCartPanel), matching: find.byType(Scrollable)), findsNothing);
+    final page = find.ancestor(of: find.byType(LiveCartPanel), matching: find.byType(Scrollable)).first;
+    expect(tester.state<ScrollableState>(page).position.maxScrollExtent, greaterThan(0));
 
     store.selectCartIndex(0);
     await tester.pumpAndSettle();
@@ -111,9 +107,7 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(store.selectedCartIndex, 29);
-    expect(tester.getRect(find.text('Barang 30')).bottom, lessThanOrEqualTo(tester.getRect(body).bottom));
-    expect(tester.getRect(find.text('Bayar')), bayar);
-    expect(tester.getRect(find.text('antrean baru')), strip);
+    expect(tester.getRect(find.text('Barang 30')).bottom, lessThanOrEqualTo(tester.getRect(page).bottom));
     await finish(tester);
   });
 

@@ -7,6 +7,7 @@ import 'Widgets/ui.dart';
 import 'state/app_state.dart';
 import 'state/kasir_keys.dart';
 import 'state/theme_controller.dart';
+import 'state/window_mode.dart';
 import 'Screen/MainScreen.dart';
 import 'Screen/Pairing/PairingScreen.dart';
 import 'Screen/SplashScreen.dart';
@@ -16,6 +17,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await appTheme.load();
   await kasirKeys.load();
+  await windowMode.load();
   palette = ThemeController.paletteFor(appTheme.value, WidgetsBinding.instance.platformDispatcher.platformBrightness);
   _paintCaption();
   runApp(Platform.isWindows ? const LocalServerGate(child: MyApp()) : const MyApp());

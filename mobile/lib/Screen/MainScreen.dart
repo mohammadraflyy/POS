@@ -2,6 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state/app_state.dart';
+import '../state/window_mode.dart';
+import '../state/theme_controller.dart';
+import 'Live/kasir_style.dart' show KasirKey;
 import '../core/theme.dart';
 import '../Widgets/BottomNavBar.dart';
 import '../Widgets/ui.dart';
@@ -13,7 +16,11 @@ import 'Live/LiveWorkspace.dart';
 import 'menus.dart';
 import 'AccountPanel.dart';
 import '../Widgets/cashier_lock_dialog.dart';
+import '../Widgets/shortcut_list.dart';
 import '../services/updater_service.dart';
+
+const _hariPendek = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+const _bulanPendek = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 /// The shell. On a PC: an open plane - a labelled sidebar on the stone ground with the
 /// shop's mark and name at the top and the account at the bottom, no top bar, the screen
@@ -48,11 +55,16 @@ class _MainScreenState extends State<MainScreen> {
   AppUpdateInfo? _availableUpdate;
   bool _dismissedUpdate = false;
   Timer? _updateCheckTimer;
+  /// The header clock, shown only in full screen where the taskbar's clock is gone.
+  Timer? _clock;
+  DateTime _now = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKey);
+    windowMode.addListener(_onWindowMode);
+    if (windowMode.value) _tickClock();
     _loadShopName();
     _checkUpdateNotice();
     // Cek pembaruan berkala setiap 30 menit jika aplikasi desktop/mobile terus menyala
@@ -66,9 +78,25 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void dispose() {
     _updateCheckTimer?.cancel();
+    _clock?.cancel();
+    windowMode.removeListener(_onWindowMode);
     _navScroll.dispose();
     HardwareKeyboard.instance.removeHandler(_handleKey);
     super.dispose();
+  }
+
+  void _onWindowMode() {
+    _clock?.cancel();
+    if (windowMode.value) _tickClock();
+    setState(() {});
+  }
+
+  /// Reads the time, then wakes again at the next minute.
+  void _tickClock() {
+    _now = DateTime.now();
+    _clock = Timer(Duration(seconds: 60 - _now.second), () {
+      if (mounted) setState(_tickClock);
+    });
   }
 
   Future<void> _checkUpdateNotice() async {
@@ -140,6 +168,18 @@ class _MainScreenState extends State<MainScreen> {
     }
     if (event.logicalKey == LogicalKeyboardKey.keyL && HardwareKeyboard.instance.isControlPressed) {
       _lockKasir();
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.slash && HardwareKeyboard.instance.isControlPressed) {
+      showShortcutList(context);
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyD && HardwareKeyboard.instance.isControlPressed) {
+      _toggleTheme();
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.f11 && windowMode.supported) {
+      windowMode.toggle();
       return true;
     }
     // Ctrl+Up/Down: previous/next menu, in the sidebar's order, from any screen
@@ -274,6 +314,37 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  Widget _clockLabel() => Row(mainAxisSize: MainAxisSize.min, children: [
+    Text('${_hariPendek[_now.weekday - 1]}, ${_now.day} ${_bulanPendek[_now.month - 1]}', style: TextStyle(fontSize: 12, color: muted)),
+    const SizedBox(width: 8),
+    Text('${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}',
+      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: ink)),
+  ]);
+
+  void _toggleTheme() => appTheme.choose(isDark ? ThemeMode.light : ThemeMode.dark);
+
+  /// One look for every top-bar action: an outlined control with its shortcut as a keycap, tinted while [active].
+  Widget _headerAction({required IconData icon, String? label, required String keyHint, required String tooltip, required VoidCallback onPressed, bool active = false}) {
+    final tint = active ? primaryInk : muted;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: active ? activePill : surface,
+        shape: RoundedRectangleBorder(side: BorderSide(color: active ? primaryInk : ruleColor), borderRadius: BorderRadius.circular(Corners.control)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: SizedBox(height: 32, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 16, color: tint),
+            if (label != null) ...[const SizedBox(width: 6), Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: active ? primaryInk : ink))],
+            const SizedBox(width: 8),
+            KasirKey(keyHint),
+          ]))),
+        ),
+      ),
+    );
+  }
+
   Widget _desktopHeader() {
     // The shop and the signed-in user already sit in the sidebar; the bar names the page and
     // says only whether the PC answers. The address is for whoever is fixing it: a tooltip.
@@ -299,6 +370,7 @@ class _MainScreenState extends State<MainScreen> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (windowMode.value) ...[_clockLabel(), const SizedBox(width: Space.lg)],
               Tooltip(
                 message: isDemo ? 'Data contoh, tidak dikirim ke toko' : offline ? 'PC toko tidak menjawab$address' : 'Server PC toko$address',
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -309,19 +381,21 @@ class _MainScreenState extends State<MainScreen> {
                 ]),
               ),
               const SizedBox(width: Space.md),
-              Tooltip(
-                message: 'Kunci Kasir (Ctrl+L)',
-                child: OutlinedButton.icon(
-                  onPressed: _lockKasir,
-                  icon: const Icon(Icons.lock_outline, size: 14),
-                  label: const Text('Kunci Kasir'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                    minimumSize: const Size(0, 32),
-                    visualDensity: VisualDensity.compact,
-                  ),
+              _headerAction(icon: Icons.keyboard_outlined, keyHint: 'Ctrl+/', tooltip: 'Daftar shortcut (Ctrl+/)', onPressed: () => showShortcutList(context)),
+              if (windowMode.supported) ...[
+                const SizedBox(width: Space.xs),
+                _headerAction(
+                  icon: windowMode.value ? Icons.fullscreen_exit : Icons.fullscreen, keyHint: 'F11', active: windowMode.value,
+                  tooltip: windowMode.value ? 'Keluar layar penuh (F11)' : 'Layar penuh (F11)', onPressed: windowMode.toggle,
                 ),
+              ],
+              const SizedBox(width: Space.xs),
+              _headerAction(
+                icon: isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, keyHint: 'Ctrl+D',
+                tooltip: isDark ? 'Mode terang (Ctrl+D)' : 'Mode gelap (Ctrl+D)', onPressed: _toggleTheme,
               ),
+              const SizedBox(width: Space.xs),
+              _headerAction(icon: Icons.lock_outline, label: 'Kunci Kasir', keyHint: 'Ctrl+L', tooltip: 'Kunci Kasir (Ctrl+L)', onPressed: _lockKasir),
             ],
           ),
         ],

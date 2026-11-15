@@ -63,7 +63,7 @@ Widget _sourcePill(String text) => Container(
 );
 
 class LiveCartPanel extends StatelessWidget {
-  const LiveCartPanel({super.key, required this.store, this.onExitTop, this.inCard = false, this.fill = false, this.holdFocus, this.clearFocus, this.onRowKey});
+  const LiveCartPanel({super.key, required this.store, this.onExitTop, this.inCard = false, this.holdFocus, this.clearFocus, this.onRowKey});
   final LiveStore store;
   final VoidCallback? onExitTop;
 
@@ -73,10 +73,6 @@ class LiveCartPanel extends StatelessWidget {
 
   /// Sits inside a bigger card: the card supplies the frame, so the table drops its own.
   final bool inCard;
-
-  /// Only with [inCard], and when the parent hands it a bounded height: the heading and the column header stay put
-  /// and the rows scroll inside the space left, instead of the whole page scrolling.
-  final bool fill;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -126,8 +122,7 @@ class LiveCartPanel extends StatelessWidget {
       final table = store.items.isEmpty
         ? empty
         : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [if (wide) columnHeader, rows]);
-      final filled = inCard && fill;
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: filled ? MainAxisSize.max : MainAxisSize.min, children: [
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
         Padding(padding: inCard ? const EdgeInsets.fromLTRB(20, 12, 12, 8) : EdgeInsets.zero, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
         if (!inCard && store.queues.length > 1) ...[
           SingleChildScrollView(
@@ -199,9 +194,7 @@ class LiveCartPanel extends StatelessWidget {
         ])),
         ])),
         if (inCard) Container(height: 1, color: lineColor) else const SizedBox(height: Space.sm),
-        if (filled && store.items.isEmpty) Expanded(child: Center(child: FittedBox(child: empty)))
-        else if (filled) ...[if (wide) columnHeader, Expanded(child: SingleChildScrollView(child: rows))]
-        else if (inCard) table else Container(
+        if (inCard) table else Container(
           decoration: BoxDecoration(color: KasirColors.surface, border: Border.all(color: KasirColors.gridLine), borderRadius: BorderRadius.circular(Corners.panel), boxShadow: KasirColors.softShadow),
           clipBehavior: Clip.antiAlias,
           child: table,

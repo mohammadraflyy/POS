@@ -84,6 +84,9 @@ class LiveStore extends ChangeNotifier {
   String editMethod = 'tunai', editCustomer = '';
   num editPaid = 0;
 
+  /// The nota last saved or changed in this app session; Ctrl+P on the till reprints it.
+  int? lastSavedSaleId;
+
   /// What the customer pays: the server's priced total plus the charge.
   num? get billTotal => price == null ? null : price!.total + otherCharge;
 
@@ -516,6 +519,7 @@ class LiveStore extends ChangeNotifier {
     // the sale is on the server now: the draft has done its job
     _draftTimer?.cancel();
     try { await drafts?.clear(); } catch (_) {}
+    lastSavedSaleId = idNumber(result['saleId']);
     return result;
   }
   @override void dispose() {
