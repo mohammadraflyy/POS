@@ -42,13 +42,28 @@ String quantityText(Object? value) {
   final n = number(value); return n == null ? '—' : qty((n * 1000).round());
 }
 String isoDate(DateTime date) => '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+class LiveTier {
+  const LiveTier(this.minQty, this.maxQty, this.price);
+  final num minQty, price;
+  final num? maxQty;
+}
 class LiveUnit {
-  LiveUnit(this.id, this.name, this.price, {this.cost, this.conversionFactor = 1});
+  LiveUnit(this.id, this.name, this.price, {this.cost, this.conversionFactor = 1, this.tiers = const []});
   final int? id;
   final String name;
   final num? price;
   final num? cost;
   final int conversionFactor;
+  final List<LiveTier> tiers;
+  // Same rule as the server's findTierForQty: among the tiers qty satisfies, the highest minQty wins.
+  LiveTier? tierFor(num qty) {
+    LiveTier? best;
+    for (final t in tiers) {
+      if (qty >= t.minQty && (t.maxQty == null || qty <= t.maxQty!) && (best == null || t.minQty > best.minQty)) best = t;
+    }
+    return best;
+  }
+  num? priceFor(num qty) => tierFor(qty)?.price ?? price;
 }
 class LiveProduct {
   LiveProduct(this.id, this.name, this.code, this.stock, this.units, {this.barcode});
@@ -62,12 +77,21 @@ class LiveProduct {
     final id = idNumber(data['productId'] ?? data['id']);
     final base = data['satuan'];
     final baseName = base is String ? base : (base is Map ? base['nama']?.toString() : null);
+    final baseUnitId = number(data['baseProductUnitId']);
+    final rawTiers = data['priceTiers'];
+    List<LiveTier> tiersOf(num? unitId) => [
+      if (rawTiers is List)
+        for (final raw in rawTiers.whereType<Map>())
+          if (unitId != null && number(raw['productUnitId']) == unitId && number(raw['minQty']) != null && number(raw['hargaJual']) != null)
+            LiveTier(number(raw['minQty'])!, number(raw['maxQty']), number(raw['hargaJual'])!),
+    ];
     final units = <LiveUnit>[
       LiveUnit(
         null,
         baseName ?? data['baseUnitName']?.toString() ?? 'Satuan dasar',
         number(data['hargaJual'] ?? data['price']),
         cost: number(data['hargaPokok'] ?? data['cost']),
+        tiers: tiersOf(baseUnitId),
       ),
     ];
     final nested = data['units'] ?? data['productUnits'] ?? data['satuanTurunan'];
@@ -86,6 +110,7 @@ class LiveProduct {
           number(u['hargaJual'] ?? u['price']),
           cost: number(u['hargaPokok'] ?? u['cost']),
           conversionFactor: conv < 1 ? 1 : conv,
+          tiers: tiersOf(number(uid)),
         ));
       }
     }

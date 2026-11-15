@@ -32,6 +32,28 @@ void main() {
     second.dispose(); guard.dispose();
   });
 
+  test('a restored line keeps its tier prices, and a draft written before tiers still opens', () async {
+    final drafts = MemoryDraftStore();
+    final guard = MutationGuard(MemoryPending()); await guard.load();
+    final tiered = LiveProduct(8, 'Gula 1kg', 'GL1', 40, [LiveUnit(null, 'PCS', 18000, tiers: const [LiveTier(10, null, 17000)])]);
+    final first = LiveStore(api(), guard, drafts: drafts);
+    first.put(LiveCartItem(product: tiered, unit: tiered.units.first, quantity: 2));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    first.dispose();
+
+    final second = LiveStore(api(), guard, drafts: drafts);
+    expect(await second.restoreDraft(), 1);
+    expect(second.items.single.unit.priceFor(12), 17000);
+    second.dispose();
+
+    drafts.value = drafts.value!.replaceAll(RegExp(r',"tiers":\[[^\]]*\]'), '');
+    expect(drafts.value, isNot(contains('tiers')));
+    final third = LiveStore(api(), guard, drafts: drafts);
+    expect(await third.restoreDraft(), 1);
+    expect(third.items.single.unit.priceFor(12), 18000);
+    third.dispose(); guard.dispose();
+  });
+
   test('emptying the cart removes the draft; a broken draft is dropped', () async {
     final drafts = MemoryDraftStore();
     final guard = MutationGuard(MemoryPending()); await guard.load();

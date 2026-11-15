@@ -80,6 +80,26 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('F5 adds one more of the line at the top, keeping its discount', (tester) async {
+    await openTill(tester);
+    final top = store.items.first;
+    store.put(LiveCartItem(product: top.product, unit: top.unit, quantity: top.quantity, discount: 200));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.f5);
+    await tester.pumpAndSettle();
+    expect(store.items, hasLength(1));
+    expect((store.items.first.quantity, store.items.first.discount), (2, 200));
+    await finish(tester);
+  });
+
+  testWidgets('5* before a code adds five at once, then Jumlah is back to 1', (tester) async {
+    await openTill(tester);
+    await addByCode(tester, '5*KOPI1');
+    expect(store.items.single.quantity, 6);
+    expect(tester.widget<TextField>(jumlahField).controller!.text, '1');
+    await finish(tester);
+  });
+
   testWidgets('Jumlah and the search share one bordered group, without a separate Jumlah label', (tester) async {
     await openTill(tester);
     final group = find.ancestor(of: jumlahField, matching: find.byWidgetPredicate((w) => w is Container && w.foregroundDecoration is BoxDecoration)).first;

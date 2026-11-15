@@ -73,7 +73,7 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
   ({num qty, num? manual, num price, num? discount}) _read() {
     final qtyVal = inputQty(quantity.text);
     final manualVal = manual.text.trim().isEmpty ? null : inputRupiah(manual.text);
-    final price = manualVal ?? unit.price ?? 0;
+    final price = manualVal ?? unit.priceFor(qtyVal) ?? 0;
     final discVal = discount.text.trim().isEmpty
         ? null
         : inputDiscount(discount.text, baseAmount: (price * qtyVal).round());
@@ -84,9 +84,28 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
     try { return _read(); } on FormatException { return null; }
   }
 
+  // The tier the typed quantity falls in; an unreadable quantity has none.
+  LiveTier? get _tier {
+    try { return unit.tierFor(inputQty(quantity.text)); } on FormatException { return null; }
+  }
+
+  // Rupiah lost on the line (positive), or null when it is not below cost or the cost is unknown.
+  num? _loss(({num qty, num? manual, num price, num? discount})? r) {
+    final cost = unit.cost;
+    if (r == null || cost == null || cost <= 0) return null;
+    final profit = (r.price * r.qty - (r.discount ?? 0) - cost * r.qty).round();
+    return profit < 0 ? -profit : null;
+  }
+
   void save() {
     try {
       final r = _read();
+      final cost = unit.cost;
+      // the server refuses a manual price under the unit's cost, so say so here
+      if (r.manual != null && cost != null && cost > 0 && r.manual! < cost) {
+        setState(() => error = 'Harga satuan di bawah modal (${rupiah(cost)}).');
+        return;
+      }
       Navigator.pop(context, LiveCartItem(product: widget.product, unit: unit, quantity: r.qty,
         manualPrice: r.manual, discount: r.discount, priceNote: widget.existing?.priceNote));
     } catch (e) { setState(() => error = errorText(e)); }
@@ -221,7 +240,8 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
         const SizedBox(width: 12),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text('SUBTOTAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1, color: KasirColors.primary)),
-          Text(r == null ? '—' : rupiah(r.price * r.qty - (r.discount ?? 0)), style: moneyStyle.copyWith(fontSize: 26, fontWeight: FontWeight.w800)),
+          Text(r == null ? '—' : rupiah(r.price * r.qty - (r.discount ?? 0)),
+            style: moneyStyle.copyWith(fontSize: 26, fontWeight: FontWeight.w800, color: _loss(r) != null ? KasirColors.destructive : null)),
         ]),
       ]),
     );
@@ -230,6 +250,8 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
   Widget _body(({num qty, num? manual, num price, num? discount})? r) {
     final percent = discount.text.contains('%');
     final disc = r?.discount ?? 0;
+    final tier = _tier;
+    final loss = _loss(r);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(padding: EdgeInsets.fromLTRB(20, 16, 20, _hints ? 6 : 16), child: _units()),
       if (_hints) Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 12), child: Text('PgUp / PgDn ganti satuan', style: TextStyle(fontSize: 11, color: KasirColors.label))),
@@ -239,8 +261,8 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
         lead: unit.name,
         field: _field(const ValueKey('quantity'), quantity, quantityFocus, size: 22, autofocus: true)),
       _formRow('Harga satuan', active: manualFocus.hasFocus,
-        lead: manual.text.isEmpty ? 'otomatis' : null,
-        field: _field(const ValueKey('manual'), manual, manualFocus, size: 16, hint: rupiah(unit.price))),
+        lead: manual.text.isEmpty ? (tier == null ? 'otomatis' : 'grosir ${quantityText(tier.minQty)}+') : null,
+        field: _field(const ValueKey('manual'), manual, manualFocus, size: 16, hint: rupiah(tier?.price ?? unit.price))),
       _formRow('Diskon', active: discountFocus.hasFocus,
         keys: [if (_hints) const KasirKey('%')],
         lead: r != null && percent ? '= ${rupiah(disc)}' : 'Rp',
@@ -251,6 +273,7 @@ class _LiveItemSheetState extends State<LiveItemSheet> {
             Expanded(child: Text('${quantityText(r.qty)} ${unit.name} × ${rupiah(r.price)}', style: _breakdownStyle)),
             Text('− ${rupiah(disc)}${percent ? '  (${discount.text.trim()})' : ''}', style: _breakdownStyle),
           ])),
+      if (loss != null) Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 14), child: Text('Di bawah modal — rugi ${rupiah(loss)}', style: TextStyle(fontSize: 13, color: KasirColors.destructive))),
       if (error != null) Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 14), child: Text(error!, style: TextStyle(fontSize: 13, color: KasirColors.destructive))),
     ]);
   }

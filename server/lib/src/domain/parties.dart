@@ -81,7 +81,13 @@ Map<String, Object?> listCustomers(Db db, {String? search, int page = 1, int? pa
         search: search, page: page, pageSize: pageSize);
 
 /// Names only, ordered for the register's customer picker.
-List<String> listCustomerNames(Db db) => [for (final row in db.select('SELECT nama FROM customers ORDER BY nama')) row['nama'] as String];
+/// Whoever bought last comes first, so the till's picker opens on the regulars; the rest
+/// follow by name.
+List<String> listCustomerNames(Db db) => [
+      for (final row in db.select('SELECT c.nama FROM customers c LEFT JOIN sales s ON s.customer_id = c.id '
+          'GROUP BY c.id ORDER BY MAX(s.created_at) IS NULL, MAX(s.created_at) DESC, c.nama'))
+        row['nama'] as String,
+    ];
 
 int createCustomer(Db db, PartyInput input) => _create(db, 'customers', input);
 

@@ -181,12 +181,18 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     if (_submitting) return;
     _submitting = true;
     try {
-      final text = search.text.trim();
+      var text = search.text.trim();
       if (text.isEmpty) {
         searchFocus.unfocus();
         return;
       }
       if (!widget.store.editable) return;
+      // "5*" before a code or a scan sets Jumlah, as on a cash register
+      final times = RegExp(r'^(\d+(?:[.,]\d+)?)\s*\*\s*(\S.*)$').firstMatch(text);
+      if (times != null) {
+        qty.text = times.group(1)!;
+        text = times.group(2)!;
+      }
       final match = await exactMatch(text);
       if (!mounted) return;
       if (match != null) {
@@ -214,6 +220,16 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
     final result = await editLiveItem(context, top.product, existing: top, onRemove: () => widget.store.remove(top));
     if (result == null || !mounted) return;
     try { widget.store.replace(top, result); } catch (e) { showError(context, e); }
+  }
+
+  /// F5: one more of the line at the top of the cart (the last one added), keeping its price and discount.
+  void repeatTopLine() {
+    if (widget.store.items.isEmpty || !widget.store.editable) return;
+    final top = widget.store.items.first;
+    try {
+      widget.store.put(LiveCartItem(product: top.product, unit: top.unit, quantity: top.quantity + 1,
+        manualPrice: top.manualPrice, discount: top.discount, priceNote: top.priceNote));
+    } catch (e) { showError(context, e); }
   }
 
   /// Esc while changing a saved nota: asks first, since the changes are thrown away.
@@ -254,6 +270,8 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       action = pay;
     } else if (key == LogicalKeyboardKey.f3) {
       action = editTopLine;
+    } else if (key == LogicalKeyboardKey.f5) {
+      action = repeatTopLine;
     } else if (alt && key == LogicalKeyboardKey.keyH) {
       action = () {
         if (widget.store.items.isNotEmpty) {
@@ -695,9 +713,9 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
       color: KasirColors.accent,
       child: Wrap(spacing: 20, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
         for (final (key, label) in kasirKeys.isGlobalArrows
-          ? [('/', 'cari'), ('PgUp', 'jumlah'), ('PgDn', 'cari'), ('End', 'bayar'), ('F3', 'ubah qty baris 1'), ('Alt+P', 'pelanggan'), ('Alt+K', 'kosongkan'), ('Ctrl+P', 'cetak ulang'), ('↑↓', 'pelanggan/diskon/antrean/keranjang')]
+          ? [('/', 'cari'), ('PgUp', 'jumlah'), ('PgDn', 'cari'), ('End', 'bayar'), ('F3', 'ubah qty baris 1'), ('F5', '+1 barang terakhir'), ('Alt+P', 'pelanggan'), ('Alt+K', 'kosongkan'), ('Ctrl+P', 'cetak ulang'), ('↑↓', 'pelanggan/diskon/antrean/keranjang')]
           : [('/', 'cari barang'), ('F2', 'kotak cari'), ('End', 'bayar'), ('PgUp/PgDn', 'pindah panel'),
-            ('F3', 'ubah baris atas'), ('Alt+P', 'pelanggan'), ('Alt+K', 'kosongkan'), ('Alt+T', 'antrean baru'), ('Ctrl+P', 'cetak ulang')])
+            ('F3', 'ubah baris atas'), ('F5', '+1 barang terakhir'), ('Alt+P', 'pelanggan'), ('Alt+K', 'kosongkan'), ('Alt+T', 'antrean baru'), ('Ctrl+P', 'cetak ulang')])
           Row(mainAxisSize: MainAxisSize.min, children: [KasirKey(key), const SizedBox(width: 6), Text(label, style: TextStyle(fontSize: 12, color: KasirColors.label))]),
       ]),
     ));

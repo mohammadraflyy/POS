@@ -10,14 +10,20 @@ LiveProduct _product() => LiveProduct(1, 'Beras Pandan Wangi 5kg', 'BRS5', 103, 
   LiveUnit(7, 'SAK', 75000, conversionFactor: 5),
 ]);
 
+// Cost known and a 10+ tier on KG, so the tier and below-cost paths have something to hit.
+LiveProduct _costed() => LiveProduct(1, 'Beras Pandan Wangi 5kg', 'BRS5', 103, [
+  LiveUnit(null, 'KG', 15500, cost: 12000, tiers: const [LiveTier(10, null, 14000)]),
+  LiveUnit(7, 'SAK', 75000, cost: 60000, conversionFactor: 5),
+]);
+
 /// Opens the sheet from a button and hands back what it popped.
-Future<({Future<LiveCartItem?> Function() result})> _open(WidgetTester tester, Size size, {VoidCallback? onRemove}) async {
+Future<({Future<LiveCartItem?> Function() result})> _open(WidgetTester tester, Size size, {VoidCallback? onRemove, LiveProduct? product}) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
   addTearDown(tester.view.reset);
   Future<LiveCartItem?>? pending;
   await tester.pumpWidget(MaterialApp(theme: buildTheme(), home: Builder(builder: (context) => Scaffold(
-    body: TextButton(onPressed: () => pending = editLiveItem(context, _product(), onRemove: onRemove), child: const Text('open'))))));
+    body: TextButton(onPressed: () => pending = editLiveItem(context, product ?? _product(), onRemove: onRemove), child: const Text('open'))))));
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   return (result: () async => pending!);
@@ -299,6 +305,77 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('quantity')), 'abc');
     await tester.pump();
     expect(find.text('—'), findsNWidgets(2));
+  });
+
+  test('priceTiers attach to the base unit via baseProductUnitId and to other units by id', () {
+    final p = LiveProduct.fromJson({
+      'productId': 1, 'namaItem': 'Beras', 'satuan': 'KG', 'hargaJual': 15500, 'baseProductUnitId': 5,
+      'productUnits': [{'id': 7, 'satuan': 'SAK', 'konversi': 5, 'hargaJual': 75000}],
+      'priceTiers': [
+        {'productUnitId': 5, 'minQty': 10, 'maxQty': null, 'hargaJual': 14000},
+        {'productUnitId': 7, 'minQty': 2, 'maxQty': 5, 'hargaJual': 70000},
+      ],
+    });
+    expect(p.units[0].tiers.map((t) => t.price), [14000]);
+    expect(p.units[1].tiers.map((t) => t.price), [70000]);
+    expect(p.units[1].tiers.single.maxQty, 5);
+  });
+
+  test('priceFor picks the highest satisfied minQty, respects maxQty and falls back to price', () {
+    final u = LiveUnit(null, 'KG', 15500, tiers: const [LiveTier(5, 9, 15000), LiveTier(10, null, 14000), LiveTier(20, null, 13000)]);
+    expect(u.priceFor(3), 15500);
+    expect(u.priceFor(5), 15000);
+    expect(u.priceFor(9), 15000);
+    expect(u.priceFor(10), 14000);
+    expect(u.priceFor(25), 13000);
+    expect(LiveUnit(null, 'KG', 15500, tiers: const [LiveTier(5, 9, 15000)]).priceFor(12), 15500);
+  });
+
+  testWidgets('a tier changes the price, breakdown, subtotal and note; below its minimum the normal price returns', (tester) async {
+    await _open(tester, const Size(1200, 800), product: _costed());
+    await tester.enterText(find.byKey(const ValueKey('quantity')), '12');
+    await tester.pump();
+    expect(find.text('12 KG × Rp14.000'), findsOneWidget);
+    expect(find.text('Rp168.000'), findsOneWidget);
+    expect(find.text('grosir 10+'), findsOneWidget);
+    expect(find.text('otomatis'), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('quantity')), '3');
+    await tester.pump();
+    expect(find.text('3 KG × Rp15.500'), findsOneWidget);
+    expect(find.text('otomatis'), findsOneWidget);
+    expect(find.text('grosir 10+'), findsNothing);
+  });
+
+  testWidgets('a discount that pushes the line below cost shows the loss and still saves', (tester) async {
+    final opened = await _open(tester, const Size(1200, 800), product: _costed());
+    await tester.enterText(find.byKey(const ValueKey('quantity')), '10');
+    await tester.pump();
+    expect(find.textContaining('Di bawah modal'), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('discount')), '30000');
+    await tester.pump();
+    // 10 × 14.000 − 30.000 = 110.000 against a cost of 120.000
+    expect(find.text('Di bawah modal — rugi Rp10.000'), findsOneWidget);
+    await tester.tap(find.text('Simpan'));
+    await tester.pumpAndSettle();
+    expect((await opened.result())!.discount, 30000);
+  });
+
+  testWidgets('a manual price under the unit cost refuses to save', (tester) async {
+    await _open(tester, const Size(1200, 800), product: _costed());
+    await tester.enterText(find.byKey(const ValueKey('manual')), '11000');
+    await tester.pump();
+    await tester.tap(find.text('Simpan'));
+    await tester.pump();
+    expect(find.text('Harga satuan di bawah modal (Rp12.000).'), findsOneWidget);
+    expect(find.byType(Dialog), findsOneWidget);
+  });
+
+  testWidgets('without a known cost there is no below-cost notice', (tester) async {
+    await _open(tester, const Size(1200, 800));
+    await tester.enterText(find.byKey(const ValueKey('discount')), '15000');
+    await tester.pump();
+    expect(find.textContaining('Di bawah modal'), findsNothing);
   });
 
   testWidgets('on a desktop the keycaps, key legend and slogan show', (tester) async {

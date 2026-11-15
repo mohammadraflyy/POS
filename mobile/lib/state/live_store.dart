@@ -197,7 +197,8 @@ class LiveStore extends ChangeNotifier {
           'name': q.name,
           'items': [for (final i in q.items) {
             'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
-              'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor}]},
+              'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor,
+                'tiers': [for (final t in u.tiers) {'minQty': t.minQty, 'maxQty': t.maxQty, 'price': t.price}]}]},
             'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
             'priceNote': i.priceNote,
           }],
@@ -207,7 +208,8 @@ class LiveStore extends ChangeNotifier {
       ],
       'items': [for (final i in items) {
         'product': {'id': i.product.id, 'name': i.product.name, 'code': i.product.code, 'barcode': i.product.barcode,
-          'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor}]},
+          'units': [for (final u in i.product.units) {'id': u.id, 'name': u.name, 'price': u.price, 'cost': u.cost, 'conversionFactor': u.conversionFactor,
+                'tiers': [for (final t in u.tiers) {'minQty': t.minQty, 'maxQty': t.maxQty, 'price': t.price}]}]},
         'unitId': i.unit.id, 'qty': i.quantity, 'manualPrice': i.manualPrice, 'discount': i.discount,
         'priceNote': i.priceNote,
       }],
@@ -253,6 +255,8 @@ class LiveStore extends ChangeNotifier {
             u['price'] as num?,
             cost: u['cost'] as num?,
             conversionFactor: (u['conversionFactor'] as int?) ?? 1,
+            // drafts written before tiers were kept have none: the server still prices the line
+            tiers: [for (final t in (u['tiers'] as List? ?? const []).whereType<Map>()) LiveTier(t['minQty'] as num, t['maxQty'] as num?, t['price'] as num)],
           ),
       ];
       final product = LiveProduct(p['id'] as int, p['name'] as String, p['code'] as String? ?? '', null, units, barcode: p['barcode'] as String?);

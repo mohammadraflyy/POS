@@ -30,6 +30,8 @@ List<(String, List<ShortcutRow>)> shortcutGroups({required bool globalArrows, re
     ],
     ('F4/F12/End', 'bayar'),
     ('F3', 'ubah baris atas'),
+    ('F5', 'tambah satu lagi barang terakhir'),
+    ('5*kode', 'masukkan 5 sekaligus, lalu Enter atau scan'),
     ('Alt+P', 'pelanggan'),
     ('Alt+T', 'antrean baru'),
     ('Alt+H', 'antrean baru, atau pindah antrean bila keranjang kosong'),
