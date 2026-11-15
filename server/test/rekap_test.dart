@@ -71,6 +71,17 @@ void main() {
     expect(summary(db)['omzetTunai'], 9000);
   });
 
+  test('counts a bon rung up long before the range on the day it was paid off, not on its sale day', () {
+    final db = seedDb();
+    final lama = jual(db, [const CartItemInput(productId: 2, qty: 3)], metode: MetodePembayaran.bon, tanggal: '2026-03-02T10:00');
+    jual(db, [const CartItemInput(productId: 2, qty: 1)], metode: MetodePembayaran.bon, tanggal: '2026-03-03T10:00');
+    bayarBonPada(db, lama, 900000, '2026-07-06');
+
+    expect(summary(db, from: '2026-03-01', to: '2026-03-31')['jumlahTransaksi'], 0);
+    expect(summary(db, from: '2026-07-06', to: '2026-07-06'), containsPair('omzetTunai', 9000));
+    expect(summary(db, from: '2026-07-01', to: '2026-07-31')['jumlahTransaksi'], 1);
+  });
+
   test('clamps an overpaid bon at zero in piutangBeredar', () {
     final db = seedDb();
     final lebih = jual(db, [const CartItemInput(productId: 2, qty: 1)], metode: MetodePembayaran.bon);

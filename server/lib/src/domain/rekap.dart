@@ -21,7 +21,14 @@ class _Diakui {
   final int biayaLain;
 }
 
-const _rangeFilter = "s.status = 'selesai' AND (s.metode_pembayaran = 'bon' OR (s.metode_pembayaran != 'bon' AND s.created_at >= ? AND s.created_at <= ?))";
+// A bon is only a candidate when fully paid and either rung up or settled inside the range; the
+// exact day it counts on is decided in Dart. Unpaid and out-of-range bon never leave SQL.
+const _rangeFilter = "s.status = 'selesai' AND ((s.metode_pembayaran != 'bon' AND s.created_at >= ? AND s.created_at <= ?) OR "
+    "(s.metode_pembayaran = 'bon' AND s.dibayar >= s.total AND ((s.created_at >= ? AND s.created_at <= ?) OR "
+    's.id IN (SELECT sale_id FROM bon_payments WHERE tanggal >= ? AND tanggal <= ?))))';
+
+List<Object> _rangeParams(DateTime start, DateTime end) =>
+    [toEpochSeconds(start), toEpochSeconds(end), toEpochSeconds(start), toEpochSeconds(end), tanggalLokal(start), tanggalLokal(end)];
 
 /// Every sale whose money lands inside the range, and the day it landed. The report is on
 /// a cash basis: cash, QRIS and transfer count on the day of sale; a bon counts for nothing
@@ -30,7 +37,7 @@ const _rangeFilter = "s.status = 'selesai' AND (s.metode_pembayaran = 'bon' OR (
 Map<int, _Diakui> _pengakuanPenjualan(Db db, DateTime start, DateTime end) {
   final rows = db.select(
     'SELECT s.id, s.metode_pembayaran, s.total, s.diskon, s.biaya_lain, s.dibayar, s.created_at FROM sales s WHERE $_rangeFilter',
-    [toEpochSeconds(start), toEpochSeconds(end)],
+    _rangeParams(start, end),
   );
   final pelunasan = {
     for (final row in db.select('SELECT sale_id, max(tanggal) AS tanggal FROM bon_payments GROUP BY sale_id')) row['sale_id'] as int: row['tanggal'] as String,
@@ -102,7 +109,7 @@ Map<String, Object?> getRekap(Db db, {required String from, required String to})
         'LEFT JOIN categories c ON c.id = p.category_id LEFT JOIN product_units pu ON pu.id = si.product_unit_id LEFT JOIN units u ON u.id = pu.unit_id '
         // deterministic order so the discount remainder always lands on the same line
         'WHERE $_rangeFilter ORDER BY si.sale_id, si.id',
-        [toEpochSeconds(start), toEpochSeconds(end)],
+        _rangeParams(start, end),
       )
       .where((row) => diakui.containsKey(row['sale_id']))
       .toList();

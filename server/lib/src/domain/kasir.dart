@@ -888,7 +888,7 @@ Map<String, Object?> listSalesHistory(
 
   if (search != null && search.isNotEmpty) {
     conditions.add(
-      '(nama_pelanggan LIKE ? OR id IN (SELECT si.sale_id FROM sale_items si JOIN products p ON p.id = si.product_id WHERE p.nama_item LIKE ?))',
+      '(nama_pelanggan LIKE ? OR id IN (SELECT sale_id FROM sale_items WHERE product_id IN (SELECT id FROM products WHERE nama_item LIKE ?)))',
     );
     params.addAll(['%$search%', '%$search%']);
   }

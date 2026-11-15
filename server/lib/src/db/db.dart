@@ -35,6 +35,22 @@ class Db {
     return db;
   }
 
+  /// A second connection for a long read on another isolate. It never migrates or writes,
+  /// and WAL lets it read while the main connection keeps taking sales.
+  factory Db.readOnly(String path) {
+    final database = sqlite3.open(path, mode: OpenMode.readOnly);
+    database.execute('PRAGMA busy_timeout = 5000');
+
+    return Db._(database);
+  }
+
+  /// The database file, or null for an in-memory database.
+  String? get filePath {
+    final file = raw.select('PRAGMA database_list').first['file'] as String;
+
+    return file.isEmpty ? null : file;
+  }
+
   List<Row> select(String sql, [List<Object?> params = const []]) {
     final result = raw.select(sql, params);
 

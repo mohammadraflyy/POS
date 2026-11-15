@@ -109,6 +109,10 @@ class StoreApi extends BusinessApi {
   Future<Map<String, dynamic>> remoteAccess() => getObject('/v1/remote-access');
   Future<Object?> enableRemote(String clientId, String clientSecret) => put('/v1/remote-access', {'clientId': clientId, 'clientSecret': clientSecret});
   Future<Object?> disableRemote() => delete('/v1/remote-access');
+  Future<RemoteInvite> remoteInvite() async {
+    final data = jsonObject(await post('/v1/remote-access/invite'));
+    return RemoteInvite(data['remote'] as String, data['authKey'] as String, data['lan'] as String?);
+  }
   Future<Map<String, dynamic>> settings() => getObject('/v1/settings');
   Future<Object?> saveSettings(Map<String, dynamic> body) => put('/v1/settings', body);
   Future<FileResponse> logo() => file('/v1/settings/logo');

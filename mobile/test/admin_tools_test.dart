@@ -107,6 +107,31 @@ void main() {
     expect(find.text('Zona berbahaya'), findsNothing);
   });
 
+  testWidgets('an admin creates a device invite while remote access is online; a kasir has no such button', (tester) async {
+    final store = FakeStore({
+      'GET /v1/settings': (_) => {'namaToko': 'Toko Uji', 'receiptWidth': '58mm'},
+      'GET /v1/printers': (_) => {'data': <Object>[]},
+      'GET /v1/devices': (_) => {'data': <Object>[]},
+      'GET /v1/remote-access': (_) => {'available': true, 'configured': true, 'state': 'online', 'address': '100.64.0.7:48950'},
+      'POST /v1/remote-access/invite': (_) => {'remote': '100.64.0.7:48950', 'authKey': 'tskey-auth-1', 'lan': '192.168.1.5:48950', 'expiresInMinutes': 60},
+    });
+    await show(tester, SettingsScreen(api: store.api, isAdmin: true));
+
+    await tapText(tester, 'Buat undangan perangkat');
+
+    expect(store.called('POST', '/v1/remote-access/invite'), isTrue);
+    expect(find.text('Undangan perangkat'), findsOneWidget);
+    expect(find.textContaining('POS-UNDANGAN:'), findsOneWidget);
+    expect(find.text('Salin kode'), findsOneWidget);
+
+    final kasir = FakeStore({
+      'GET /v1/settings': (_) => {'namaToko': 'Toko Uji', 'receiptWidth': '58mm'},
+      'GET /v1/printers': (_) => {'data': <Object>[]},
+    });
+    await show(tester, SettingsScreen(api: kasir.api, isAdmin: false));
+    expect(find.text('Buat undangan perangkat'), findsNothing);
+  });
+
   testWidgets('nilai stok shows 25 products a page', (tester) async {
     final store = FakeStore({
       'GET /v1/rekap': (_) => {
@@ -131,6 +156,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Barang 26'), findsOneWidget);
     expect(find.text('Barang 1'), findsNothing);
+  });
+
+  testWidgets('the period sales history shows 25 notes a page', (tester) async {
+    final store = FakeStore({
+      'GET /v1/rekap': (_) => {
+        'summary': {'omzetTunai': 0, 'labaKotor': 0},
+        'labaPerKategori': <Object>[], 'labaPerHari': <Object>[], 'labaPerSatuan': <Object>[], 'produkTerlaris': <Object>[],
+        'pembelianPerSupplier': <Object>[], 'piutangPerPelanggan': <Object>[],
+        'salesHistory': [
+          for (var i = 1; i <= 30; i++) {'id': 1000 + i, 'createdAt': '2026-11-15T10:00:00', 'metodePembayaran': 'tunai', 'status': 'selesai', 'total': 1000, 'dibayar': 1000},
+        ],
+      },
+    });
+    await show(tester, RekapScreen(api: store.api));
+
+    expect(find.text('#1025'), findsOneWidget);
+    expect(find.text('#1026'), findsNothing);
+    await tester.ensureVisible(find.byTooltip('Halaman berikutnya'));
+    await tester.tap(find.byTooltip('Halaman berikutnya'));
+    await tester.pumpAndSettle();
+    expect(find.text('#1026'), findsOneWidget);
+    expect(find.text('#1001'), findsNothing);
   });
 
   testWidgets('corrects the cost of a line sold at a loss: preview, reason, save', (tester) async {

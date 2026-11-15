@@ -145,6 +145,20 @@ void addAuthRoutes(Router router, ApiContext ctx) {
     return json(await _remote(ctx).grant(deviceName: body.stringOr('deviceName') ?? user.name));
   });
 
+  // An admin hands this to a phone that is not on the shop's Wi-Fi, so it can sign in without a scan at the PC.
+  router.post('/v1/remote-access/invite', (Request request) async {
+    requireAdmin(ctx, request);
+    final grant = await _remote(ctx).grant(deviceName: 'Undangan');
+    final address = ctx.serverAddress();
+
+    return json({
+      'remote': grant['address'],
+      'authKey': grant['authKey'],
+      'lan': address == null ? null : '$address:${ctx.port}',
+      'expiresInMinutes': 60,
+    });
+  });
+
   // The QR payload is `{"address": "<ip>:<port>", "code": "<6 digits>"}`.
   router.post('/v1/devices/pairing-code', (Request request) {
     requireAdmin(ctx, request);

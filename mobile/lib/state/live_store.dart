@@ -55,6 +55,21 @@ class LiveStore extends ChangeNotifier {
   int _revision = 0;
   int catalogRevision = 0;
 
+  /// Repeat scans skip the PC round trip; the server reprice still checks price and stock, and the revision/2-minute bound covers edits made elsewhere.
+  final Map<String, ({LiveProduct product, int revision, DateTime at})> _matches = {};
+
+  LiveProduct? rememberedMatch(String code) {
+    final key = code.toLowerCase();
+    final hit = _matches[key];
+    if (hit == null) return null;
+    if (hit.revision == catalogRevision && DateTime.now().difference(hit.at) < const Duration(minutes: 2)) return hit.product;
+    _matches.remove(key);
+    return null;
+  }
+
+  void rememberMatch(String code, LiveProduct product) =>
+      _matches[code.toLowerCase()] = (product: product, revision: catalogRevision, at: DateTime.now());
+
   // --- the nota's own details, as on the desktop's payment dialog ---
 
   /// Null files the sale under the moment it is saved; set it for a sale meant for another
@@ -466,8 +481,8 @@ class LiveStore extends ChangeNotifier {
   void reprice() {
     _saveDraft();
     _debounce?.cancel(); final revision = ++_revision;
-    price = null; priceError = null;
-    if (items.isEmpty) { discount = 0; pricing = false; _emit(); return; }
+    priceError = null;
+    if (items.isEmpty) { price = null; discount = 0; pricing = false; _emit(); return; }
     pricing = true; _emit();
     _debounce = Timer(const Duration(milliseconds: 220), () => _price(revision));
   }
@@ -477,7 +492,7 @@ class LiveStore extends ChangeNotifier {
       if (_closed || revision != _revision) return;
       if (result.lines.length != items.length) throw const ApiFailure('Jumlah baris harga dari PC tidak sesuai keranjang.');
       price = result;
-    } catch (e) { if (!_closed && revision == _revision) priceError = e.toString(); }
+    } catch (e) { if (!_closed && revision == _revision) { price = null; priceError = e.toString(); } }
     finally { if (!_closed && revision == _revision) { pricing = false; _emit(); } }
   }
   /// [print] false saves the sale without a receipt; the server answers printSkipped.

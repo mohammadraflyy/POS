@@ -62,4 +62,17 @@ void main() {
     expect(store.price!.total, 200); expect(store.canCheckout, true);
     store.dispose(); guard.dispose();
   });
+  test('adding an item keeps the old total visible but blocks checkout while repricing', () async {
+    final api = BusinessApi((path, {required method, query, body}) async =>
+      {'lines': [for (final _ in body!['items'] as List) {'stokCukup': true}], 'subtotal': 100, 'diskon': 0, 'total': 100});
+    final guard = MutationGuard(MemoryPending()); await guard.load(); final store = LiveStore(api, guard);
+    final p = LiveProduct.fromJson({'id': 1});
+    store.put(LiveCartItem(product: p, unit: p.units.first, quantity: 1));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(store.price, isNotNull);
+    final q = LiveProduct.fromJson({'id': 2});
+    store.put(LiveCartItem(product: q, unit: q.units.first, quantity: 1));
+    expect(store.pricing, true); expect(store.price, isNotNull); expect(store.canCheckout, false);
+    store.dispose(); guard.dispose();
+  });
 }

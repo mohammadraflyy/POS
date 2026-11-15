@@ -145,8 +145,32 @@ class AppState extends ChangeNotifier {
       await _signedIn(base, token, deviceName.trim(), _readUser(signed));
     } finally { busy = false; notifyListeners(); }
   }
-  Future<void> _signedIn(Uri base, String token, String name, Map<String, dynamic> user) async {
-    await _forgetRemote();
+  /// Signs in from outside the shop with an admin's invite: joins the PC's tailnet with the
+  /// invite's one-time key, then logs in through it. Needs no scan at the PC.
+  Future<void> loginWithInvite({required String invite, required String username, required String password, required String deviceName}) async {
+    if (busy) return;
+    if (!tailnet.supported) throw const ApiFailure('Perangkat ini belum bisa masuk dari luar toko.');
+    if (username.trim().isEmpty || password.isEmpty) throw const ApiFailure('Isi username dan password.');
+    final parsed = RemoteInvite.parse(invite);
+    busy = true; notice = null; notifyListeners();
+    try {
+      await _forgetRemote();
+      remoteAddress = parsed.remote; _remoteKey = parsed.authKey; _remoteKeyIssued = DateTime.now(); _remoteJoined = false;
+      final base = await _remoteBase();
+      await api.health(base);
+      final signed = await api.login(base, username.trim(), password, deviceName.trim());
+      final token = signed['token'];
+      if (token is! String || token.isEmpty) throw const ApiFailure('Token login tidak ditemukan.');
+      // set before _signedIn starts _maintainRemote, so its first check probes the Wi-Fi instead of waiting on it
+      viaInternet = true;
+      await _signedIn(parseAddress(parsed.lan ?? parsed.remote), token, deviceName.trim(), _readUser(signed), keepRemote: true);
+    } catch (_) {
+      await _forgetRemote();
+      rethrow;
+    } finally { busy = false; notifyListeners(); }
+  }
+  Future<void> _signedIn(Uri base, String token, String name, Map<String, dynamic> user, {bool keepRemote = false}) async {
+    if (!keepRemote) await _forgetRemote();
     address = base; _token = token; deviceName = name; _clearBranding();
     userUsername = user['username']?.toString() ?? '';
     await _save();

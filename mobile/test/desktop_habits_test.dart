@@ -86,6 +86,15 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('scanning the same barcode twice asks the PC once', (tester) async {
+      await openTill(tester);
+      await scan(tester, '8991001000127');
+      await scan(tester, '8991001000127');
+      expect(calls.where((c) => c.$1 == '/v1/catalog/search'), hasLength(1));
+      expect(store.items.single.quantity, 2);
+      await finish(tester);
+    });
+
     testWidgets('Alt+Q picks QRIS, Alt+S saves without a receipt, then asks to print', (tester) async {
       await openTill(tester);
       await scan(tester, '8991001000110');
@@ -129,6 +138,8 @@ void main() {
       await tester.tap(find.text('Lewati'));
       await tester.pumpAndSettle();
       expect(calls.any((c) => c.$1 == '/v1/sales/41/print'), isFalse);
+      expect(find.widgetWithText(SnackBar, 'Transaksi #41 disimpan.'), findsOneWidget);
+      expect(find.text('Mengerti'), findsNothing);
       await finish(tester);
     });
 

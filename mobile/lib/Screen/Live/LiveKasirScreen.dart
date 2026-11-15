@@ -167,9 +167,13 @@ class _LiveKasirScreenState extends State<LiveKasirScreen> {
   /// The one product whose barcode or code is exactly [code]. A scanner burst is always a
   /// whole code, so [acceptSingle] also takes a lone result (a barcode the server found on a unit).
   Future<LiveProduct?> exactMatch(String code, {bool acceptSingle = false}) async {
+    final remembered = widget.store.rememberedMatch(code);
+    if (remembered != null) return remembered;
     final rows = jsonRows(await widget.store.api.catalog(code, 1)).map(LiveProduct.fromJson).toList();
     final exact = rows.where((p) => p.barcode == code || p.code.toLowerCase() == code.toLowerCase()).toList();
-    return exact.length == 1 ? exact.single : acceptSingle && rows.length == 1 ? rows.single : null;
+    final match = exact.length == 1 ? exact.single : acceptSingle && rows.length == 1 ? rows.single : null;
+    if (match != null) widget.store.rememberMatch(code, match);
+    return match;
   }
 
   /// Enter in the search box:

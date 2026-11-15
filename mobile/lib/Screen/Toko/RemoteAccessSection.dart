@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/theme.dart';
 import '../../services/store_api.dart';
 import '../../services/windows_startup.dart';
@@ -65,6 +66,29 @@ class _RemoteAccessSectionState extends State<RemoteAccessSection> {
     if (mounted && await runAction(context, widget.api.disableRemote, success: 'Akses dari luar toko dimatikan.')) load();
   }
 
+  /// A phone outside the shop signs in with this instead of a scan at the PC.
+  Future<void> invite() async {
+    try {
+      final code = (await widget.api.remoteInvite()).encode();
+      if (!mounted) return;
+      await showDialog<void>(context: context, builder: (dialog) => AlertDialog(title: const Text('Undangan perangkat'),
+        content: SizedBox(width: 320, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          QrImageView(data: code, size: 240, backgroundColor: Colors.white),
+          const SizedBox(height: Space.md),
+          SelectableText(code, style: TextStyle(fontFamily: monoFamily, fontSize: 12, color: ink)),
+          const SizedBox(height: Space.sm),
+          Text('Berlaku 1 jam dan hanya untuk 1 perangkat. Kirim ke kasir lewat WhatsApp, lalu kasir memilih Masuk dari luar toko.',
+            textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 13)),
+        ])),
+        actions: [
+          TextButton.icon(
+            onPressed: () { Clipboard.setData(ClipboardData(text: code)); showToast(dialog, 'Kode undangan disalin.'); },
+            icon: const Icon(Icons.copy, size: 16), label: const Text('Salin kode')),
+          FilledButton(onPressed: () => Navigator.pop(dialog), child: const Text('Selesai')),
+        ]));
+    } catch (e) { if (mounted) showError(context, e); }
+  }
+
   String _stateLabel(Map<String, dynamic> s) => switch (s['state']) {
     'online' => 'Aktif',
     'starting' => 'Menyambung…',
@@ -95,6 +119,7 @@ class _RemoteAccessSectionState extends State<RemoteAccessSection> {
           if (configured) ...[
             const SizedBox(height: Space.md),
             Wrap(spacing: Space.sm, runSpacing: Space.sm, children: [
+              if (s['state'] == 'online') FilledButton.icon(onPressed: invite, icon: const Icon(Icons.person_add_alt_1_outlined, size: 18), label: const Text('Buat undangan perangkat')),
               OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.sync, size: 18), label: const Text('Periksa')),
               OutlinedButton.icon(onPressed: setUp, icon: const Icon(Icons.key_outlined, size: 18), label: const Text('Ganti kunci admin')),
               OutlinedButton.icon(onPressed: turnOff, style: OutlinedButton.styleFrom(foregroundColor: errorColor), icon: const Icon(Icons.public_off, size: 18), label: const Text('Matikan')),

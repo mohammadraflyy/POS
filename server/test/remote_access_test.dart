@@ -341,6 +341,20 @@ void main() {
       expect((await call('POST', '/v1/remote-access/grant', body: {})).status, 401);
     });
 
+    test('only an admin creates an invite for a phone outside the shop', () async {
+      await call('PUT', '/v1/remote-access', token: adminToken, body: {'clientId': 'c', 'clientSecret': 's'});
+      await launcher.bringUp();
+
+      expect((await call('POST', '/v1/remote-access/invite', token: kasirToken)).status, 403);
+
+      final invite = await call('POST', '/v1/remote-access/invite', token: adminToken);
+      expect(invite.status, 200);
+      expect(invite.body['remote'], '100.64.0.7:48950');
+      expect(invite.body['authKey'], startsWith('tskey-auth-'));
+      expect(invite.body['lan'], '192.168.1.5:48950');
+      expect(invite.body['expiresInMinutes'], 60);
+    });
+
     test('wrong passwords lock the account for a while', () async {
       for (var i = 0; i < 3; i++) {
         expect((await call('POST', '/v1/auth/login', body: {'username': 'owner', 'password': 'salah'})).status, 401);

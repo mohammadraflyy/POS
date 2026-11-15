@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 class ApiFailure implements Exception {
   const ApiFailure(this.message, {this.unauthorized = false, this.statusCode, this.unreachable = false});
@@ -22,32 +23,37 @@ abstract class JsonTransport {
   Future<ApiResponse> send(String method, Uri uri, Map<String, String> headers, Map<String, dynamic>? body);
 }
 class IoJsonTransport implements JsonTransport {
+  /// Long-lived so keep-alive reuses sockets; a short idle timeout drops them soon after a network switch.
+  final _client = HttpClient()..connectionTimeout = const Duration(seconds: 6)..idleTimeout = const Duration(seconds: 10);
+  final _tunnelClient = HttpClient()..connectionTimeout = const Duration(seconds: 30)..idleTimeout = const Duration(seconds: 10);
+
   @override
   Future<ApiResponse> send(String method, Uri uri, Map<String, String> headers, Map<String, dynamic>? body) async {
     final isLocalTunnel = Platform.isAndroid && uri.host == '127.0.0.1';
-    final connectTimeout = isLocalTunnel ? const Duration(seconds: 30) : const Duration(seconds: 6);
     final totalTimeout = isLocalTunnel ? const Duration(seconds: 45) : const Duration(seconds: 12);
-    final client = HttpClient()..connectionTimeout = connectTimeout;
+    final client = isLocalTunnel ? _tunnelClient : _client;
     var connected = false;
+    HttpClientRequest? request;
     try {
       return await (() async {
-        final request = await client.openUrl(method, uri);
+        final req = request = await client.openUrl(method, uri);
         if (!isLocalTunnel) connected = true;
-        request.followRedirects = false;
-        headers.forEach(request.headers.set);
-        request.headers.contentType = ContentType.json;
-        if (body != null) request.write(jsonEncode(body));
-        final response = await request.close();
+        req.followRedirects = false;
+        headers.forEach(req.headers.set);
+        req.headers.contentType = ContentType.json;
+        if (body != null) req.write(jsonEncode(body));
+        final response = await req.close();
         connected = true;
-        final bytes = <int>[];
+        final bytes = BytesBuilder(copy: false);
         await for (final chunk in response) {
-          bytes.addAll(chunk);
+          bytes.add(chunk);
           if (bytes.length > 16 * 1024 * 1024) throw const ApiFailure('Respons PC terlalu besar.');
         }
-        final parsed = jsonDecode(utf8.decode(bytes));
+        final parsed = jsonDecode(utf8.decode(bytes.takeBytes()));
         return ApiResponse(response.statusCode, parsed);
       })().timeout(totalTimeout);
     } on TimeoutException {
+      request?.abort();
       throw ApiFailure('PC belum merespons. Pastikan PC aktif dan berada di jaringan yang sama.', unreachable: !connected);
     } on SocketException {
       throw ApiFailure('Tidak dapat terhubung ke PC. Periksa alamat, Wi-Fi, dan firewall port 48950.', unreachable: !connected);
@@ -55,8 +61,6 @@ class IoJsonTransport implements JsonTransport {
       throw ApiFailure('Koneksi ke PC terputus. Silakan periksa jaringan.', unreachable: !connected);
     } on FormatException {
       throw const ApiFailure('Respons bukan JSON API mobile yang valid. Periksa alamat PC.');
-    } finally {
-      client.close(force: true);
     }
   }
 }
@@ -84,6 +88,29 @@ class PairingQr {
       return PairingQr(parseAddress(data['address'] as String).toString(), data['code'] as String);
     } catch (_) {
       throw const ApiFailure('QR pairing tidak valid. Scan QR dari Pengaturan > Perangkat Mobile di PC.');
+    }
+  }
+}
+/// What an admin sends to a phone outside the shop: the PC's tailnet address, a one-time
+/// key to join it, and the shop-Wi-Fi address to prefer once the phone is back.
+class RemoteInvite {
+  const RemoteInvite(this.remote, this.authKey, this.lan);
+  static const _prefix = 'POS-UNDANGAN:';
+  final String remote, authKey;
+  final String? lan;
+  String encode() => _prefix + base64Url.encode(utf8.encode(jsonEncode({'remote': remote, 'authKey': authKey, if (lan != null) 'lan': lan})));
+  /// Finds the token anywhere in [raw]: WhatsApp adds words around what was pasted.
+  factory RemoteInvite.parse(String raw) {
+    try {
+      final token = RegExp('$_prefix([A-Za-z0-9_=-]+)').firstMatch(raw.trim())?.group(1);
+      final data = token == null ? null : jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(token))));
+      if (data is! Map || data['remote'] is! String || data['authKey'] is! String || (data['authKey'] as String).isEmpty ||
+          !RegExp(r'^[^\s:/]+:\d{1,5}$').hasMatch(data['remote'] as String) || (data['lan'] != null && data['lan'] is! String)) {
+        throw const FormatException();
+      }
+      return RemoteInvite(data['remote'] as String, data['authKey'] as String, data['lan'] as String?);
+    } catch (_) {
+      throw const ApiFailure('Kode undangan tidak valid. Minta undangan baru dari admin.');
     }
   }
 }

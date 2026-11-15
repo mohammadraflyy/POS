@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:excel/excel.dart';
 import 'package:pos_server/pos_server.dart';
@@ -79,6 +80,23 @@ void main() {
       final api = Api();
 
       expect((await api.call('GET', '/v1/health')).body, {'ok': true, 'appVersion': appVersion});
+    });
+
+    test('a device token refreshes last_used_at at most once a minute', () async {
+      final db = Api().ctx.db;
+      final issued = issueDeviceToken(db, userId: 1);
+      final token = issued.token;
+      int? lastUsed() => db.first('SELECT last_used_at FROM device_tokens WHERE id = ?', [issued.id])!['last_used_at'] as int?;
+
+      resolveDeviceToken(db, token);
+      db.execute('UPDATE device_tokens SET last_used_at = last_used_at - 30 WHERE id = ?', [issued.id]);
+      final first = lastUsed();
+      resolveDeviceToken(db, token);
+      expect(lastUsed(), first);
+
+      db.execute('UPDATE device_tokens SET last_used_at = last_used_at - 120 WHERE id = ?', [issued.id]);
+      resolveDeviceToken(db, token);
+      expect(lastUsed()! > first!, isTrue);
     });
 
     test('pairs a phone with a one-time code and its own account', () async {
@@ -186,6 +204,23 @@ void main() {
 
       expect(await api.kasir('POST', '/v1/sales/1/print'), {'printed': true});
       expect(api.printer.jobs, hasLength(2));
+    });
+
+    test('the dashboard is reused until a write changes it', () async {
+      final api = Api();
+      final first = await api.kasir('GET', '/v1/dashboard');
+      expect(await api.kasir('GET', '/v1/dashboard'), first);
+
+      await api.kasir('POST', '/v1/sales', {
+        'metodePembayaran': 'tunai',
+        'namaPelanggan': null,
+        'dibayar': 400000,
+        'items': [
+          {'productId': 1, 'productUnitId': null, 'qty': 5},
+        ],
+      });
+      final after = await api.kasir('GET', '/v1/dashboard');
+      expect(after['summary']['jumlahTransaksi'], first['summary']['jumlahTransaksi'] + 1);
     });
 
     test('skips the receipt when the cashier chose not to print', () async {
@@ -454,6 +489,32 @@ void main() {
       final workbook = Excel.decodeBytes(bytes);
 
       expect(workbook.tables.keys, containsAll(['Riwayat Transaksi', 'Laba per Kategori', 'Nilai Stock']));
+    });
+
+    test('serves a rekap from a second connection when the database is a file', () async {
+      final api = Api();
+      await api.kasir('POST', '/v1/sales', {
+        'metodePembayaran': 'tunai',
+        'dibayar': 65000,
+        'tanggal': '2026-10-14T10:00',
+        'items': [
+          {'productId': 1, 'productUnitId': null, 'qty': 1},
+        ],
+      });
+      final dir = Directory.systemTemp.createTempSync('pos-rekap');
+
+      try {
+        api.db.execute('VACUUM INTO ?', ['${dir.path}/copy.sqlite']);
+        final copy = Db.open('${dir.path}/copy.sqlite');
+        final handler = buildHandler(ApiContext(db: copy, pairing: PairingCodes(), receipts: ReceiptService(copy, api.printer), serverAddress: () => '192.168.1.5', port: 48950));
+        final response = await handler(Request('GET', Uri.parse('http://localhost/v1/rekap?from=2026-10-14&to=2026-10-14'), headers: {'authorization': 'Bearer ${api.adminToken}'}));
+
+        expect(response.statusCode, 200);
+        expect(jsonDecode(await response.readAsString())['summary']['omzetTunai'], 65000);
+        copy.close();
+      } finally {
+        dir.deleteSync(recursive: true);
+      }
     });
 
     test('records, edits and exports cash expenses', () async {

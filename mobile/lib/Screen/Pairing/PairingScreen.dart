@@ -17,16 +17,19 @@ class _PairingScreenState extends State<PairingScreen> {
   // on the shop PC the server is local and there is no camera: sign in with an account
   final _host = TextEditingController(text: isDesktop ? '127.0.0.1:48950' : '');
   final _code = TextEditingController();
+  final _invite = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _name = TextEditingController(text: isDesktop ? 'PC Kasir' : 'Kasir Mobile');
   bool _login = isDesktop;
+  // a phone outside the shop's Wi-Fi, signing in with an admin's invite
+  bool _byInvite = false;
   bool _obscure = true;
   bool _scanning = false;
   bool _manual = false, _scanned = false;
   String? _error;
   @override
-  void dispose() { for (final c in [_host, _code, _username, _password, _name]) { c.dispose(); } super.dispose(); }
+  void dispose() { for (final c in [_host, _code, _invite, _username, _password, _name]) { c.dispose(); } super.dispose(); }
   Future<void> _connect() async {
     setState(() => _error = null);
     try {
@@ -41,6 +44,26 @@ class _PairingScreenState extends State<PairingScreen> {
       await widget.app.login(host: _host.text, username: _username.text, password: _password.text, deviceName: _name.text);
       if (mounted) _password.clear();
     } catch (e) { if (mounted) { setState(() => _error = e.toString()); showError(context, e); } }
+  }
+  Future<void> _signInWithInvite() async {
+    setState(() => _error = null);
+    try {
+      await widget.app.loginWithInvite(invite: _invite.text, username: _username.text, password: _password.text, deviceName: _name.text);
+      if (mounted) _password.clear();
+    } catch (e) { if (mounted) { setState(() => _error = e.toString()); showError(context, e); } }
+  }
+  Future<void> _scanInvite() async {
+    if (_scanning || widget.app.busy) return;
+    setState(() => _scanning = true);
+    try {
+      final result = await Navigator.of(context).push<String>(MaterialPageRoute(
+        builder: (_) => const ScanScreen(title: 'Scan QR undangan', qrOnly: true)));
+      if (mounted && result != null) setState(() => _invite.text = result);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
   }
   Future<void> _scan() async {
     if (_scanning || widget.app.busy) return;
@@ -62,27 +85,35 @@ class _PairingScreenState extends State<PairingScreen> {
         // the wide layout's banner already carries the brand
         if (MediaQuery.sizeOf(context).width < AuthLayout.splitWidth) ...[
           const Row(children: [BrandMark(size: 28), SizedBox(width: Space.md), Text('Point of Sales', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500))]), const SizedBox(height: Space.xxl)],
-        Text(_login ? 'Masuk ke toko' : 'Hubungkan ke toko', style: Theme.of(context).textTheme.headlineLarge),
-        const SizedBox(height: 12), Text(_login
+        Text(_byInvite ? 'Masuk dari luar toko' : _login ? 'Masuk ke toko' : 'Hubungkan ke toko', style: Theme.of(context).textTheme.headlineLarge),
+        const SizedBox(height: 12), Text(_byInvite
+          ? 'Tempel undangan dari admin toko, atau scan QR-nya. Tidak perlu berada di Wi-Fi toko.'
+          : _login
           ? 'Masuk dengan akun toko. Di PC kasir, alamat server biasanya 127.0.0.1:48950.'
           : 'Hubungkan perangkat ke PC toko untuk mulai. Pastikan keduanya menggunakan jaringan yang sama.', style: TextStyle(color: muted)),
         const SizedBox(height: 24),
-        if (!_login) ...[
+        if (!_login && !_byInvite) ...[
         if (!isDesktop) OutlinedButton.icon(onPressed: widget.app.busy || _scanning ? null : _scan, icon: const Icon(Icons.qr_code_scanner), label: const Text('Scan QR dari PC')),
         if (_scanned && !_manual) const Padding(padding: EdgeInsets.only(top: 14), child: Pill('PC siap dihubungkan • silakan login', icon: Icons.check_circle_outline)),
         if (!isDesktop) TextButton(onPressed: widget.app.busy ? null : () => setState(() => _manual = !_manual), child: Text(_manual ? 'Sembunyikan input manual' : 'Masukkan alamat / kode secara manual')),
         ],
-        if (_manual || _login || isDesktop) ...[
+        if (_byInvite) ...[
+        TextField(controller: _invite, enabled: !widget.app.busy, minLines: 1, maxLines: 4, keyboardType: TextInputType.multiline, decoration: const InputDecoration(labelText: 'Kode undangan', prefixIcon: Icon(Icons.vpn_key_outlined))),
+        TextButton.icon(onPressed: widget.app.busy || _scanning ? null : _scanInvite, icon: const Icon(Icons.qr_code_scanner), label: const Text('Scan QR undangan')),
+        Text('Undangan dari admin berlaku 1 jam dan hanya sekali pakai.', style: TextStyle(color: muted, fontSize: 13)),
+        ] else if (_manual || _login || isDesktop) ...[
         const SizedBox(height: Space.lg), TextField(controller: _host, enabled: !widget.app.busy, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Alamat server', hintText: '192.168.1.5:48950', prefixIcon: Icon(Icons.computer))),
         if (!_login) ...[const SizedBox(height: Space.lg), TextField(controller: _code, enabled: !widget.app.busy, keyboardType: TextInputType.number, maxLength: 6, decoration: const InputDecoration(labelText: 'Kode pairing', counterText: '', prefixIcon: Icon(Icons.pin_outlined)))],
         ],
         const SizedBox(height: Space.lg), TextField(controller: _username, textInputAction: TextInputAction.next, enabled: !widget.app.busy, autofillHints: const [AutofillHints.username], decoration: InputDecoration(labelText: _login ? 'Username' : 'Username kasir', prefixIcon: const Icon(Icons.person_outline))),
         const SizedBox(height: Space.lg), TextField(controller: _password, autofillHints: const [AutofillHints.password], textInputAction: TextInputAction.next, enabled: !widget.app.busy, obscureText: _obscure, autocorrect: false, enableSuggestions: false, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(tooltip: _obscure ? 'Tampilkan password' : 'Sembunyikan password', onPressed: () => setState(() => _obscure = !_obscure), icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined)))),
-        const SizedBox(height: Space.lg), TextField(controller: _name, textInputAction: TextInputAction.done, onSubmitted: (_) { if (!widget.app.busy) { _login ? _signIn() : _connect(); } }, enabled: !widget.app.busy, decoration: const InputDecoration(labelText: 'Nama perangkat')),
+        const SizedBox(height: Space.lg), TextField(controller: _name, textInputAction: TextInputAction.done, onSubmitted: (_) { if (!widget.app.busy) { _byInvite ? _signInWithInvite() : _login ? _signIn() : _connect(); } }, enabled: !widget.app.busy, decoration: const InputDecoration(labelText: 'Nama perangkat')),
         if (_error != null || widget.app.notice != null) Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error ?? widget.app.notice!, style: TextStyle(color: errorColor))),
-        const SizedBox(height: Space.xl), SizedBox(width: double.infinity, child: FilledButton(onPressed: widget.app.busy ? null : (_login ? _signIn : _connect), child: widget.app.busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_login ? 'Masuk' : 'Hubungkan perangkat'))),
-        SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : () => setState(() { _login = !_login; _error = null; }),
+        const SizedBox(height: Space.xl), SizedBox(width: double.infinity, child: FilledButton(onPressed: widget.app.busy ? null : (_byInvite ? _signInWithInvite : _login ? _signIn : _connect), child: widget.app.busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_login || _byInvite ? 'Masuk' : 'Hubungkan perangkat'))),
+        SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : () => setState(() { _login = !_login; _byInvite = false; _error = null; }),
           child: Text(_login ? 'Hubungkan dengan kode pairing' : 'Masuk dengan akun (tanpa kode pairing)'))),
+        if (!isDesktop && widget.app.tailnet.supported) SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : () => setState(() { _byInvite = !_byInvite; _login = false; _error = null; }),
+          child: Text(_byInvite ? 'Hubungkan dengan kode pairing' : 'Masuk dari luar toko (pakai undangan)'))),
         if (widget.app.hasStoredSession) SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : widget.app.restore, child: const Text('Coba koneksi tersimpan kembali'))),
         const SizedBox(height: 12), SizedBox(width: double.infinity, child: TextButton(onPressed: widget.app.busy ? null : widget.app.startDemo, child: const Text('Coba tampilan kasir • Mode demo'))),
         Text('Demo memakai data contoh. Transaksi tidak dikirim ke toko dan hilang saat demo dimulai ulang.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 13)),

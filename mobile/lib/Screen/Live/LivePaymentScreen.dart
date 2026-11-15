@@ -46,13 +46,13 @@ Future<void> openPayment(BuildContext context, LiveStore store) async {
     ),
   );
   if (print != true || !context.mounted) {
-    if (context.mounted) showNotice(context, 'Transaksi #${sale.saleId} disimpan.', kind: NoticeKind.success);
+    if (context.mounted) showToast(context, 'Transaksi #${sale.saleId} disimpan.');
     return;
   }
   final messenger = context;
   store.api.printSale(sale.saleId).then((result) {
     if (result['printed'] != true) throw ApiFailure(result['printError']?.toString() ?? 'printer belum mengonfirmasi');
-    if (messenger.mounted) showNotice(messenger, 'Struk #${sale.saleId} dicetak.', kind: NoticeKind.success);
+    if (messenger.mounted) showToast(messenger, 'Struk #${sale.saleId} dicetak.');
   }).catchError((Object e) {
     if (messenger.mounted) {
       showNotice(messenger, 'Transaksi #${sale.saleId} tersimpan, tetapi struk gagal dicetak: ${errorText(e)}. Cetak ulang dari Riwayat.', kind: NoticeKind.error);

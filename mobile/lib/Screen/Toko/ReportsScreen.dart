@@ -197,10 +197,10 @@ class _RekapScreenState extends State<RekapScreen> {
   String? error;
   @override void initState() { super.initState(); load(); }
   static const stockPageSize = 25;
-  int stockPage = 1;
+  int stockPage = 1, historyPage = 1;
   Future<void> load() async {
     setState(() { loading = true; error = null; });
-    try { final result = await widget.api.rekap(isoDate(range.start), isoDate(range.end)); if (mounted) setState(() { data = result; stockPage = 1; }); }
+    try { final result = await widget.api.rekap(isoDate(range.start), isoDate(range.end)); if (mounted) setState(() { data = result; stockPage = 1; historyPage = 1; }); }
     catch (e) { if (mounted) setState(() => error = e.toString()); }
     finally { if (mounted) setState(() => loading = false); }
   }
@@ -287,6 +287,8 @@ class _RekapScreenState extends State<RekapScreen> {
     final stockRows = stock.isEmpty ? const <Map<String, dynamic>>[] : jsonRows(stock['produk']);
     final lastStockPage = stockRows.isEmpty ? 1 : (stockRows.length / stockPageSize).ceil();
     final page = stockPage.clamp(1, lastStockPage);
+    final lastHistoryPage = salesHistory.isEmpty ? 1 : (salesHistory.length / stockPageSize).ceil();
+    final shownHistoryPage = historyPage.clamp(1, lastHistoryPage);
     return ScreenBody(onRefresh: load, children: [
       ScreenHeader('Rekap', 'Omzet dihitung saat uang diterima: bon masuk saat lunas.', actions: [
         OutlinedButton.icon(onPressed: () async { final picked = await pickRange(context, range); if (picked != null) { range = picked; load(); } },
@@ -431,8 +433,9 @@ class _RekapScreenState extends State<RekapScreen> {
           DataCol('Bon belum lunas', (r) => text(r['jumlahBon']), numeric: true),
           DataCol('Total piutang', (r) => rupiah(r['totalPiutang']), numeric: true),
         ])),
-        if (salesHistory.isNotEmpty) section('Riwayat transaksi periode ini', DataView<Map<String, dynamic>>(
-          rows: salesHistory,
+        // a month of a busy shop is thousands of notes and DataView builds every row, so page it like the stock table
+        if (salesHistory.isNotEmpty) section('Riwayat transaksi periode ini', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [DataView<Map<String, dynamic>>(
+          rows: salesHistory.skip((shownHistoryPage - 1) * stockPageSize).take(stockPageSize).toList(),
           onTap: (r) async {
             await Navigator.of(context).push(MaterialPageRoute<void>(
               builder: (_) => LiveSaleScreen(api: widget.api, id: idNumber(r['id']), isAdmin: widget.isAdmin, onEdit: widget.onEditSale),
@@ -448,7 +451,9 @@ class _RekapScreenState extends State<RekapScreen> {
             DataCol('Total', (r) => rupiah(r['total']), numeric: true),
             DataCol('Dibayar', (r) => rupiah(r['dibayar']), numeric: true),
           ],
-        )),
+        ),
+          if (lastHistoryPage > 1) Pager(page: shownHistoryPage, last: lastHistoryPage, onPage: (p) => setState(() => historyPage = p)),
+        ])),
         section('Nilai stok · ${rupiah(stock['totalNilai'])}', Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           // the rekap sends every product at once; show it a page at a time instead of one long table
           DataView<Map<String, dynamic>>(rows: stockRows.skip((page - 1) * stockPageSize).take(stockPageSize).toList(), columns: [

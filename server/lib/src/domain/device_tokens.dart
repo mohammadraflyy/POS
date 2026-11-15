@@ -39,9 +39,10 @@ IssuedDeviceToken issueDeviceToken(Db db, {required int userId, String? namaPera
 }
 
 /// The device's user, or null when the token is unknown or has been revoked.
+/// last_used_at is refreshed at most once a minute so auth does not take the write lock per request.
 AuthUser? resolveDeviceToken(Db db, String token) {
   final row = db.first(
-    'SELECT t.id AS token_id, u.id, u.username, u.name, u.role '
+    'SELECT t.id AS token_id, t.last_used_at, u.id, u.username, u.name, u.role '
     'FROM device_tokens t JOIN users u ON u.id = t.user_id '
     'WHERE t.token_hash = ? AND t.revoked_at IS NULL',
     [_hashToken(token)],
@@ -51,7 +52,12 @@ AuthUser? resolveDeviceToken(Db db, String token) {
     return null;
   }
 
-  db.execute('UPDATE device_tokens SET last_used_at = ? WHERE id = ?', [nowSeconds(), row['token_id']]);
+  final now = nowSeconds();
+  final lastUsedAt = row['last_used_at'] as int?;
+
+  if (lastUsedAt == null || now - lastUsedAt >= 60) {
+    db.execute('UPDATE device_tokens SET last_used_at = ? WHERE id = ?', [now, row['token_id']]);
+  }
 
   return AuthUser.fromRow(row);
 }

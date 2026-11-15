@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/theme.dart';
@@ -113,6 +114,26 @@ Future<void> showNotice(BuildContext context, String message, {
   queue.pending[key] = completed;
   queue.tail = completed;
   return completed;
+}
+
+/// A corner toast for routine success: it takes no focus and waits for no key, so the
+/// cashier can start the next sale at once. Errors still go through [showNotice].
+void showToast(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  final width = MediaQuery.sizeOf(context).width;
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 3),
+      margin: EdgeInsets.only(left: math.max(Space.md, width - 380), right: Space.md, bottom: Space.md),
+      content: Row(children: [
+        Icon(Icons.check_circle_outline, color: onPrimary, size: 20),
+        const SizedBox(width: Space.sm),
+        Expanded(child: Text(message)),
+      ]),
+    ));
 }
 
 /// Observe persistent notices without presenting them again on every rebuild.

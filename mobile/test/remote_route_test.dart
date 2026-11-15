@@ -50,6 +50,7 @@ class ShopNetwork implements JsonTransport {
 }
 
 void main() {
+  inviteTests();
   late ShopNetwork network;
   late FakeTailnet tailnet;
   late MemoryStorage storage;
@@ -188,6 +189,70 @@ void main() {
 
     expect(app.mode, AppMode.connected);
     expect(tailnet.starts, isEmpty);
+    app.dispose();
+  });
+}
+
+/// A phone outside the shop: only the tailnet tunnel (127.0.0.1) answers.
+class _OutsideShop implements JsonTransport {
+  _OutsideShop({this.passwordOk = true});
+  final bool passwordOk;
+  @override
+  Future<ApiResponse> send(String method, Uri uri, Map<String, String> headers, Map<String, dynamic>? body) async {
+    if (uri.host != '127.0.0.1') throw const ApiFailure('Tidak dapat terhubung ke PC.', unreachable: true);
+    return switch (uri.path) {
+      '/v1/health' => const ApiResponse(200, {'ok': true}),
+      '/v1/auth/login' => passwordOk
+        ? const ApiResponse(200, {'token': 'device-token', 'user': {'id': 2, 'username': 'kasir', 'name': 'Kasir', 'role': 'kasir'}})
+        : const ApiResponse(401, {'error': 'Username atau password salah.'}),
+      _ => const ApiResponse(404, {'error': 'Endpoint tidak ditemukan.'}),
+    };
+  }
+}
+
+void inviteTests() {
+  final invite = const RemoteInvite('100.64.0.7:48950', 'tskey-auth-9', '192.168.1.5:48950');
+
+  test('an invite survives a round trip, even with words around it', () {
+    expect(RemoteInvite.parse(invite.encode()).authKey, 'tskey-auth-9');
+    final parsed = RemoteInvite.parse('Halo, ini undangannya:\n${invite.encode()}\nTerima kasih');
+    expect((parsed.remote, parsed.authKey, parsed.lan), ('100.64.0.7:48950', 'tskey-auth-9', '192.168.1.5:48950'));
+    expect(RemoteInvite.parse(const RemoteInvite('100.64.0.7:48950', 'k', null).encode()).lan, isNull);
+  });
+
+  test('anything else is not an invite', () {
+    for (final raw in ['', 'POS-UNDANGAN:', 'POS-UNDANGAN:%%%', 'halo', 'POS-UNDANGAN:${base64Url.encode(utf8.encode('{"remote":"x","authKey":"k"}'))}']) {
+      expect(() => RemoteInvite.parse(raw), throwsA(isA<ApiFailure>()), reason: raw);
+    }
+  });
+
+  test('an invite signs in from outside the shop and keeps the way in', () async {
+    final tailnet = FakeTailnet();
+    final storage = MemoryStorage();
+    final app = AppState(api: MobileApi(transport: _OutsideShop()), storage: storage, tailnet: tailnet);
+
+    await app.loginWithInvite(invite: invite.encode(), username: 'kasir', password: 'rahasia', deviceName: 'HP Kasir');
+    await pumpEventQueue();
+
+    expect(app.mode, AppMode.connected);
+    expect(app.viaInternet, isTrue);
+    expect(app.remoteAddress, '100.64.0.7:48950');
+    expect(tailnet.starts.first.authKey, 'tskey-auth-9');
+    final saved = jsonDecode(storage.value!) as Map<String, dynamic>;
+    expect(saved['address'], 'http://192.168.1.5:48950');
+    expect(saved['remote'], containsPair('address', '100.64.0.7:48950'));
+    app.dispose();
+  });
+
+  test('a wrong password leaves no half-joined state behind', () async {
+    final tailnet = FakeTailnet();
+    final app = AppState(api: MobileApi(transport: _OutsideShop(passwordOk: false)), storage: MemoryStorage(), tailnet: tailnet);
+
+    await expectLater(app.loginWithInvite(invite: invite.encode(), username: 'kasir', password: 'salah', deviceName: 'HP Kasir'), throwsA(isA<ApiFailure>()));
+
+    expect(app.mode, isNot(AppMode.connected));
+    expect(app.remoteAddress, isNull);
+    expect(tailnet.stops, [true]);
     app.dispose();
   });
 }

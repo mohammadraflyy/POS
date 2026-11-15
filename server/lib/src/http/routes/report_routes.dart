@@ -1,8 +1,11 @@
+import 'dart:isolate';
+
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import '../../core/money.dart';
 import '../../core/spreadsheet.dart';
+import '../../db/db.dart';
 import '../../domain/cost_correction.dart';
 import '../../domain/expense.dart';
 import '../../domain/rekap.dart';
@@ -30,6 +33,52 @@ ExpenseInput _expense(Map<String, Object?> body) => ExpenseInput(
   return (from: from, to: to);
 }
 
+/// A long range walks every sale in it; on the shared isolate that stalls checkout, so a
+/// file-backed database is read on a second connection elsewhere. In memory there is no
+/// second connection to open.
+Future<Map<String, Object?>> _rekapTanpaMenahan(Db db, String from, String to) {
+  final path = db.filePath;
+
+  if (path == null) {
+    return Future.value(getRekap(db, from: from, to: to));
+  }
+
+  return _rekapDiIsolate(path, from, to);
+}
+
+// Top level so the closure carries only these strings, not the route's connection.
+Future<Map<String, Object?>> _rekapDiIsolate(String path, String from, String to) => Isolate.run(() {
+      final reader = Db.readOnly(path);
+
+      try {
+        return getRekap(reader, from: from, to: to);
+      } finally {
+        reader.close();
+      }
+    });
+
+/// The dashboard runs the day's rekap; after every sale it is cold again, so it leaves the
+/// shared isolate for the same reason as [_rekapTanpaMenahan].
+Future<Map<String, Object?>> _dashboardTanpaMenahan(Db db, DateTime now) {
+  final path = db.filePath;
+
+  if (path == null) {
+    return Future.value(getDashboard(db, now: now));
+  }
+
+  return _dashboardDiIsolate(path, now);
+}
+
+Future<Map<String, Object?>> _dashboardDiIsolate(String path, DateTime now) => Isolate.run(() {
+      final reader = Db.readOnly(path);
+
+      try {
+        return getDashboard(reader, now: now);
+      } finally {
+        reader.close();
+      }
+    });
+
 CostCorrectionRequest _correction(Map<String, Object?> body) => CostCorrectionRequest(
       saleItemId: body.integer('saleItemId'),
       scope: body.string('scope'),
@@ -42,24 +91,47 @@ CostCorrectionRequest _correction(Map<String, Object?> body) => CostCorrectionRe
 void addReportRoutes(Router router, ApiContext ctx) {
   final db = ctx.db;
 
-  router.get('/v1/dashboard', (Request request) {
+  // Clients poll every 8 s; recompute only after a write, a new day, or 30 s (covers other connections).
+  // The future is cached, so polls landing while it is computed share one run.
+  Future<Map<String, Object?>>? dashboard;
+  var dashboardDay = '';
+  var dashboardChanges = -1;
+  var dashboardAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  router.get('/v1/dashboard', (Request request) async {
     requireUser(ctx, request);
+    final now = DateTime.now();
+    final day = tanggalLokal(now);
+    final changes = db.scalar<int>('SELECT total_changes()') ?? 0;
 
-    return json(getDashboard(db));
+    if (dashboard == null || day != dashboardDay || changes != dashboardChanges || now.difference(dashboardAt) >= const Duration(seconds: 30)) {
+      dashboard = _dashboardTanpaMenahan(db, now);
+      dashboardDay = day;
+      dashboardChanges = changes;
+      dashboardAt = now;
+    }
+
+    try {
+      return json(await dashboard!);
+    } catch (_) {
+      // a failed run must not be served again until the cache would have expired
+      dashboard = null;
+      rethrow;
+    }
   });
 
-  router.get('/v1/rekap', (Request request) {
+  router.get('/v1/rekap', (Request request) async {
     requireAdmin(ctx, request);
     final range = _range(request);
 
-    return json(getRekap(db, from: range.from, to: range.to));
+    return json(await _rekapTanpaMenahan(db, range.from, range.to));
   });
 
-  router.get('/v1/rekap/export', (Request request) {
+  router.get('/v1/rekap/export', (Request request) async {
     requireAdmin(ctx, request);
     final range = _range(request);
 
-    return file(buildRekapWorkbook(getRekap(db, from: range.from, to: range.to)), 'rekap-${range.from}-${range.to}.xlsx', _xlsx);
+    return file(buildRekapWorkbook(await _rekapTanpaMenahan(db, range.from, range.to)), 'rekap-${range.from}-${range.to}.xlsx', _xlsx);
   });
 
   router.post('/v1/rekap/cost-corrections/preview', (Request request) async {

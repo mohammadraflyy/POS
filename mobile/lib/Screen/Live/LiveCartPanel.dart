@@ -289,7 +289,7 @@ class _CartLineState extends State<_CartLine> {
   @override
   Widget build(BuildContext context) {
     final item = widget.store.items[widget.index];
-    final line = widget.store.price != null && widget.index < widget.store.price!.lines.length ? widget.store.price!.lines[widget.index] : null;
+    final line = !widget.store.pricing && widget.store.price != null && widget.index < widget.store.price!.lines.length ? widget.store.price!.lines[widget.index] : null;
     final fallbackPrice = item.manualPrice ?? item.unit.price;
     final price = line?['hargaJual'] ?? fallbackPrice;
     final discount = number(line?['diskon']) ?? item.discount ?? 0;
