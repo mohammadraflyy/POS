@@ -68,6 +68,8 @@ void main() {
     expect(find.text('Ubah nota #$saleId'), findsOneWidget);
     await tester.enterText(find.byWidgetPredicate((w) => w is TextField && w.decoration?.hintText == 'Contoh: salah input jumlah'), 'Salah input');
     await tapText(tester, 'Simpan perubahan');
+    // the seeded nota picked here depends on the day, and one paid with change shows it first
+    if (find.text('KEMBALIAN').evaluate().isNotEmpty) await tapText(tester, 'KEMBALIAN');
     await tapText(tester, 'Lewati');
 
     final after = (await tester.runAsync(() async => db.first('SELECT total, created_at, keterangan FROM sales WHERE id = ?', [saleId])))!;
