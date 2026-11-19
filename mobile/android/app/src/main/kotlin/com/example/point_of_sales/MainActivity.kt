@@ -20,6 +20,8 @@ class MainActivity : FlutterActivity() {
                         "nativeLibraryDir" to applicationInfo.nativeLibraryDir,
                         "filesDir" to filesDir.absolutePath,
                         "cacheDir" to cacheDir.absolutePath,
+                        // the device's own CPU; an ARM app translated on an Intel tablet would report ARM from Dart
+                        "abi" to (android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: ""),
                     ),
                 )
                 "installApk" -> {

@@ -36,6 +36,9 @@ jobs:
           GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -checklinkname=0" -o ../../mobile/android/app/src/main/jniLibs/arm64-v8a/libposnet.so .
           mkdir -p ../../mobile/android/app/src/main/jniLibs/armeabi-v7a
           GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -checklinkname=0" -o ../../mobile/android/app/src/main/jniLibs/armeabi-v7a/libposnet.so .
+          # Intel tablets (Xiaomi Mi Pad 2): the ARM APK runs translated there, its posnet does not
+          mkdir -p ../../mobile/android/app/src/main/jniLibs/x86_64
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -checklinkname=0" -o ../../mobile/android/app/src/main/jniLibs/x86_64/libposnet.so .
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -67,6 +70,7 @@ jobs:
         run: |
           cp mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Point-of-Sales-Mobile.apk
           cp mobile/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk Point-of-Sales-Mobile-v7a.apk
+          cp mobile/build/app/outputs/flutter-apk/app-x86_64-release.apk Point-of-Sales-Mobile-x86_64.apk
 
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
@@ -75,6 +79,7 @@ jobs:
           path: |
             Point-of-Sales-Mobile.apk
             Point-of-Sales-Mobile-v7a.apk
+            Point-of-Sales-Mobile-x86_64.apk
 
   build-windows:
     name: Build Windows Desktop (Flutter)
@@ -169,6 +174,7 @@ jobs:
           files: |
             android-apk/Point-of-Sales-Mobile.apk
             android-apk/Point-of-Sales-Mobile-v7a.apk
+            android-apk/Point-of-Sales-Mobile-x86_64.apk
             windows-desktop/Point-of-Sales-Desktop-Setup.exe
           generate_release_notes: true
           draft: false

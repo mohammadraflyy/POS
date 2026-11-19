@@ -67,11 +67,13 @@ class UpdaterService {
       int? assetSize;
 
       final assets = data['assets'];
+      final apkName = Platform.isAndroid ? apkNameFor(await _deviceAbi()) : null;
+      final hasOwnApk = assets is List && assets.any((a) => a is Map && a['name']?.toString().toLowerCase() == apkName);
       if (assets is List) {
         for (final asset in assets) {
           if (asset is Map) {
             final name = asset['name']?.toString().toLowerCase() ?? '';
-            final isApk = Platform.isAndroid && name.endsWith('.apk');
+            final isApk = Platform.isAndroid && name.endsWith('.apk') && (!hasOwnApk || name == apkName);
             final isWindowsPkg = (Platform.isWindows || !Platform.isAndroid) && (name.endsWith('.exe') || name.endsWith('.msix') || name.endsWith('.zip'));
             if (isApk || isWindowsPkg) {
               downloadUrl = asset['browser_download_url']?.toString();
@@ -98,6 +100,25 @@ class UpdaterService {
       return null;
     } finally {
       client.close();
+    }
+  }
+
+  /// The release APK for [abi], the CPU Android reports. An Intel tablet can run the ARM APK
+  /// through translation, but posnet starts as a program of its own and does not.
+  @visibleForTesting
+  static String apkNameFor(String abi) => switch (abi) {
+        'x86_64' => 'point-of-sales-mobile-x86_64.apk',
+        'armeabi-v7a' || 'armeabi' || 'x86' => 'point-of-sales-mobile-v7a.apk',
+        _ => 'point-of-sales-mobile.apk',
+      };
+
+  Future<String> _deviceAbi() async {
+    try {
+      final paths = await _channel.invokeMethod<Map<Object?, Object?>>('paths');
+      return paths?['abi']?.toString() ?? '';
+    } catch (_) {
+      // an unknown CPU falls back to the first APK, as before
+      return '';
     }
   }
 
