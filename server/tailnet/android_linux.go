@@ -7,6 +7,7 @@ import (
 	_ "tailscale.com/feature/androidbin"
 	"tailscale.com/net/dnscache"
 	"tailscale.com/net/netmon"
+	"tailscale.com/net/netns"
 )
 
 // On a phone posnet is a plain Linux executable shipped inside the APK, with no Java to
@@ -20,5 +21,9 @@ func init() {
 		if f, ok := netmon.HookInterfacesFallback.GetOk(); ok {
 			netmon.RegisterInterfaceGetter(f)
 		}
+		// netns binds every outgoing socket to the default-route interface, which it reads
+		// from /proc/net/route; Android 11+ denies that to apps, so every dial to the control
+		// server failed. posnet is userspace-only and adds no OS routes, so nothing needs binding.
+		netns.SetEnabled(false)
 	}
 }
